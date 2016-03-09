@@ -1,3 +1,12 @@
+ceph (10.0.4-2redhat1) stable; urgency=low
+
+  * d/rules: customize "ceph --version" for RHCS
+  * d/rules: drop libradosstriper dependency in ceph-test (rhbz#1301422)
+  * etc/sysconfig/ceph: set 128MB tcmalloc cache size (rhbz#1297502)
+  * include ceph-detect-init man page (fix FTBFS)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 09 Mar 2016 13:27:11 -0500
+
 ceph (10.0.4) stable; urgency=low
 
   * New upstream release 
