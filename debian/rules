@@ -42,6 +42,8 @@ configure-stamp:
 	# Rewrite .git_version file with the correct patch information.
 	echo $(COMMIT) > src/.git_version
 	echo v$(DEB_VERSION) >> src/.git_version
+	# https://github.com/ceph/ceph/pull/7933
+	cp debian/ceph-detect-init.rst doc/man/8/
 	./autogen.sh
 	./configure --prefix=/usr --localstatedir=/var \
 	  --sysconfdir=/etc  --libexecdir=/usr/lib $(extraopts) $(confflags) \
