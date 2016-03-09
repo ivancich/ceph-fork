@@ -1,0 +1,26 @@
+From: Ken Dreyer <kdreyer@redhat.com>
+Date: Fri, 4 Mar 2016 10:26:46 -0700
+Subject: etc/sysconfig/ceph: set 128MB tcmalloc cache size
+
+Bump up from tcmalloc's default cache size.
+
+Signed-off-by: Ken Dreyer <kdreyer@redhat.com>
+(cherry picked from commit 01c0a5f589160bdb7e289797333be5d4a908cac4)
+---
+ etc/sysconfig/ceph | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/etc/sysconfig/ceph b/etc/sysconfig/ceph
+index 5f41a00..4068f29 100644
+--- a/etc/sysconfig/ceph
++++ b/etc/sysconfig/ceph
+@@ -3,6 +3,9 @@
+ # Environment file for ceph daemon systemd unit files.
+ #
+ 
++# Increase tcmalloc cache size
++TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=128MB
++
+ ## use jemalloc instead of tcmalloc
+ #
+ # jemalloc is generally faster for small IO workloads and when
