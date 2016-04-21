@@ -107,6 +107,7 @@ EXTRA_DIST += \
 	$(srcdir)/.git_version \
 	$(srcdir)/ceph-rbdnamer \
 	$(srcdir)/tools/ceph-monstore-update-crush.sh \
+	$(srcdir)/script/subman \
 	$(srcdir)/upstart/ceph-all.conf \
 	$(srcdir)/upstart/ceph-disk.conf \
 	$(srcdir)/upstart/ceph-mon.conf \
@@ -119,6 +120,9 @@ EXTRA_DIST += \
 	$(srcdir)/upstart/ceph-mds.conf \
 	$(srcdir)/upstart/ceph-mds-all.conf \
 	$(srcdir)/upstart/ceph-mds-all-starter.conf \
+	$(srcdir)/upstart/ceph-rbd-mirror.conf \
+	$(srcdir)/upstart/ceph-rbd-mirror-all.conf \
+	$(srcdir)/upstart/ceph-rbd-mirror-all-starter.conf \
 	$(srcdir)/upstart/radosgw.conf \
 	$(srcdir)/upstart/radosgw-all.conf \
 	$(srcdir)/upstart/radosgw-all-starter.conf \
@@ -149,6 +153,10 @@ doc_DATA = $(srcdir)/sample.ceph.conf sample.fetch_config
 ceph_libexecdir = $(libexecdir)/ceph
 ceph_libexec_SCRIPTS = ceph_common.sh ceph-osd-prestart.sh
 
+if ENABLE_SUBMAN
+submandir = /etc/cron.hourly
+subman_DATA = script/subman
+endif
 
 # tests to actually run on "make check"; if you need extra, non-test,
 # executables built, you need to replace this with manual assignments
@@ -168,6 +176,12 @@ if WITH_LTTNG
 # I don't see the serial-tests Automake option anywhere, but my AM_TESTS_ENVIRONMENT was being ignored.
 TESTS_ENVIRONMENT = LD_PRELOAD=liblttng-ust-fork.so; export LD_PRELOAD; echo "LD_PRELOAD=$${LD_PRELOAD}";
 endif
+
+AM_TESTS_ENVIRONMENT = export CEPH_ROOT="$(abs_top_srcdir)";
+AM_TESTS_ENVIRONMENT += export CEPH_BUILD_DIR="$(abs_srcdir)";
+AM_TESTS_ENVIRONMENT += export CEPH_BIN="$(abs_srcdir)";
+AM_TESTS_ENVIRONMENT += export CEPH_LIB="$(abs_srcdir)/.libs";
+AM_TESTS_ENVIRONMENT += export PATH="$(abs_srcdir):$$PATH";
 
 # base targets
 

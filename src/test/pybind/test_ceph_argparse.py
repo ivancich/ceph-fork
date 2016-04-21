@@ -25,7 +25,8 @@ import re
 import json
 
 def get_command_descriptions(what):
-    return os.popen("./get_command_descriptions " + "--" + what).read()
+    CEPH_BIN = os.environ['CEPH_BIN']
+    return os.popen(CEPH_BIN + "/get_command_descriptions " + "--" + what).read()
 
 def test_parse_json_funcsigs():
     commands = get_command_descriptions("all")
@@ -380,17 +381,6 @@ class TestMDS(TestArgparse):
     def test_set_max_mds(self):
         self.check_1_natural_arg('mds', 'set_max_mds')
 
-    def test_setmap(self):
-        self.assert_valid_command(['mds', 'setmap', '1'])
-        self.assert_valid_command(['mds', 'setmap', '1', '--yes-i-really-mean-it'])
-        assert_equal({}, validate_command(sigdict, ['mds', 'setmap',
-                                                    '--yes-i-really-mean-it']))
-        assert_equal({}, validate_command(sigdict, ['mds', 'setmap', '-1',
-                                                    '--yes-i-really-mean-it']))
-        assert_equal({}, validate_command(sigdict, ['mds', 'setmap', '1',
-                                                    '--yes-i-really-mean-it',
-                                                    'toomany']))
-
     def test_set_state(self):
         self.assert_valid_command(['mds', 'set_state', '1', '2'])
         assert_equal({}, validate_command(sigdict, ['mds', 'set_state']))
@@ -415,10 +405,6 @@ class TestMDS(TestArgparse):
     def test_rmfailed(self):
         self.assert_valid_command(['mds', 'rmfailed', '0'])
         self.assert_valid_command(['mds', 'rmfailed', '0', '--yes-i-really-mean-it'])
-        assert_equal({}, validate_command(sigdict, ['mds', 'rmfailed',
-                                                    '--yes-i-really-mean-it']))
-        assert_equal({}, validate_command(sigdict, ['mds', 'rmfailed', '-1',
-                                                    '--yes-i-really-mean-it']))
         assert_equal({}, validate_command(sigdict, ['mds', 'rmfailed', '0',
                                                     '--yes-i-really-mean-it',
                                                     'toomany']))
@@ -505,6 +491,11 @@ class TestFS(TestArgparse):
     def test_fs_ls(self):
         self.assert_valid_command(['fs', 'ls'])
         assert_equal({}, validate_command(sigdict, ['fs', 'ls', 'toomany']))
+
+    def test_fs_set_default(self):
+        self.assert_valid_command(['fs', 'set_default', 'cephfs'])
+        assert_equal({}, validate_command(sigdict, ['fs', 'set_default']))
+        assert_equal({}, validate_command(sigdict, ['fs', 'set_default', 'cephfs', 'toomany']))
 
 class TestMon(TestArgparse):
 
@@ -1111,9 +1102,8 @@ class TestOSD(TestArgparse):
     def test_reweight_by_utilization(self):
         self.assert_valid_command(['osd', 'reweight-by-utilization'])
         self.assert_valid_command(['osd', 'reweight-by-utilization', '100'])
-        assert_equal({}, validate_command(sigdict, ['osd',
-                                                    'reweight-by-utilization',
-                                                    '50']))
+		self.assert_valid_command(['osd', 'reweight-by-utilization', '100', '.1'])
+        self.assert_valid_command(['osd', 'reweight-by-utilization', '--no-increasing'])
         assert_equal({}, validate_command(sigdict, ['osd',
                                                     'reweight-by-utilization',
                                                     '100',

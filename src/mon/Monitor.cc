@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <limits.h>
 #include <cstring>
+#include <boost/scope_exit.hpp>
 
 #include "Monitor.h"
 #include "common/version.h"
@@ -185,6 +186,7 @@ Monitor::Monitor(CephContext* cct_, string nm, MonitorDBStore *s,
 
   timecheck_round(0),
   timecheck_acks(0),
+  timecheck_rounds_since_clean(0),
   timecheck_event(NULL),
 
   probe_timeout_event(NULL),
@@ -331,7 +333,7 @@ void Monitor::do_admin_command(string command, cmdmap_t& cmdmap, string format,
     elector.stop_participating();
     ss << "stopped responding to quorum, initiated new election";
   } else if (command == "ops") {
-    op_tracker.dump_ops_in_flight(f.get());
+    (void)op_tracker.dump_ops_in_flight(f.get());
     if (f) {
       f->flush(ss);
     }
@@ -887,6 +889,8 @@ void Monitor::shutdown()
     admin_socket->unregister_command("quorum_status");
     admin_socket->unregister_command("sync_force");
     admin_socket->unregister_command("add_bootstrap_peer_hint");
+    admin_socket->unregister_command("quorum enter");
+    admin_socket->unregister_command("quorum exit");
     admin_socket->unregister_command("ops");
     delete admin_hook;
     admin_hook = NULL;
@@ -1613,7 +1617,6 @@ void Monitor::handle_probe(MonOpRequestRef op)
 void Monitor::handle_probe_probe(MonOpRequestRef op)
 {
   MMonProbe *m = static_cast<MMonProbe*>(op->get_req());
-  MMonProbe *r;
 
   dout(10) << "handle_probe_probe " << m->get_source_inst() << *m
 	   << " features " << m->get_connection()->get_features() << dendl;
@@ -1645,7 +1648,8 @@ void Monitor::handle_probe_probe(MonOpRequestRef op)
 
     }
   }
-
+  
+  MMonProbe *r;
   r = new MMonProbe(monmap->fsid, MMonProbe::OP_REPLY, name, has_ever_joined);
   r->name = name;
   r->quorum = quorum;
@@ -2458,8 +2462,8 @@ void Monitor::get_cluster_status(stringstream &ss, Formatter *f)
     f->open_object_section("pgmap");
     pgmon()->pg_map.print_summary(f, NULL);
     f->close_section();
-    f->open_object_section("mdsmap");
-    mdsmon()->mdsmap.print_summary(f, NULL);
+    f->open_object_section("fsmap");
+    mdsmon()->fsmap.print_summary(f, NULL);
     f->close_section();
     f->close_section();
   } else {
@@ -2469,8 +2473,10 @@ void Monitor::get_cluster_status(stringstream &ss, Formatter *f)
     ss << "     monmap " << *monmap << "\n";
     ss << "            election epoch " << get_epoch()
        << ", quorum " << get_quorum() << " " << get_quorum_names() << "\n";
-    if (mdsmon()->mdsmap.get_enabled())
-      ss << "     mdsmap " << mdsmon()->mdsmap << "\n";
+    if (mdsmon()->fsmap.any_filesystems()) {
+      ss << "      fsmap " << mdsmon()->fsmap << "\n";
+    }
+
     osdmon()->osdmap.print_summary(NULL, ss);
     pgmon()->pg_map.print_summary(NULL, &ss);
   }
@@ -2557,11 +2563,6 @@ void Monitor::get_locally_supported_monitor_commands(const MonCommand **cmds,
   *cmds = mon_commands;
   *count = ARRAY_SIZE(mon_commands);
 }
-void Monitor::get_leader_supported_commands(const MonCommand **cmds, int *count)
-{
-  *cmds = leader_supported_mon_commands;
-  *count = leader_supported_mon_commands_size;
-}
 void Monitor::get_classic_monitor_commands(const MonCommand **cmds, int *count)
 {
   *cmds = classic_mon_commands;
@@ -2597,8 +2598,15 @@ void Monitor::handle_command(MonOpRequestRef op)
     return;
   }
 
-  MonSession *session = m->get_session();
-  assert(session);
+  MonSession *session = static_cast<MonSession *>(
+    m->get_connection()->get_priv());
+  if (!session) {
+    dout(5) << __func__ << " dropping stray message " << *m << dendl;
+    return;
+  }
+  BOOST_SCOPE_EXIT_ALL(=) {
+    session->put();
+  };
 
   if (m->cmd.empty()) {
     string rs = "No command supplied";
@@ -3254,19 +3262,11 @@ void Monitor::no_reply(MonOpRequestRef op)
   Message *req = op->get_req();
 
   if (session->proxy_con) {
-    if (get_quorum_features() & CEPH_FEATURE_MON_NULLROUTE) {
-      dout(10) << "no_reply to " << req->get_source_inst()
-	       << " via " << session->proxy_con->get_peer_addr()
-	       << " for request " << *req << dendl;
-      session->proxy_con->send_message(new MRoute(session->proxy_tid, NULL));
-      op->mark_event("no_reply: send routed request");
-    } else {
-      dout(10) << "no_reply no quorum nullroute feature for "
-               << req->get_source_inst()
-	       << " via " << session->proxy_con->get_peer_addr()
-	       << " for request " << *req << dendl;
-      op->mark_event("no_reply: no quorum support");
-    }
+    dout(10) << "no_reply to " << req->get_source_inst()
+	     << " via " << session->proxy_con->get_peer_addr()
+	     << " for request " << *req << dendl;
+    session->proxy_con->send_message(new MRoute(session->proxy_tid, NULL));
+    op->mark_event("no_reply: send routed request");
   } else {
     dout(10) << "no_reply to " << req->get_source_inst()
              << " " << *req << dendl;
@@ -3825,8 +3825,7 @@ void Monitor::timecheck_start_round()
   timecheck();
 out:
   dout(10) << __func__ << " setting up next event" << dendl;
-  timecheck_event = new C_TimeCheck(this);
-  timer.add_event_after(g_conf->mon_timecheck_interval, timecheck_event);
+  timecheck_reset_event();
 }
 
 void Monitor::timecheck_finish_round(bool success)
@@ -3840,6 +3839,7 @@ void Monitor::timecheck_finish_round(bool success)
     assert(timecheck_waiting.empty());
     assert(timecheck_acks == quorum.size());
     timecheck_report();
+    timecheck_check_skews();
     return;
   }
 
@@ -3873,6 +3873,69 @@ void Monitor::timecheck_cleanup()
   timecheck_waiting.clear();
   timecheck_skews.clear();
   timecheck_latencies.clear();
+
+  timecheck_rounds_since_clean = 0;
+}
+
+void Monitor::timecheck_reset_event()
+{
+  if (timecheck_event) {
+    timer.cancel_event(timecheck_event);
+    timecheck_event = NULL;
+  }
+
+  double delay =
+    cct->_conf->mon_timecheck_skew_interval * timecheck_rounds_since_clean;
+
+  if (delay <= 0 || delay > cct->_conf->mon_timecheck_interval) {
+    delay = cct->_conf->mon_timecheck_interval;
+  }
+
+  dout(10) << __func__ << " delay " << delay
+           << " rounds_since_clean " << timecheck_rounds_since_clean
+           << dendl;
+
+  timecheck_event = new C_TimeCheck(this);
+  timer.add_event_after(delay, timecheck_event);
+}
+
+void Monitor::timecheck_check_skews()
+{
+  dout(10) << __func__ << dendl;
+  assert(is_leader());
+  assert((timecheck_round % 2) == 0);
+  if (monmap->size() == 1) {
+    assert(0 == "We are alone; we shouldn't have gotten here!");
+    return;
+  }
+  assert(timecheck_latencies.size() == timecheck_skews.size());
+
+  bool found_skew = false;
+  for (map<entity_inst_t, double>::iterator p = timecheck_skews.begin();
+       p != timecheck_skews.end(); ++p) {
+
+    double abs_skew;
+    if (timecheck_has_skew(p->second, &abs_skew)) {
+      dout(10) << __func__
+               << " " << p->first << " skew " << abs_skew << dendl;
+      found_skew = true;
+    }
+  }
+
+  if (found_skew) {
+    ++timecheck_rounds_since_clean;
+    timecheck_reset_event();
+  } else if (timecheck_rounds_since_clean > 0) {
+    dout(1) << __func__
+      << " no clock skews found after " << timecheck_rounds_since_clean
+      << " rounds" << dendl;
+    // make sure the skews are really gone and not just a transient success
+    // this will run just once if not in the presence of skews again.
+    timecheck_rounds_since_clean = 1;
+    timecheck_reset_event();
+    timecheck_rounds_since_clean = 0;
+  }
+
 }
 
 void Monitor::timecheck_report()
@@ -3895,7 +3958,8 @@ void Monitor::timecheck_report()
     m->epoch = get_epoch();
     m->round = timecheck_round;
 
-    for (map<entity_inst_t, double>::iterator it = timecheck_skews.begin(); it != timecheck_skews.end(); ++it) {
+    for (map<entity_inst_t, double>::iterator it = timecheck_skews.begin();
+         it != timecheck_skews.end(); ++it) {
       double skew = it->second;
       double latency = timecheck_latencies[it->first];
 
@@ -3954,10 +4018,10 @@ health_status_t Monitor::timecheck_status(ostringstream &ss,
                                           const double latency)
 {
   health_status_t status = HEALTH_OK;
-  double abs_skew = (skew_bound > 0 ? skew_bound : -skew_bound);
   assert(latency >= 0);
 
-  if (abs_skew > g_conf->mon_clock_drift_allowed) {
+  double abs_skew;
+  if (timecheck_has_skew(skew_bound, &abs_skew)) {
     status = HEALTH_WARN;
     ss << "clock skew " << abs_skew << "s"
        << " > max " << g_conf->mon_clock_drift_allowed << "s";
@@ -4072,11 +4136,7 @@ void Monitor::handle_timecheck_leader(MonOpRequestRef op)
 	   << " delta " << delta << " skew_bound " << skew_bound
 	   << " latency " << latency << dendl;
 
-  if (timecheck_skews.count(other) == 0) {
-    timecheck_skews[other] = skew_bound;
-  } else {
-    timecheck_skews[other] = (timecheck_skews[other]*0.8)+(skew_bound*0.2);
-  }
+  timecheck_skews[other] = skew_bound;
 
   timecheck_acks++;
   if (timecheck_acks == quorum.size()) {
@@ -4186,9 +4246,12 @@ void Monitor::handle_subscribe(MonOpRequestRef op)
 			       p->second.flags & CEPH_SUBSCRIBE_ONETIME,
 			       m->get_connection()->has_feature(CEPH_FEATURE_INCSUBOSDMAP));
 
-    if (p->first == "mdsmap") {
+    if (p->first.find("mdsmap") == 0 || p->first == "fsmap") {
+      dout(10) << __func__ << ": MDS sub '" << p->first << "'" << dendl;
       if ((int)s->is_capable("mds", MON_CAP_R)) {
-        mdsmon()->check_sub(s->sub_map["mdsmap"]);
+        Subscription *sub = s->sub_map[p->first];
+        assert(sub != nullptr);
+        mdsmon()->check_sub(sub);
       }
     } else if (p->first == "osdmap") {
       if ((int)s->is_capable("osd", MON_CAP_R)) {
@@ -4236,6 +4299,8 @@ void Monitor::handle_get_version(MonOpRequestRef op)
   }
 
   if (m->what == "mdsmap") {
+    svc = mdsmon();
+  } else if (m->what == "fsmap") {
     svc = mdsmon();
   } else if (m->what == "osdmap") {
     svc = osdmon();
@@ -4422,11 +4487,6 @@ int Monitor::scrub_start()
 {
   dout(10) << __func__ << dendl;
   assert(is_leader());
-
-  if ((get_quorum_features() & CEPH_FEATURE_MON_SCRUB) == 0) {
-    clog->warn() << "scrub not supported by entire quorum\n";
-    return -EOPNOTSUPP;
-  }
 
   if (!scrub_result.empty()) {
     clog->info() << "scrub already in progress\n";
@@ -4946,7 +5006,7 @@ int Monitor::write_default_keyring(bufferlist& bl)
   os << g_conf->mon_data << "/keyring";
 
   int err = 0;
-  int fd = ::open(os.str().c_str(), O_WRONLY|O_CREAT, 0644);
+  int fd = ::open(os.str().c_str(), O_WRONLY|O_CREAT, 0600);
   if (fd < 0) {
     err = -errno;
     dout(0) << __func__ << " failed to open " << os.str() 

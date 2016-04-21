@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [10.0.4], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [10.2.0], [ceph-devel@vger.kernel.org])
 
 AX_CXX_COMPILE_STDCXX_11(, mandatory)
 
@@ -63,6 +63,7 @@ darwin*)
 	;;
 linux*)
 	linux="yes"
+	CFLAGS="-D_LARGEFILE64_SOURCE ${CFLAGS}"
 	;;
 freebsd*)
 	freebsd="yes"
@@ -126,7 +127,7 @@ AM_CONDITIONAL(WITH_RBD, test "$with_rbd" = "yes")
 #AS_IF([test "$with_rbd" = "yes"], [AC_DEFINE([WITH_RADOS, WITH_RBD])])
 
 AC_ARG_WITH([cython],
-	[AS_HELP_STRING([--with-cython], [build python bindings for librbd])],
+	[AS_HELP_STRING([--with-cython], [build python bindings for libraries])],
 	[],
 	[with_cython=yes])
 AM_CONDITIONAL(WITH_CYTHON, test "$with_cython" = "yes")
@@ -207,12 +208,27 @@ AC_ARG_ENABLE([server],
 AM_CONDITIONAL(ENABLE_SERVER, test "$enable_server" = "yes")
 #AS_IF([test "$enable_server" = "yes"], [AC_DEFINE([WITH_MON, WITH_OSD, WITH_MDS, ENABLE_SERVER])])
 
-# cython is required to build librbd python bindings
+# subscription manager?
+AC_ARG_ENABLE([subman],
+	[AS_HELP_STRING([--enable-subman], [enable subman])],
+	[],
+	[enable_subman=no])
+AM_CONDITIONAL([ENABLE_SUBMAN], test "x$enable_subman" != "xno")
+
+# cython is required to build python bindings for libraries
 if test x"$with_cython" = xyes; then
     AC_CHECK_PROG(CYTHON_CHECK, cython, yes)
     if test x"$CYTHON_CHECK" != xyes; then
         AC_MSG_FAILURE([cython not found])
     fi
+    AC_CHECK_PROG(PYTHON_CONFIG_CHECK, python-config, yes)
+    if test x"$PYTHON_CONFIG_CHECK" != xyes; then
+        AC_MSG_FAILURE([python-config not found])
+    fi
+    PYTHON_CFLAGS=`python-config --cflags`
+    AC_SUBST(PYTHON_CFLAGS)
+    PYTHON_LDFLAGS=`python-config --ldflags`
+    AC_SUBST(PYTHON_LDFLAGS)
 fi
 
 # cond-check if snappy-devel is installed, needed by leveldb that is need by server parts of the project
@@ -915,6 +931,9 @@ AC_CHECK_HEADER([boost/random/discrete_distribution.hpp],
 	[AC_DEFINE([HAVE_BOOST_RANDOM_DISCRETE_DISTRIBUTION], [], [have boost::random::discrete_distribution])],
 	[])
 
+AC_CHECK_HEADER([boost/asio/coroutine.hpp],
+	[AC_DEFINE([HAVE_BOOST_ASIO_COROUTINE], [], [have boost::asio::coroutine])],
+	[])
 AC_CHECK_HEADER([boost/statechart/state.hpp], [],
     AC_MSG_FAILURE(["Can't find boost statechart headers; need 1.34 or later"]))
 AC_CHECK_HEADER([boost/regex.hpp], [],
@@ -930,7 +949,7 @@ AC_CHECK_LIB(boost_system-mt, main, [],
 
 AC_CHECK_LIB(boost_iostreams-mt, main, [],
     [AC_CHECK_LIB(boost_iostreams, main, [],
-        AC_MSG_NOTICE(["Boost iostreams library not found."]))])
+        AC_MSG_FAILURE(["Boost iostreams library not found."]))])
 
 # Find the right boost_thread library.
 BOOST_THREAD_LIBS=""
@@ -1073,6 +1092,7 @@ AC_CHECK_HEADERS([sys/prctl.h])
 AC_CHECK_FUNCS([prctl])
 AC_CHECK_FUNCS([pipe2])
 AC_CHECK_FUNCS([posix_fadvise])
+AC_CHECK_FUNCS([pwritev], AC_DEFINE([HAVE_PWRITEV], [1], [we have pwritev]))
 
 AC_MSG_CHECKING([for fdatasync])
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
@@ -1266,6 +1286,19 @@ AS_IF([test "x$with_eventfd" != xno],
     [AC_CHECK_HEADERS(sys/eventfd.h,
                      [AC_DEFINE(HAVE_EVENTFD, 1, [Have eventfd extension.])])])
 AM_CONDITIONAL(WITH_EVENTFD, [ test "$with_eventfd" = "yes" ])
+
+# disable OpenLDAP support
+AC_ARG_WITH([openldap],
+            [AS_HELP_STRING([--without-openldap], [Disable OpenLDAP support (RGW)])])
+if test "x$with_openldap" != "xno"; then
+   AC_CHECK_HEADER([ldap.h], [],
+      AC_MSG_ERROR([ldap.h not found (openldap-dev, openldap-devel)]))
+    AC_CHECK_LIB([ldap], [ldap_initialize], [true],
+      AC_MSG_FAILURE([libldap not found]))
+   AC_DEFINE([HAVE_OPENLDAP], [1], [Defined if OpenLDAP enabled])
+   have_openldap="yes"
+fi
+AM_CONDITIONAL(WITH_OPENLDAP, [ test "$have_openldap" = "yes" ])
 
 # Checks for typedefs, structures, and compiler characteristics.
 #AC_HEADER_STDBOOL

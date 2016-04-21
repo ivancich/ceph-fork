@@ -45,13 +45,17 @@ int client_register(librados::IoCtx &ioctx, const std::string &oid,
 void client_register(librados::ObjectWriteOperation *op,
                      const std::string &id, const bufferlist &data);
 
-int client_update(librados::IoCtx &ioctx, const std::string &oid,
-                  const std::string &id, const bufferlist &data);
-void client_update(librados::ObjectWriteOperation *op,
-                   const std::string &id, const bufferlist &data);
+int client_update_data(librados::IoCtx &ioctx, const std::string &oid,
+                       const std::string &id, const bufferlist &data);
+void client_update_data(librados::ObjectWriteOperation *op,
+                        const std::string &id, const bufferlist &data);
+int client_update_state(librados::IoCtx &ioctx, const std::string &oid,
+                        const std::string &id, cls::journal::ClientState state);
 
 int client_unregister(librados::IoCtx &ioctx, const std::string &oid,
                       const std::string &id);
+void client_unregister(librados::ObjectWriteOperation *op,
+		       const std::string &id);
 
 void client_commit(librados::ObjectWriteOperation *op, const std::string &id,
                    const cls::journal::ObjectSetPosition &commit_position);

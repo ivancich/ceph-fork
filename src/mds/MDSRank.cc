@@ -56,6 +56,7 @@ MDSRank::MDSRank(
     objecter(objecter_),
     server(NULL), mdcache(NULL), locker(NULL), mdlog(NULL),
     balancer(NULL), scrubstack(NULL),
+    damage_table(whoami_),
     inotable(NULL), snapserver(NULL), snapclient(NULL),
     sessionmap(this), logger(NULL), mlogger(NULL),
     op_tracker(g_ceph_context, g_conf->mds_enable_op_tracker,
@@ -501,7 +502,8 @@ bool MDSRank::_dispatch(Message *m, bool new_msg)
     if (!dir->get_parent_dir()) continue;    // must be linked.
     if (!dir->is_auth()) continue;           // must be auth.
     frag_t fg = dir->get_frag();
-    if (fg == frag_t() || (rand() % (1 << fg.bits()) == 0))
+    if (mdsmap->allows_dirfrags() &&
+	(fg == frag_t() || (rand() % (1 << fg.bits()) == 0)))
       mdcache->split_dir(dir, 1);
     else
       balancer->queue_merge(dir);
@@ -1665,27 +1667,19 @@ bool MDSRankDispatcher::handle_asok_command(
 {
   if (command == "dump_ops_in_flight" ||
              command == "ops") {
-    RWLock::RLocker l(op_tracker.lock);
-    if (!op_tracker.tracking_enabled) {
+    if (!op_tracker.dump_ops_in_flight(f)) {
       ss << "op_tracker tracking is not enabled now, so no ops are tracked currently, even those get stuck. \
 	  please enable \"osd_enable_op_tracker\", and the tracker will start to track new ops received afterwards.";
-    } else {
-      op_tracker.dump_ops_in_flight(f);
     }
   } else if (command == "dump_blocked_ops") {
-    if (!op_tracker.tracking_enabled) {
+    if (!op_tracker.dump_ops_in_flight(f, true)) {
       ss << "op_tracker tracking is not enabled now, so no ops are tracked currently, even those get stuck. \
 	Please enable \"osd_enable_op_tracker\", and the tracker will start to track new ops received afterwards.";
-    } else {
-      op_tracker.dump_ops_in_flight(f, true);
     }
   } else if (command == "dump_historic_ops") {
-    RWLock::RLocker l(op_tracker.lock);
-    if (!op_tracker.tracking_enabled) {
+    if (!op_tracker.dump_historic_ops(f)) {
       ss << "op_tracker tracking is not enabled now, so no ops are tracked currently, even those get stuck. \
 	  please enable \"osd_enable_op_tracker\", and the tracker will start to track new ops received afterwards.";
-    } else {
-      op_tracker.dump_historic_ops(f);
     }
   } else if (command == "osdmap barrier") {
     int64_t target_epoch = 0;
@@ -1734,8 +1728,10 @@ bool MDSRankDispatcher::handle_asok_command(
     }
   } else if (command == "scrub_path") {
     string path;
+    vector<string> scrubop_vec;
+    cmd_getval(g_ceph_context, cmdmap, "scrubops", scrubop_vec);
     cmd_getval(g_ceph_context, cmdmap, "path", path);
-    command_scrub_path(f, path);
+    command_scrub_path(f, path, scrubop_vec);
   } else if (command == "tag path") {
     string path;
     cmd_getval(g_ceph_context, cmdmap, "path", path);
@@ -1874,12 +1870,23 @@ void MDSRankDispatcher::dump_sessions(const SessionFilter &filter, Formatter *f)
   f->close_section(); //sessions
 }
 
-void MDSRank::command_scrub_path(Formatter *f, const string& path)
+void MDSRank::command_scrub_path(Formatter *f, const string& path, vector<string>& scrubop_vec)
 {
+  bool force = false;
+  bool recursive = false;
+  bool repair = false;
+  for (vector<string>::iterator i = scrubop_vec.begin() ; i != scrubop_vec.end(); ++i) {
+    if (*i == "force")
+      force = true;
+    else if (*i == "recursive")
+      recursive = true;
+    else if (*i == "repair")
+      repair = true;
+  }
   C_SaferCond scond;
   {
     Mutex::Locker l(mds_lock);
-    mdcache->scrub_dentry(path, f, &scond);
+    mdcache->enqueue_scrub(path, "", force, recursive, repair, f, &scond);
   }
   scond.wait();
   // scrub_dentry() finishers will dump the data for us; we're done!
@@ -1891,7 +1898,7 @@ void MDSRank::command_tag_path(Formatter *f,
   C_SaferCond scond;
   {
     Mutex::Locker l(mds_lock);
-    mdcache->enqueue_scrub(path, tag, f, &scond);
+    mdcache->enqueue_scrub(path, tag, true, true, false, f, &scond);
   }
   scond.wait();
 }
@@ -2160,6 +2167,11 @@ bool MDSRank::command_dirfrag_split(
     cmdmap_t cmdmap,
     std::ostream &ss)
 {
+  if (!mdsmap->allows_dirfrags()) {
+    ss << "dirfrags are disallowed by the mds map!";
+    return false;
+  }
+
   int64_t by = 0;
   if (!cmd_getval(g_ceph_context, cmdmap, "bits", by)) {
     ss << "missing bits argument";
@@ -2461,25 +2473,27 @@ bool MDSRankDispatcher::handle_command_legacy(std::vector<std::string> args)
       dout(20) << "try_eval(" << inum << ", " << mask << ")" << dendl;
     } else dout(15) << "inode " << inum << " not in mdcache!" << dendl;
   } else if (args[0] == "fragment_dir") {
-    if (args.size() == 4) {
-      filepath fp(args[1].c_str());
-      CInode *in = mdcache->cache_traverse(fp);
-      if (in) {
-	frag_t fg;
-	if (fg.parse(args[2].c_str())) {
-	  CDir *dir = in->get_dirfrag(fg);
-	  if (dir) {
-	    if (dir->is_auth()) {
-	      int by = atoi(args[3].c_str());
-	      if (by)
-		mdcache->split_dir(dir, by);
-	      else
-		dout(0) << "need to split by >0 bits" << dendl;
-	    } else dout(0) << "dir " << dir->dirfrag() << " not auth" << dendl;
-	  } else dout(0) << "dir " << in->ino() << " " << fg << " dne" << dendl;
-	} else dout(0) << " frag " << args[2] << " does not parse" << dendl;
-      } else dout(0) << "path " << fp << " not found" << dendl;
-    } else dout(0) << "bad syntax" << dendl;
+    if (!mdsmap->allows_dirfrags()) {
+      if (args.size() == 4) {
+	filepath fp(args[1].c_str());
+	CInode *in = mdcache->cache_traverse(fp);
+	if (in) {
+	  frag_t fg;
+	  if (fg.parse(args[2].c_str())) {
+	    CDir *dir = in->get_dirfrag(fg);
+	    if (dir) {
+	      if (dir->is_auth()) {
+		int by = atoi(args[3].c_str());
+		if (by)
+		  mdcache->split_dir(dir, by);
+		else
+		  dout(0) << "need to split by >0 bits" << dendl;
+	      } else dout(0) << "dir " << dir->dirfrag() << " not auth" << dendl;
+	    } else dout(0) << "dir " << in->ino() << " " << fg << " dne" << dendl;
+	  } else dout(0) << " frag " << args[2] << " does not parse" << dendl;
+	} else dout(0) << "path " << fp << " not found" << dendl;
+      } else dout(0) << "bad syntax" << dendl;
+    } else dout(0) << "dirfrags are disallowed by the mds map!" << dendl;
   } else if (args[0] == "merge_dir") {
     if (args.size() == 3) {
       filepath fp(args[1].c_str());
@@ -2569,6 +2583,22 @@ bool MDSRankDispatcher::handle_command(
 
     evict_sessions(filter);
 
+    return true;
+  } else if (prefix == "damage ls") {
+    Formatter *f = new JSONFormatter();
+    damage_table.dump(f);
+    f->flush(*ds);
+    delete f;
+    return true;
+  } else if (prefix == "damage rm") {
+    damage_entry_id_t id = 0;
+    bool got = cmd_getval(g_ceph_context, cmdmap, "damage_id", (int64_t&)id);
+    if (!got) {
+      *r = -EINVAL;
+      return true;
+    }
+
+    damage_table.erase(id);
     return true;
   } else {
     return false;

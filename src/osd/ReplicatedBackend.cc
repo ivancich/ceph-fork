@@ -209,15 +209,11 @@ bool ReplicatedBackend::handle_message(
 	return true;
       }
     }
-    else {
-      sub_op_modify_reply<MOSDSubOpReply, MSG_OSD_SUBOPREPLY>(op);
-      return true;
-    }
     break;
   }
 
   case MSG_OSD_REPOPREPLY: {
-    sub_op_modify_reply<MOSDRepOpReply, MSG_OSD_REPOPREPLY>(op);
+    sub_op_modify_reply(op);
     return true;
   }
 
@@ -332,10 +328,8 @@ class RPGTransaction : public PGBackend::PGTransaction {
     return coll;
   }
 public:
-  RPGTransaction(coll_t coll, bool use_tbl)
-    : coll(coll), written(0) {
-    t.set_use_tbl(use_tbl);
-  }
+  RPGTransaction(coll_t coll)
+    : coll(coll), written(0) {}
 
   /// Yields ownership of contained transaction
   ObjectStore::Transaction&& get_transaction() {
@@ -521,7 +515,7 @@ public:
 
 PGBackend::PGTransaction *ReplicatedBackend::get_transaction()
 {
-  return new RPGTransaction(coll, parent->transaction_use_tbl());
+  return new RPGTransaction(coll);
 }
 
 class C_OSD_OnOpCommit : public Context {
@@ -549,7 +543,7 @@ public:
 void ReplicatedBackend::submit_transaction(
   const hobject_t &soid,
   const eversion_t &at_version,
-  PGTransaction *_t,
+  PGTransactionUPtr &&_t,
   const eversion_t &trim_to,
   const eversion_t &trim_rollback_to,
   const vector<pg_log_entry_t> &log_entries,
@@ -561,7 +555,8 @@ void ReplicatedBackend::submit_transaction(
   osd_reqid_t reqid,
   OpRequestRef orig_op)
 {
-  RPGTransaction *t = dynamic_cast<RPGTransaction*>(_t);
+  std::unique_ptr<RPGTransaction> t(
+    static_cast<RPGTransaction*>(_t.release()));
   assert(t);
   ObjectStore::Transaction op_t = t->get_transaction();
 
@@ -599,7 +594,7 @@ void ReplicatedBackend::submit_transaction(
     log_entries,
     hset_history,
     &op,
-    &op_t);
+    op_t);
 
   if (!(t->get_temp_added().empty())) {
     add_temp_objs(t->get_temp_added());
@@ -612,7 +607,7 @@ void ReplicatedBackend::submit_transaction(
     trim_to,
     trim_rollback_to,
     true,
-    &op_t);
+    op_t);
   
   op_t.register_on_applied_sync(on_local_applied_sync);
   op_t.register_on_applied(
@@ -621,10 +616,11 @@ void ReplicatedBackend::submit_transaction(
   op_t.register_on_commit(
     parent->bless_context(
       new C_OSD_OnOpCommit(this, &op)));
+
   vector<ObjectStore::Transaction> tls;
   tls.push_back(std::move(op_t));
+
   parent->queue_transactions(tls, op.op);
-  delete t;
 }
 
 void ReplicatedBackend::op_applied(
@@ -666,13 +662,11 @@ void ReplicatedBackend::op_commit(
   }
 }
 
-template<typename T, int MSGTYPE>
 void ReplicatedBackend::sub_op_modify_reply(OpRequestRef op)
 {
-  T *r = static_cast<T *>(op->get_req());
+  MOSDRepOpReply *r = static_cast<MOSDRepOpReply *>(op->get_req());
   r->finish_decode();
-  assert(r->get_header().type == MSGTYPE);
-  assert(MSGTYPE == MSG_OSD_SUBOPREPLY || MSGTYPE == MSG_OSD_REPOPREPLY);
+  assert(r->get_header().type == MSG_OSD_REPOPREPLY);
 
   op->mark_started();
 
@@ -980,7 +974,6 @@ void ReplicatedBackend::do_push_reply(OpRequestRef op)
   send_pushes(m->get_priority(), _replies);
 }
 
-template<typename T, int MSGTYPE>
 Message * ReplicatedBackend::generate_subop(
   const hobject_t &soid,
   const eversion_t &at_version,
@@ -993,14 +986,13 @@ Message * ReplicatedBackend::generate_subop(
   const vector<pg_log_entry_t> &log_entries,
   boost::optional<pg_hit_set_history_t> &hset_hist,
   InProgressOp *op,
-  ObjectStore::Transaction *op_t,
+  ObjectStore::Transaction &op_t,
   pg_shard_t peer,
   const pg_info_t &pinfo)
 {
   int acks_wanted = CEPH_OSD_FLAG_ACK | CEPH_OSD_FLAG_ONDISK;
-  assert(MSGTYPE == MSG_OSD_SUBOP || MSGTYPE == MSG_OSD_REPOP);
   // forward the write/update/whatever
-  T *wr = new T(
+  MOSDRepOp *wr = new MOSDRepOp(
     reqid, parent->whoami_shard(),
     spg_t(get_info().pgid.pgid, peer.shard),
     soid, acks_wanted,
@@ -1015,10 +1007,9 @@ Message * ReplicatedBackend::generate_subop(
 	     << ", pinfo.last_backfill "
 	     << pinfo.last_backfill << ")" << dendl;
     ObjectStore::Transaction t;
-    t.set_use_tbl(op_t->get_use_tbl());
     ::encode(t, wr->get_data());
   } else {
-    ::encode(*op_t, wr->get_data());
+    ::encode(op_t, wr->get_data());
   }
 
   ::encode(log_entries, wr->logbl);
@@ -1049,7 +1040,7 @@ void ReplicatedBackend::issue_op(
   const vector<pg_log_entry_t> &log_entries,
   boost::optional<pg_hit_set_history_t> &hset_hist,
   InProgressOp *op,
-  ObjectStore::Transaction *op_t)
+  ObjectStore::Transaction &op_t)
 {
 
   if (parent->get_actingbackfill_shards().size() > 1) {
@@ -1069,41 +1060,21 @@ void ReplicatedBackend::issue_op(
     const pg_info_t &pinfo = parent->get_shard_info().find(peer)->second;
 
     Message *wr;
-    uint64_t min_features = parent->min_peer_features();
-    if (!(min_features & CEPH_FEATURE_OSD_REPOP)) {
-      dout(20) << "Talking to old version of OSD, doesn't support RepOp, fall back to SubOp" << dendl;
-      wr = generate_subop<MOSDSubOp, MSG_OSD_SUBOP>(
-	    soid,
-	    at_version,
-	    tid,
-	    reqid,
-	    pg_trim_to,
-	    pg_trim_rollback_to,
-	    new_temp_oid,
-	    discard_temp_oid,
-	    log_entries,
-	    hset_hist,
-	    op,
-	    op_t,
-	    peer,
-	    pinfo);
-    } else {
-      wr = generate_subop<MOSDRepOp, MSG_OSD_REPOP>(
-	    soid,
-	    at_version,
-	    tid,
-	    reqid,
-	    pg_trim_to,
-	    pg_trim_rollback_to,
-	    new_temp_oid,
-	    discard_temp_oid,
-	    log_entries,
-	    hset_hist,
-	    op,
-	    op_t,
-	    peer,
-	    pinfo);
-    }
+    wr = generate_subop(
+      soid,
+      at_version,
+      tid,
+      reqid,
+      pg_trim_to,
+      pg_trim_rollback_to,
+      new_temp_oid,
+      discard_temp_oid,
+      log_entries,
+      hset_hist,
+      op,
+      op_t,
+      peer,
+      pinfo);
 
     get_parent()->send_message_osd_cluster(
       peer.osd, wr, get_osdmap()->get_epoch());
@@ -1111,26 +1082,12 @@ void ReplicatedBackend::issue_op(
 }
 
 // sub op modify
-void ReplicatedBackend::sub_op_modify(OpRequestRef op) {
-  Message *m = op->get_req();
-  int msg_type = m->get_type();
-  if (msg_type == MSG_OSD_SUBOP) {
-    sub_op_modify_impl<MOSDSubOp, MSG_OSD_SUBOP>(op);
-  } else if (msg_type == MSG_OSD_REPOP) {
-    sub_op_modify_impl<MOSDRepOp, MSG_OSD_REPOP>(op);
-  } else {
-    assert(0);
-  }
-}
-
-template<typename T, int MSGTYPE>
-void ReplicatedBackend::sub_op_modify_impl(OpRequestRef op)
+void ReplicatedBackend::sub_op_modify(OpRequestRef op)
 {
-  T *m = static_cast<T *>(op->get_req());
+  MOSDRepOp *m = static_cast<MOSDRepOp *>(op->get_req());
   m->finish_decode();
   int msg_type = m->get_type();
-  assert(MSGTYPE == msg_type);
-  assert(msg_type == MSG_OSD_SUBOP || msg_type == MSG_OSD_REPOP);
+  assert(MSG_OSD_REPOP == msg_type);
 
   const hobject_t& soid = m->poid;
 
@@ -1151,7 +1108,7 @@ void ReplicatedBackend::sub_op_modify_impl(OpRequestRef op)
 
   op->mark_started();
 
-  RepModifyRef rm(new RepModify);
+  RepModifyRef rm(std::make_shared<RepModify>());
   rm->op = op;
   rm->ackerosd = ackerosd;
   rm->last_complete = get_info().last_complete;
@@ -1163,7 +1120,6 @@ void ReplicatedBackend::sub_op_modify_impl(OpRequestRef op)
 
   bufferlist::iterator p = m->get_data().begin();
   ::decode(rm->opt, p);
-  rm->localt.set_use_tbl(rm->opt.get_use_tbl());
 
   if (m->new_temp_oid != hobject_t()) {
     dout(20) << __func__ << " start tracking temp " << m->new_temp_oid << dendl;
@@ -1198,7 +1154,7 @@ void ReplicatedBackend::sub_op_modify_impl(OpRequestRef op)
     m->pg_trim_to,
     m->pg_trim_rollback_to,
     update_snaps,
-    &(rm->localt));
+    rm->localt);
 
   rm->opt.register_on_commit(
     parent->bless_context(

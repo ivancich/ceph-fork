@@ -34,6 +34,10 @@
 #ifndef SPDK_STRING_H
 #define SPDK_STRING_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * sprintf with automatic buffer allocation.
  *
@@ -41,6 +45,10 @@
  * which should be passed to free() when no longer needed,
  * or NULL on failure.
  */
-char *sprintf_alloc(const char *format, ...) __attribute__((format(printf, 1, 2)));
+char *spdk_sprintf_alloc(const char *format, ...) __attribute__((format(printf, 1, 2)));
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

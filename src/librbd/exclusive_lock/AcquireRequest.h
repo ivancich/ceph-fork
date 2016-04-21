@@ -35,25 +35,37 @@ private:
    * @verbatim
    *
    * <start>
-   *    |     /---------------------------------------------------------\
-   *    |     |                                                         |
-   *    |     |             (no lockers)                                |
-   *    |     |   . . . . . . . . . . . . . . . . . . . . .             |
-   *    |     |   .                                       .             |
-   *    |     v   v      (EBUSY)                          .             |
-   *    \--> LOCK_IMAGE * * * * * * * > GET_LOCKERS . . . .             |
-   *          .   |                       |                             |
-   *    . . . .   |                       |                             |
-   *    .         v                       v                             |
-   *    .     OPEN_OBJECT_MAP           GET_WATCHERS . . .              |
-   *    .         |                       |              .              |
-   *    .         v                       v              .              |
-   *    . . > OPEN_JOURNAL * *          BLACKLIST        . (blacklist   |
-   *    .         |          *            |              .  disabled)   |
-   *    .         |          v            v              .              |
-   *    .         | CLOSE_OBJECT_MAP    BREAK_LOCK < . . .              |
-   *    .         v          |            |                             |
-   *    . . > <finish> <-----/            \-----------------------------/
+   *    |
+   *    v
+   * FLUSH_NOTIFIES
+   *    |
+   *    |     /-----------------------------------------------------------\
+   *    |     |                                                           |
+   *    |     |             (no lockers)                                  |
+   *    |     |   . . . . . . . . . . . . . . . . . . . . . .             |
+   *    |     |   .                                         .             |
+   *    |     v   v      (EBUSY)                            .             |
+   *    \--> LOCK_IMAGE * * * * * * * >   GET_LOCKERS . . . .             |
+   *          .   |                         |                             |
+   *    . . . .   |                         |                             |
+   *    .         v                         v                             |
+   *    .     OPEN_OBJECT_MAP             GET_WATCHERS . . .              |
+   *    .         |                         |              .              |
+   *    .         v                         v              .              |
+   *    . . > OPEN_JOURNAL * * * * * *    BLACKLIST        . (blacklist   |
+   *    .         |                  *      |              .  disabled)   |
+   *    .         v                  *      v              .              |
+   *    .     ALLOCATE_JOURNAL_TAG   *    BREAK_LOCK < . . .              |
+   *    .         |            *     *      |                             |
+   *    .         |            *     *      \-----------------------------/
+   *    .         |            v     v
+   *    .         |         CLOSE_JOURNAL
+   *    .         |               |
+   *    .         |               v
+   *    .         |         CLOSE_OBJECT_MAP
+   *    .         |               |
+   *    .         v               |
+   *    . . > <finish> <----------/
    *
    * @endverbatim
    */
@@ -81,16 +93,25 @@ private:
 
   int m_error_result;
 
+  void send_flush_notifies();
+  Context *handle_flush_notifies(int *ret_val);
+
   void send_lock();
   Context *handle_lock(int *ret_val);
 
   Context *send_open_journal();
   Context *handle_open_journal(int *ret_val);
 
+  void send_allocate_journal_tag();
+  Context *handle_allocate_journal_tag(int *ret_val);
+
+  void send_close_journal();
+  Context *handle_close_journal(int *ret_val);
+
   Context *send_open_object_map();
   Context *handle_open_object_map(int *ret_val);
 
-  Context *send_close_object_map();
+  Context *send_close_object_map(int *ret_val);
   Context *handle_close_object_map(int *ret_val);
 
   void send_get_lockers();
@@ -106,7 +127,7 @@ private:
   Context *handle_break_lock(int *ret_val);
 
   void apply();
-  void revert();
+  void revert(int *ret_val);
 };
 
 } // namespace exclusive_lock

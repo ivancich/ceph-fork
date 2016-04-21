@@ -39,6 +39,9 @@
 /* yasm can also build the isa-l */
 #undef HAVE_BETTER_YASM_ELF64
 
+/* have boost::asio::coroutine */
+#undef HAVE_BOOST_ASIO_COROUTINE
+
 /* have boost::random::discrete_distribution */
 #undef HAVE_BOOST_RANDOM_DISCRETE_DISTRIBUTION
 
@@ -222,6 +225,9 @@
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
 
+/* Defined if OpenLDAP enabled */
+#undef HAVE_OPENLDAP
+
 /* Support (PCLMUL) Carry-Free Muliplication */
 #undef HAVE_PCLMUL
 
@@ -248,6 +254,9 @@
 
 /* Define if you have pthread_spin_init */
 #undef HAVE_PTHREAD_SPINLOCK
+
+/* Define to 1 if you have the `pwritev' function. */
+#undef HAVE_PWRITEV
 
 /* Define if you have res_nquery */
 #undef HAVE_RES_NQUERY

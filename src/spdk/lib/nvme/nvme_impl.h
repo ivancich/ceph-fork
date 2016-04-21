@@ -35,12 +35,23 @@
 #define __NVME_IMPL_H__
 
 #include "spdk/vtophys.h"
+#include "spdk/pci.h"
+#include "spdk/nvme_spec.h"
 #include <assert.h>
-#include <pciaccess.h>
-#include <rte_malloc.h>
 #include <rte_config.h>
+#include <rte_malloc.h>
 #include <rte_mempool.h>
 #include <rte_memcpy.h>
+
+#ifdef USE_PCIACCESS
+#include <pciaccess.h>
+#else
+#include <rte_pci.h>
+#endif
+
+#include "spdk/pci.h"
+#include "spdk/pci_ids.h"
+#include "spdk/nvme_spec.h"
 
 /**
  * \file
@@ -98,8 +109,8 @@ nvme_malloc(const char *tag, size_t size, unsigned align, uint64_t *phys_addr)
 /**
  * Return the physical address for the specified virtual address.
  */
-#define nvme_vtophys(buf)		vtophys(buf)
-#define NVME_VTOPHYS_ERROR		VTOPHYS_ERROR
+#define nvme_vtophys(buf)		spdk_vtophys(buf)
+#define NVME_VTOPHYS_ERROR		SPDK_VTOPHYS_ERROR
 
 extern struct rte_mempool *request_mempool;
 
@@ -117,8 +128,38 @@ extern struct rte_mempool *request_mempool;
 /**
  *
  */
-#define nvme_pcicfg_read32(handle, var, offset)  pci_device_cfg_read_u32(handle, var, offset)
-#define nvme_pcicfg_write32(handle, var, offset) pci_device_cfg_write_u32(handle, var, offset)
+#define nvme_pcicfg_read32(handle, var, offset)  spdk_pci_device_cfg_read32(handle, var, offset)
+#define nvme_pcicfg_write32(handle, var, offset) spdk_pci_device_cfg_write32(handle, var, offset)
+
+struct nvme_pci_enum_ctx {
+	int (*user_enum_cb)(void *enum_ctx, struct spdk_pci_device *pci_dev);
+	void *user_enum_ctx;
+};
+
+#ifdef USE_PCIACCESS
+
+static int
+nvme_pci_enum_cb(void *enum_ctx, struct spdk_pci_device *pci_dev)
+{
+	struct nvme_pci_enum_ctx *ctx = enum_ctx;
+
+	if (spdk_pci_device_get_class(pci_dev) != SPDK_PCI_CLASS_NVME) {
+		return 0;
+	}
+
+	return ctx->user_enum_cb(ctx->user_enum_ctx, pci_dev);
+}
+
+static inline int
+nvme_pci_enumerate(int (*enum_cb)(void *enum_ctx, struct spdk_pci_device *pci_dev), void *enum_ctx)
+{
+	struct nvme_pci_enum_ctx nvme_enum_ctx;
+
+	nvme_enum_ctx.user_enum_cb = enum_cb;
+	nvme_enum_ctx.user_enum_ctx = enum_ctx;
+
+	return spdk_pci_enumerate(nvme_pci_enum_cb, &nvme_enum_ctx);
+}
 
 static inline int
 nvme_pcicfg_map_bar(void *devhandle, uint32_t bar, uint32_t read_only, void **mapped_addr)
@@ -137,6 +178,75 @@ nvme_pcicfg_unmap_bar(void *devhandle, uint32_t bar, void *addr)
 
 	return pci_device_unmap_range(dev, addr, dev->regions[bar].size);
 }
+
+#else /* !USE_PCIACCESS */
+
+static inline int
+nvme_pcicfg_map_bar(void *devhandle, uint32_t bar, uint32_t read_only, void **mapped_addr)
+{
+	struct rte_pci_device *dev = devhandle;
+
+	*mapped_addr = dev->mem_resource[bar].addr;
+	return 0;
+}
+
+static inline int
+nvme_pcicfg_unmap_bar(void *devhandle, uint32_t bar, void *addr)
+{
+	return 0;
+}
+
+/*
+ * TODO: once DPDK supports matching class code instead of device ID, switch to SPDK_PCI_CLASS_NVME
+ */
+static struct rte_pci_id nvme_pci_driver_id[] = {
+	{RTE_PCI_DEVICE(0x8086, 0x0953)},
+	{ .vendor_id = 0, /* sentinel */ },
+};
+
+/*
+ * TODO: eliminate this global if possible (does rte_pci_driver have a context field for this?)
+ *
+ * This should be protected by the NVMe driver lock, since nvme_probe() holds the lock
+ *  while calling nvme_pci_enumerate(), but we shouldn't have to depend on that.
+ */
+static struct nvme_pci_enum_ctx g_nvme_pci_enum_ctx;
+
+static int
+nvme_driver_init(struct rte_pci_driver *dr, struct rte_pci_device *rte_dev)
+{
+	/*
+	 * These are actually the same type internally.
+	 * TODO: refactor this so it's inside pci.c
+	 */
+	struct spdk_pci_device *pci_dev = (struct spdk_pci_device *)rte_dev;
+
+	return g_nvme_pci_enum_ctx.user_enum_cb(g_nvme_pci_enum_ctx.user_enum_ctx, pci_dev);
+}
+
+static struct rte_pci_driver nvme_rte_driver = {
+	.name = "nvme_driver",
+	.devinit = nvme_driver_init,
+	.id_table = nvme_pci_driver_id,
+	.drv_flags = RTE_PCI_DRV_NEED_MAPPING,
+};
+
+static inline int
+nvme_pci_enumerate(int (*enum_cb)(void *enum_ctx, struct spdk_pci_device *pci_dev), void *enum_ctx)
+{
+	int rc;
+
+	g_nvme_pci_enum_ctx.user_enum_cb = enum_cb;
+	g_nvme_pci_enum_ctx.user_enum_ctx = enum_ctx;
+
+	rte_eal_pci_register(&nvme_rte_driver);
+	rc = rte_eal_pci_probe();
+	rte_eal_pci_unregister(&nvme_rte_driver);
+
+	return rc;
+}
+
+#endif /* !USE_PCIACCESS */
 
 typedef pthread_mutex_t nvme_mutex_t;
 
@@ -166,6 +276,6 @@ nvme_mutex_init_recursive(nvme_mutex_t *mtx)
 /**
  * Copy a struct nvme_command from one memory location to another.
  */
-#define nvme_copy_command(dst, src)	rte_memcpy((dst), (src), sizeof(struct nvme_command))
+#define nvme_copy_command(dst, src)	rte_memcpy((dst), (src), sizeof(struct spdk_nvme_cmd))
 
 #endif /* __NVME_IMPL_H__ */

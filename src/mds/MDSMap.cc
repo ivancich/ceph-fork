@@ -37,6 +37,7 @@ CompatSet get_mdsmap_compat_set_all() {
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_OMAPDIRFRAG);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_INLINE);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_NOANCHOR);
+  feature_incompat.insert(MDS_FEATURE_INCOMPAT_FILE_LAYOUT_V2);
 
   return CompatSet(feature_compat, feature_ro_compat, feature_incompat);
 }
@@ -52,6 +53,7 @@ CompatSet get_mdsmap_compat_set_default() {
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_ENCODING);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_OMAPDIRFRAG);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_NOANCHOR);
+  feature_incompat.insert(MDS_FEATURE_INCOMPAT_FILE_LAYOUT_V2);
 
   return CompatSet(feature_compat, feature_ro_compat, feature_incompat);
 }
@@ -79,6 +81,7 @@ void MDSMap::mds_info_t::dump(Formatter *f) const
     f->dump_stream("laggy_since") << laggy_since;
   
   f->dump_int("standby_for_rank", standby_for_rank);
+  f->dump_int("standby_for_fscid", standby_for_fscid);
   f->dump_string("standby_for_name", standby_for_name);
   f->open_array_section("export_targets");
   for (set<mds_rank_t>::iterator p = export_targets.begin();
@@ -86,6 +89,34 @@ void MDSMap::mds_info_t::dump(Formatter *f) const
     f->dump_int("mds", *p);
   }
   f->close_section();
+  f->dump_unsigned("features", mds_features);
+}
+
+void MDSMap::mds_info_t::print_summary(ostream &out) const
+{
+  out << global_id << ":\t"
+      << addr
+      << " '" << name << "'"
+      << " mds." << rank
+      << "." << inc
+      << " " << ceph_mds_state_name(state)
+      << " seq " << state_seq;
+  if (laggy()) {
+    out << " laggy since " << laggy_since;
+  }
+  if (standby_for_rank != -1 ||
+      !standby_for_name.empty()) {
+    out << " (standby for";
+    //if (standby_for_rank >= 0)
+      out << " rank " << standby_for_rank;
+    if (!standby_for_name.empty()) {
+      out << " '" << standby_for_name << "'";
+    }
+    out << ")";
+  }
+  if (!export_targets.empty()) {
+    out << " export_targets=" << export_targets;
+  }
 }
 
 void MDSMap::mds_info_t::generate_test_instances(list<mds_info_t*>& ls)
@@ -103,6 +134,8 @@ void MDSMap::dump(Formatter *f) const
 {
   f->dump_int("epoch", epoch);
   f->dump_unsigned("flags", flags);
+  f->dump_unsigned("ever_allowed_features", ever_allowed_features);
+  f->dump_unsigned("explicitly_allowed_features", explicitly_allowed_features);
   f->dump_stream("created") << created;
   f->dump_stream("modified") << modified;
   f->dump_int("tableserver", tableserver);
@@ -173,8 +206,9 @@ void MDSMap::generate_test_instances(list<MDSMap*>& ls)
   ls.push_back(m);
 }
 
-void MDSMap::print(ostream& out) 
+void MDSMap::print(ostream& out) const
 {
+  out << "fs_name\t" << fs_name << "\n";
   out << "epoch\t" << epoch << "\n";
   out << "flags\t" << hex << flags << dec << "\n";
   out << "created\t" << created << "\n";
@@ -198,43 +232,21 @@ void MDSMap::print(ostream& out)
   out << "inline_data\t" << (inline_data_enabled ? "enabled" : "disabled") << "\n";
 
   multimap< pair<mds_rank_t, unsigned>, mds_gid_t > foo;
-  for (map<mds_gid_t,mds_info_t>::iterator p = mds_info.begin();
-       p != mds_info.end();
-       ++p)
-    foo.insert(std::make_pair(std::make_pair(p->second.rank, p->second.inc-1), p->first));
+  for (const auto &p : mds_info) {
+    foo.insert(std::make_pair(
+          std::make_pair(p.second.rank, p.second.inc-1), p.first));
+  }
 
-  for (multimap< pair<mds_rank_t, unsigned>, mds_gid_t >::iterator p = foo.begin();
-       p != foo.end();
-       ++p) {
-    mds_info_t& info = mds_info[p->second];
-    
-    out << p->second << ":\t"
-	<< info.addr
-	<< " '" << info.name << "'"
-	<< " mds." << info.rank
-	<< "." << info.inc
-	<< " " << ceph_mds_state_name(info.state)
-	<< " seq " << info.state_seq;
-    if (info.laggy())
-      out << " laggy since " << info.laggy_since;
-    if (info.standby_for_rank != -1 ||
-	!info.standby_for_name.empty()) {
-      out << " (standby for";
-      //if (info.standby_for_rank >= 0)
-	out << " rank " << info.standby_for_rank;
-      if (!info.standby_for_name.empty())
-	out << " '" << info.standby_for_name << "'";
-      out << ")";
-    }
-    if (!info.export_targets.empty())
-      out << " export_targets=" << info.export_targets;
-    out << "\n";    
+  for (const auto &p : foo) {
+    const mds_info_t& info = mds_info.at(p.second);
+    info.print_summary(out);
+    out << "\n";
   }
 }
 
 
 
-void MDSMap::print_summary(Formatter *f, ostream *out)
+void MDSMap::print_summary(Formatter *f, ostream *out) const
 {
   map<mds_rank_t,string> by_rank;
   map<string,int> by_state;
@@ -250,22 +262,20 @@ void MDSMap::print_summary(Formatter *f, ostream *out)
 
   if (f)
     f->open_array_section("by_rank");
-  for (map<mds_gid_t,mds_info_t>::iterator p = mds_info.begin();
-       p != mds_info.end();
-       ++p) {
-    string s = ceph_mds_state_name(p->second.state);
-    if (p->second.laggy())
+  for (const auto &p : mds_info) {
+    string s = ceph_mds_state_name(p.second.state);
+    if (p.second.laggy())
       s += "(laggy or crashed)";
 
-    if (p->second.rank >= 0) {
+    if (p.second.rank >= 0) {
       if (f) {
 	f->open_object_section("mds");
-	f->dump_unsigned("rank", p->second.rank);
-	f->dump_string("name", p->second.name);
+	f->dump_unsigned("rank", p.second.rank);
+	f->dump_string("name", p.second.name);
 	f->dump_string("status", s);
 	f->close_section();
       } else {
-	by_rank[p->second.rank] = p->second.name + "=" + s;
+	by_rank[p.second.rank] = p.second.name + "=" + s;
       }
     } else {
       by_state[s]++;
@@ -398,7 +408,7 @@ void MDSMap::get_health(list<pair<health_status_t,string> >& summary,
 
 void MDSMap::mds_info_t::encode_versioned(bufferlist& bl, uint64_t features) const
 {
-  ENCODE_START(4, 4, bl);
+  ENCODE_START(6, 4, bl);
   ::encode(global_id, bl);
   ::encode(name, bl);
   ::encode(rank, bl);
@@ -410,6 +420,8 @@ void MDSMap::mds_info_t::encode_versioned(bufferlist& bl, uint64_t features) con
   ::encode(standby_for_rank, bl);
   ::encode(standby_for_name, bl);
   ::encode(export_targets, bl);
+  ::encode(mds_features, bl);
+  ::encode(standby_for_fscid, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -432,7 +444,7 @@ void MDSMap::mds_info_t::encode_unversioned(bufferlist& bl) const
 
 void MDSMap::mds_info_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(4, 4, 4, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(6, 4, 4, bl);
   ::decode(global_id, bl);
   ::decode(name, bl);
   ::decode(rank, bl);
@@ -445,6 +457,11 @@ void MDSMap::mds_info_t::decode(bufferlist::iterator& bl)
   ::decode(standby_for_name, bl);
   if (struct_v >= 2)
     ::decode(export_targets, bl);
+  if (struct_v >= 5)
+    ::decode(mds_features, bl);
+  if (struct_v >= 6) {
+    ::decode(standby_for_fscid, bl);
+  }
   DECODE_FINISH(bl);
 }
 
@@ -532,7 +549,7 @@ void MDSMap::encode(bufferlist& bl, uint64_t features) const
   ::encode(cas_pool, bl);
 
   // kclient ignores everything from here
-  __u16 ev = 9;
+  __u16 ev = 10;
   ::encode(ev, bl);
   ::encode(compat, bl);
   ::encode(metadata_pool, bl);
@@ -545,8 +562,8 @@ void MDSMap::encode(bufferlist& bl, uint64_t features) const
   ::encode(failed, bl);
   ::encode(stopped, bl);
   ::encode(last_failure_osd_epoch, bl);
-  ::encode(ever_allowed_snaps, bl);
-  ::encode(explicitly_allowed_snaps, bl);
+  ::encode(ever_allowed_features, bl);
+  ::encode(explicitly_allowed_features, bl);
   ::encode(inline_data_enabled, bl);
   ::encode(enabled, bl);
   ::encode(fs_name, bl);
@@ -556,6 +573,7 @@ void MDSMap::encode(bufferlist& bl, uint64_t features) const
 
 void MDSMap::decode(bufferlist::iterator& p)
 {
+  cached_up_features = 0;
   DECODE_START_LEGACY_COMPAT_LEN_16(5, 4, 4, p);
   ::decode(epoch, p);
   ::decode(flags, p);
@@ -608,11 +626,27 @@ void MDSMap::decode(bufferlist::iterator& p)
   if (ev >= 4)
     ::decode(last_failure_osd_epoch, p);
   if (ev >= 6) {
-    ::decode(ever_allowed_snaps, p);
-    ::decode(explicitly_allowed_snaps, p);
+    if (ev < 10) {
+      // previously this was a bool about snaps, not a flag map
+      bool flag;
+      ::decode(flag, p);
+      ever_allowed_features = flag ? CEPH_MDSMAP_ALLOW_SNAPS : 0;
+      ever_allowed_features |= CEPH_MDSMAP_ALLOW_MULTIMDS|CEPH_MDSMAP_ALLOW_DIRFRAGS;
+      ::decode(flag, p);
+      explicitly_allowed_features = flag ? CEPH_MDSMAP_ALLOW_SNAPS : 0;
+      if (max_mds > 1) {
+	set_multimds_allowed();
+      }
+    } else {
+      ::decode(ever_allowed_features, p);
+      ::decode(explicitly_allowed_features, p);
+    }
   } else {
-    ever_allowed_snaps = true;
-    explicitly_allowed_snaps = false;
+    ever_allowed_features = CEPH_MDSMAP_ALLOW_CLASSICS;
+    explicitly_allowed_features = 0;
+    if (max_mds > 1) {
+      set_multimds_allowed();
+    }
   }
   if (ev >= 7)
     ::decode(inline_data_enabled, p);
@@ -642,11 +676,11 @@ void MDSMap::decode(bufferlist::iterator& p)
 MDSMap::availability_t MDSMap::is_cluster_available() const
 {
   if (epoch == 0) {
-    // This is ambiguous between "mds map was never initialized on mons" and
-    // "we never got an mdsmap from the mons".  Treat it like the latter.
+    // If I'm a client, this means I'm looking at an MDSMap instance
+    // that was never actually initialized from the mons.  Client should
+    // wait.
     return TRANSIENT_UNAVAILABLE;
   }
-
 
   // If a rank is marked damage (unavailable until operator intervenes)
   if (damaged.size()) {
@@ -659,21 +693,10 @@ MDSMap::availability_t MDSMap::is_cluster_available() const
   }
 
   for (const auto rank : in) {
-    std::string name;
-    if (up.count(rank) != 0) {
-      name = mds_info.at(up.at(rank)).name;
-    }
-    const mds_gid_t replacement = find_replacement_for(rank, name, false);
-    const bool standby_avail = (replacement != MDS_GID_NONE);
-
-    // If the rank is unfilled, and there are no standbys, we're unavailable
-    if (up.count(rank) == 0 && !standby_avail) {
-      return STUCK_UNAVAILABLE;
-    } else if (up.count(rank) && mds_info.at(up.at(rank)).laggy() && !standby_avail) {
-      // If the daemon is laggy and there are no standbys, we're unavailable.
-      // It would be nice to give it some grace here, but to do so callers
-      // would have to poll this time-wise, vs. just waiting for updates
-      // to mdsmap, so it's not worth the complexity.
+    if (up.count(rank) && mds_info.at(up.at(rank)).laggy()) {
+      // This might only be transient, but because we can't see
+      // standbys, we have no way of knowing whether there is a
+      // standby available to replace the laggy guy.
       return STUCK_UNAVAILABLE;
     }
   }
@@ -687,6 +710,11 @@ MDSMap::availability_t MDSMap::is_cluster_available() const
     return AVAILABLE;
   } else {
     // Nothing indicating we were stuck, but nobody active (yet)
-    return TRANSIENT_UNAVAILABLE;
+    //return TRANSIENT_UNAVAILABLE;
+
+    // Because we don't have standbys in the MDSMap any more, we can't
+    // reliably indicate transient vs. stuck, so always say stuck so
+    // that the client doesn't block.
+    return STUCK_UNAVAILABLE;
   }
 }

@@ -50,13 +50,14 @@ int rgw_user_sync_all_stats(RGWRados *store, const rgw_user& user_id)
   CephContext *cct = store->ctx();
   size_t max_entries = cct->_conf->rgw_list_buckets_max_chunk;
   bool done;
+  bool is_truncated;
   string marker;
   int ret;
 
   do {
     RGWUserBuckets user_buckets;
-    ret = rgw_read_user_buckets(store, user_id, user_buckets,
-                                marker, string(), max_entries, false);
+    ret = rgw_read_user_buckets(store, user_id, user_buckets, marker,
+				string(), max_entries, false, &is_truncated);
     if (ret < 0) {
       ldout(cct, 0) << "failed to read user buckets: ret=" << ret << dendl;
       return ret;
@@ -94,7 +95,7 @@ int rgw_store_user_info(RGWRados *store,
                         RGWUserInfo& info,
                         RGWUserInfo *old_info,
                         RGWObjVersionTracker *objv_tracker,
-                        time_t mtime,
+                        real_time mtime,
                         bool exclusive,
                         map<string, bufferlist> *pattrs)
 {
@@ -167,8 +168,8 @@ int rgw_store_user_info(RGWRados *store,
   if (!info.user_email.empty()) {
     if (!old_info ||
         old_info->user_email.compare(info.user_email) != 0) { /* only if new index changed */
-      ret = rgw_put_system_obj(store, store->zone.user_email_pool, info.user_email,
-                               link_bl.c_str(), link_bl.length(), exclusive, NULL, 0);
+      ret = rgw_put_system_obj(store, store->get_zone_params().user_email_pool, info.user_email,
+                               link_bl.c_str(), link_bl.length(), exclusive, NULL, real_time());
       if (ret < 0)
         return ret;
     }
@@ -181,9 +182,9 @@ int rgw_store_user_info(RGWRados *store,
       if (old_info && old_info->access_keys.count(iter->first) != 0)
 	continue;
 
-      ret = rgw_put_system_obj(store, store->zone.user_keys_pool, k.id,
+      ret = rgw_put_system_obj(store, store->get_zone_params().user_keys_pool, k.id,
                                link_bl.c_str(), link_bl.length(), exclusive,
-                               NULL, 0);
+                               NULL, real_time());
       if (ret < 0)
         return ret;
     }
@@ -195,9 +196,9 @@ int rgw_store_user_info(RGWRados *store,
     if (old_info && old_info->swift_keys.count(siter->first) != 0)
       continue;
 
-    ret = rgw_put_system_obj(store, store->zone.user_swift_pool, k.id,
+    ret = rgw_put_system_obj(store, store->get_zone_params().user_swift_pool, k.id,
                              link_bl.c_str(), link_bl.length(), exclusive,
-                             NULL, 0);
+                             NULL, real_time());
     if (ret < 0)
       return ret;
   }
@@ -205,28 +206,16 @@ int rgw_store_user_info(RGWRados *store,
   return ret;
 }
 
-int rgw_store_user_attrs(RGWRados *const store,
-                         string& user_id,
-                         map<string, bufferlist>& attrs,
-                         map<string, bufferlist>* const rmattrs,
-                         RGWObjVersionTracker * const objv_tracker)
-{
-  rgw_obj obj(store->zone.user_uid_pool, user_id);
-
-  return store->meta_mgr->set_attrs(user_meta_handler, user_id, obj,
-                                    attrs, rmattrs, objv_tracker);
-}
-
 struct user_info_entry {
   RGWUserInfo info;
   RGWObjVersionTracker objv_tracker;
-  time_t mtime;
+  real_time mtime;
 };
 
 static RGWChainedCacheImpl<user_info_entry> uinfo_cache;
 
 int rgw_get_user_info_from_index(RGWRados *store, string& key, rgw_bucket& bucket, RGWUserInfo& info,
-                                 RGWObjVersionTracker *objv_tracker, time_t *pmtime)
+                                 RGWObjVersionTracker *objv_tracker, real_time *pmtime)
 {
   user_info_entry e;
   if (uinfo_cache.find(key, &e)) {
@@ -279,10 +268,10 @@ int rgw_get_user_info_from_index(RGWRados *store, string& key, rgw_bucket& bucke
  * returns: 0 on success, -ERR# on failure (including nonexistence)
  */
 int rgw_get_user_info_by_uid(RGWRados *store,
-                             rgw_user& uid,
+                             const rgw_user& uid,
                              RGWUserInfo& info,
                              RGWObjVersionTracker *objv_tracker,
-                             time_t *pmtime,
+                             real_time *pmtime,
                              rgw_cache_entry_info *cache_info,
                              map<string, bufferlist> *pattrs)
 {
@@ -291,7 +280,7 @@ int rgw_get_user_info_by_uid(RGWRados *store,
 
   RGWObjectCtx obj_ctx(store);
   string oid = uid.to_str();
-  int ret = rgw_get_system_obj(store, obj_ctx, store->zone.user_uid_pool, oid, bl, objv_tracker, pmtime, pattrs, cache_info);
+  int ret = rgw_get_system_obj(store, obj_ctx, store->get_zone_params().user_uid_pool, oid, bl, objv_tracker, pmtime, pattrs, cache_info);
   if (ret < 0) {
     return ret;
   }
@@ -319,9 +308,9 @@ int rgw_get_user_info_by_uid(RGWRados *store,
  * returns: 0 on success, -ERR# on failure (including nonexistence)
  */
 int rgw_get_user_info_by_email(RGWRados *store, string& email, RGWUserInfo& info,
-                               RGWObjVersionTracker *objv_tracker, time_t *pmtime)
+                               RGWObjVersionTracker *objv_tracker, real_time *pmtime)
 {
-  return rgw_get_user_info_from_index(store, email, store->zone.user_email_pool, info, objv_tracker, pmtime);
+  return rgw_get_user_info_from_index(store, email, store->get_zone_params().user_email_pool, info, objv_tracker, pmtime);
 }
 
 /**
@@ -329,9 +318,9 @@ int rgw_get_user_info_by_email(RGWRados *store, string& email, RGWUserInfo& info
  * returns: 0 on success, -ERR# on failure (including nonexistence)
  */
 extern int rgw_get_user_info_by_swift(RGWRados *store, string& swift_name, RGWUserInfo& info,
-                                      RGWObjVersionTracker *objv_tracker, time_t *pmtime)
+                                      RGWObjVersionTracker *objv_tracker, real_time *pmtime)
 {
-  return rgw_get_user_info_from_index(store, swift_name, store->zone.user_swift_pool, info, objv_tracker, pmtime);
+  return rgw_get_user_info_from_index(store, swift_name, store->get_zone_params().user_swift_pool, info, objv_tracker, pmtime);
 }
 
 /**
@@ -339,9 +328,9 @@ extern int rgw_get_user_info_by_swift(RGWRados *store, string& swift_name, RGWUs
  * returns: 0 on success, -ERR# on failure (including nonexistence)
  */
 extern int rgw_get_user_info_by_access_key(RGWRados *store, string& access_key, RGWUserInfo& info,
-                                           RGWObjVersionTracker *objv_tracker, time_t *pmtime)
+                                           RGWObjVersionTracker *objv_tracker, real_time *pmtime)
 {
-  return rgw_get_user_info_from_index(store, access_key, store->zone.user_keys_pool, info, objv_tracker, pmtime);
+  return rgw_get_user_info_from_index(store, access_key, store->get_zone_params().user_keys_pool, info, objv_tracker, pmtime);
 }
 
 int rgw_get_user_attrs_by_uid(RGWRados *store,
@@ -350,7 +339,7 @@ int rgw_get_user_attrs_by_uid(RGWRados *store,
                               RGWObjVersionTracker *objv_tracker)
 {
   RGWObjectCtx obj_ctx(store);
-  rgw_obj obj(store->zone.user_uid_pool, user_id.to_str());
+  rgw_obj obj(store->get_zone_params().user_uid_pool, user_id.to_str());
   RGWRados::SystemObject src(store, obj_ctx, obj);
   RGWRados::SystemObject::Read rop(&src);
 
@@ -360,7 +349,7 @@ int rgw_get_user_attrs_by_uid(RGWRados *store,
 
 int rgw_remove_key_index(RGWRados *store, RGWAccessKey& access_key)
 {
-  rgw_obj obj(store->zone.user_keys_pool, access_key.id);
+  rgw_obj obj(store->get_zone_params().user_keys_pool, access_key.id);
   int ret = store->delete_system_obj(obj);
   return ret;
 }
@@ -383,14 +372,14 @@ int rgw_remove_uid_index(RGWRados *store, rgw_user& uid)
 
 int rgw_remove_email_index(RGWRados *store, string& email)
 {
-  rgw_obj obj(store->zone.user_email_pool, email);
+  rgw_obj obj(store->get_zone_params().user_email_pool, email);
   int ret = store->delete_system_obj(obj);
   return ret;
 }
 
 int rgw_remove_swift_name_index(RGWRados *store, string& swift_name)
 {
-  rgw_obj obj(store->zone.user_swift_pool, swift_name);
+  rgw_obj obj(store->get_zone_params().user_swift_pool, swift_name);
   int ret = store->delete_system_obj(obj);
   return ret;
 }
@@ -406,14 +395,15 @@ int rgw_delete_user(RGWRados *store, RGWUserInfo& info, RGWObjVersionTracker& ob
   vector<rgw_bucket> buckets_vec;
 
   bool done;
+  bool is_truncated;
   int ret;
   CephContext *cct = store->ctx();
   size_t max_buckets = cct->_conf->rgw_list_buckets_max_chunk;
 
   do {
     RGWUserBuckets user_buckets;
-    ret = rgw_read_user_buckets(store, info.user_id, user_buckets,
-                                marker, string(), max_buckets, false);
+    ret = rgw_read_user_buckets(store, info.user_id, user_buckets, marker,
+				string(), max_buckets, false, &is_truncated);
     if (ret < 0)
       return ret;
 
@@ -452,7 +442,7 @@ int rgw_delete_user(RGWRados *store, RGWUserInfo& info, RGWObjVersionTracker& ob
     }
   }
 
-  rgw_obj email_obj(store->zone.user_email_pool, info.user_email);
+  rgw_obj email_obj(store->get_zone_params().user_email_pool, info.user_email);
   ldout(store->ctx(), 10) << "removing email index: " << info.user_email << dendl;
   ret = store->delete_system_obj(email_obj);
   if (ret < 0 && ret != -ENOENT) {
@@ -462,7 +452,7 @@ int rgw_delete_user(RGWRados *store, RGWUserInfo& info, RGWObjVersionTracker& ob
 
   string buckets_obj_id;
   rgw_get_buckets_obj(info.user_id, buckets_obj_id);
-  rgw_obj uid_bucks(store->zone.user_uid_pool, buckets_obj_id);
+  rgw_obj uid_bucks(store->get_zone_params().user_uid_pool, buckets_obj_id);
   ldout(store->ctx(), 10) << "removing user buckets index" << dendl;
   ret = store->delete_system_obj(uid_bucks);
   if (ret < 0 && ret != -ENOENT) {
@@ -473,7 +463,7 @@ int rgw_delete_user(RGWRados *store, RGWUserInfo& info, RGWObjVersionTracker& ob
   string key;
   info.user_id.to_str(key);
   
-  rgw_obj uid_obj(store->zone.user_uid_pool, key);
+  rgw_obj uid_obj(store->get_zone_params().user_uid_pool, key);
   ldout(store->ctx(), 10) << "removing user index: " << info.user_id << dendl;
   ret = store->meta_mgr->remove_entry(user_meta_handler, key, &objv_tracker);
   if (ret < 0 && ret != -ENOENT && ret  != -ECANCELED) {
@@ -1813,7 +1803,7 @@ int RGWUser::update(RGWUserAdminOpState& op_state, std::string *err_msg)
   }
 
   if (is_populated()) {
-    ret = rgw_store_user_info(store, user_info, &old_info, &op_state.objv, 0, false);
+    ret = rgw_store_user_info(store, user_info, &old_info, &op_state.objv, real_time(), false);
     if (ret < 0) {
       set_err_msg(err_msg, "unable to store user info");
       return ret;
@@ -1825,7 +1815,7 @@ int RGWUser::update(RGWUserAdminOpState& op_state, std::string *err_msg)
       return ret;
     }
   } else {
-    ret = rgw_store_user_info(store, user_info, NULL, &op_state.objv, 0, false);
+    ret = rgw_store_user_info(store, user_info, NULL, &op_state.objv, real_time(), false);
     if (ret < 0) {
       set_err_msg(err_msg, "unable to store user info");
       return ret;
@@ -2023,13 +2013,14 @@ int RGWUser::execute_remove(RGWUserAdminOpState& op_state, std::string *err_msg)
   }
 
   bool done;
+  bool is_truncated;
   string marker;
   CephContext *cct = store->ctx();
   size_t max_buckets = cct->_conf->rgw_list_buckets_max_chunk;
   do {
     RGWUserBuckets buckets;
-    ret = rgw_read_user_buckets(store, uid, buckets,
-                                marker, string(), max_buckets, false);
+    ret = rgw_read_user_buckets(store, uid, buckets, marker, string(),
+				max_buckets, false, &is_truncated);
     if (ret < 0) {
       set_err_msg(err_msg, "unable to read user bucket info");
       return ret;
@@ -2174,12 +2165,13 @@ int RGWUser::execute_modify(RGWUserAdminOpState& op_state, std::string *err_msg)
     }
 
     bool done;
+    bool is_truncated;
     string marker;
     CephContext *cct = store->ctx();
     size_t max_buckets = cct->_conf->rgw_list_buckets_max_chunk;
     do {
-      ret = rgw_read_user_buckets(store, user_id, buckets,
-                                  marker, string(), max_buckets, false);
+      ret = rgw_read_user_buckets(store, user_id, buckets, marker, string(),
+				  max_buckets, false, &is_truncated);
       if (ret < 0) {
         set_err_msg(err_msg, "could not get buckets for uid:  " + user_id.to_str());
         return ret;
@@ -2577,7 +2569,7 @@ struct RGWUserCompleteInfo {
 class RGWUserMetadataObject : public RGWMetadataObject {
   RGWUserCompleteInfo uci;
 public:
-  RGWUserMetadataObject(const RGWUserCompleteInfo& _uci, obj_version& v, time_t m)
+  RGWUserMetadataObject(const RGWUserCompleteInfo& _uci, obj_version& v, real_time m)
       : uci(_uci) {
     objv = v;
     mtime = m;
@@ -2595,7 +2587,7 @@ public:
   int get(RGWRados *store, string& entry, RGWMetadataObject **obj) {
     RGWUserCompleteInfo uci;
     RGWObjVersionTracker objv_tracker;
-    time_t mtime;
+    real_time mtime;
 
     rgw_user uid(entry);
 
@@ -2612,7 +2604,7 @@ public:
   }
 
   int put(RGWRados *store, string& entry, RGWObjVersionTracker& objv_tracker,
-          time_t mtime, JSONObj *obj, sync_type_t sync_mode) {
+          real_time mtime, JSONObj *obj, sync_type_t sync_mode) {
     RGWUserCompleteInfo uci;
 
     try {
@@ -2629,7 +2621,7 @@ public:
     rgw_user uid(entry);
 
     RGWUserInfo old_info;
-    time_t orig_mtime;
+    real_time orig_mtime;
     int ret = rgw_get_user_info_by_uid(store, uid, old_info, &objv_tracker, &orig_mtime);
     if (ret < 0 && ret != -ENOENT)
       return ret;
@@ -2668,7 +2660,7 @@ public:
 
   void get_pool_and_oid(RGWRados *store, const string& key, rgw_bucket& bucket, string& oid) {
     oid = key;
-    bucket = store->zone.user_uid_pool;
+    bucket = store->get_zone_params().user_uid_pool;
   }
 
   int list_keys_init(RGWRados *store, void **phandle)
@@ -2693,7 +2685,7 @@ public:
 
     list<string> unfiltered_keys;
 
-    int ret = store->list_raw_objects(store->zone.user_uid_pool, no_filter,
+    int ret = store->list_raw_objects(store->get_zone_params().user_uid_pool, no_filter,
                                       max, info->ctx, unfiltered_keys, truncated);
     if (ret < 0 && ret != -ENOENT)
       return ret;		        

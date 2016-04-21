@@ -46,7 +46,7 @@
 
 #include "common/config.h"
 #include "common/perf_counters.h"
-#include "common/Finisher.h"
+#include "common/scrub_types.h"
 #include "include/str_list.h"
 #include "common/errno.h"
 
@@ -466,13 +466,6 @@ void Objecter::shutdown()
     tick_event = 0;
   }
 
-  if (m_request_state_hook) {
-    AdminSocket* admin_socket = cct->get_admin_socket();
-    admin_socket->unregister_command("objecter_requests");
-    delete m_request_state_hook;
-    m_request_state_hook = NULL;
-  }
-
   if (logger) {
     cct->get_perfcounters_collection()->remove(logger);
     delete logger;
@@ -481,6 +474,16 @@ void Objecter::shutdown()
 
   // Let go of Objecter write lock so timer thread can shutdown
   wl.unlock();
+
+  // Outside of lock to avoid cycle WRT calls to RequestStateHook
+  // This is safe because we guarantee no concurrent calls to
+  // shutdown() with the ::initialized check at start.
+  if (m_request_state_hook) {
+    AdminSocket* admin_socket = cct->get_admin_socket();
+    admin_socket->unregister_command("objecter_requests");
+    delete m_request_state_hook;
+    m_request_state_hook = NULL;
+  }
 }
 
 void Objecter::_send_linger(LingerOp *info,
@@ -539,10 +542,10 @@ void Objecter::_send_linger(LingerOp *info,
     }
     sl.unlock();
 
-    info->register_tid = _op_submit(o, sul);
+    _op_submit(o, sul, &info->register_tid);
   } else {
     // first send
-    info->register_tid = _op_submit_with_budget(o, sul);
+    _op_submit_with_budget(o, sul, &info->register_tid);
   }
 
   logger->inc(l_osdc_linger_send);
@@ -594,7 +597,6 @@ struct C_DoWatchError : public Context {
 
     info->finished_async();
     info->put();
-    objecter->_linger_callback_finish();
   }
 };
 
@@ -619,7 +621,6 @@ void Objecter::_linger_reconnect(LingerOp *info, int r)
       info->last_error = r;
       if (info->watch_context) {
 	finisher->queue(new C_DoWatchError(this, info, r));
-	_linger_callback_queue();
       }
     }
     wl.unlock();
@@ -684,7 +685,6 @@ void Objecter::_linger_ping(LingerOp *info, int r, mono_time sent,
       info->last_error = r;
       if (info->watch_context) {
 	finisher->queue(new C_DoWatchError(this, info, r));
-	_linger_callback_queue();
       }
     }
   } else {
@@ -867,7 +867,6 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
       info->last_error = -ENOTCONN;
       if (info->watch_context) {
 	finisher->queue(new C_DoWatchError(this, info, -ENOTCONN));
-	_linger_callback_queue();
       }
     }
   } else if (!info->is_watch) {
@@ -888,7 +887,6 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
     }
   } else {
     finisher->queue(new C_DoWatchNotify(this, info, m));
-    _linger_callback_queue();
   }
 }
 
@@ -922,7 +920,6 @@ void Objecter::_do_watch_notify(LingerOp *info, MWatchNotify *m)
   info->finished_async();
   info->put();
   m->put();
-  _linger_callback_finish();
 }
 
 bool Objecter::ms_dispatch(Message *m)
@@ -2006,7 +2003,7 @@ void Objecter::tick()
 
   // look for laggy requests
   auto cutoff = ceph::mono_clock::now();
-  cutoff -= osd_timeout;  // timeout
+  cutoff -= ceph::make_timespan(cct->_conf->objecter_timeout);  // timeout
 
   unsigned laggy_ops = 0;
 
@@ -2128,14 +2125,18 @@ void Objecter::resend_mon_ops()
 
 // read | write ---------------------------
 
-ceph_tid_t Objecter::op_submit(Op *op, int *ctx_budget)
+void Objecter::op_submit(Op *op, ceph_tid_t *ptid, int *ctx_budget)
 {
   shunique_lock rl(rwlock, ceph::acquire_shared);
-  return _op_submit_with_budget(op, rl, ctx_budget);
+  ceph_tid_t tid = 0;
+  if (!ptid)
+    ptid = &tid;
+  _op_submit_with_budget(op, rl, ptid, ctx_budget);
 }
 
-ceph_tid_t Objecter::_op_submit_with_budget(Op *op, shunique_lock& sul,
-					    int *ctx_budget)
+void Objecter::_op_submit_with_budget(Op *op, shunique_lock& sul,
+				      ceph_tid_t *ptid,
+				      int *ctx_budget)
 {
   assert(initialized.read());
 
@@ -2163,7 +2164,7 @@ ceph_tid_t Objecter::_op_submit_with_budget(Op *op, shunique_lock& sul,
 				      op_cancel(tid, -ETIMEDOUT); });
   }
 
-  return _op_submit(op, sul);
+  _op_submit(op, sul, ptid);
 }
 
 void Objecter::_send_op_account(Op *op)
@@ -2245,7 +2246,7 @@ void Objecter::_send_op_account(Op *op)
   }
 }
 
-ceph_tid_t Objecter::_op_submit(Op *op, shunique_lock& sul)
+void Objecter::_op_submit(Op *op, shunique_lock& sul, ceph_tid_t *ptid)
 {
   // rwlock is locked
 
@@ -2279,11 +2280,6 @@ ceph_tid_t Objecter::_op_submit(Op *op, shunique_lock& sul)
   _send_op_account(op);
 
   // send?
-  ldout(cct, 10) << "_op_submit oid " << op->target.base_oid
-		 << " '" << op->target.base_oloc << "' '"
-		 << op->target.target_oloc << "' " << op->ops << " tid "
-		 << op->tid << " osd." << (!s->is_homeless() ? s->osd : -1)
-		 << dendl;
 
   assert(op->target.flags & (CEPH_OSD_FLAG_READ|CEPH_OSD_FLAG_WRITE));
 
@@ -2324,6 +2320,13 @@ ceph_tid_t Objecter::_op_submit(Op *op, shunique_lock& sul)
   OSDSession::unique_lock sl(s->lock);
   if (op->tid == 0)
     op->tid = last_tid.inc();
+
+  ldout(cct, 10) << "_op_submit oid " << op->target.base_oid
+		 << " '" << op->target.base_oloc << "' '"
+		 << op->target.target_oloc << "' " << op->ops << " tid "
+		 << op->tid << " osd." << (!s->is_homeless() ? s->osd : -1)
+		 << dendl;
+
   _session_op_assign(s, op);
 
   if (need_send) {
@@ -2336,6 +2339,8 @@ ceph_tid_t Objecter::_op_submit(Op *op, shunique_lock& sul)
   if (check_for_latest_map) {
     _send_op_map_check(op);
   }
+  if (ptid)
+    *ptid = tid;
   op = NULL;
 
   sl.unlock();
@@ -2343,8 +2348,6 @@ ceph_tid_t Objecter::_op_submit(Op *op, shunique_lock& sul)
 
   ldout(cct, 5) << num_unacked.read() << " unacked, " << num_uncommitted.read()
 		<< " uncommitted" << dendl;
-
-  return tid;
 }
 
 int Objecter::op_cancel(OSDSession *s, ceph_tid_t tid, int r)
@@ -2664,7 +2667,15 @@ int Objecter::_calc_target(op_target_t *t, epoch_t *last_force_resend,
       t->osd = -1;
       return RECALC_OP_TARGET_POOL_DNE;
     }
-    pgid = osdmap->raw_pg_to_pg(t->base_pgid);
+    if (osdmap->test_flag(CEPH_OSDMAP_SORTBITWISE)) {
+      // if the SORTBITWISE flag is set, we know all OSDs are running
+      // jewel+.
+      pgid = t->base_pgid;
+    } else {
+      // legacy behavior.  pre-jewel OSDs will fail if we send a
+      // full-hash pgid value.
+      pgid = osdmap->raw_pg_to_pg(t->base_pgid);
+    }
   } else {
     int ret = osdmap->object_locator_to_pg(t->target_oid, t->target_oloc,
 					   pgid);
@@ -3212,7 +3223,7 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
     m->get_redirect().combine_with_locator(op->target.target_oloc,
 					   op->target.target_oid.name);
     op->target.flags |= CEPH_OSD_FLAG_REDIRECTED;
-    _op_submit(op, sul);
+    _op_submit(op, sul, NULL);
     m->put();
     return;
   }
@@ -4864,7 +4875,8 @@ void Objecter::enumerate_objects(
     const hobject_t &start,
     const hobject_t &end,
     const uint32_t max,
-    std::list<librados::ListObjectImpl> *result,
+    const bufferlist &filter_bl,
+    std::list<librados::ListObjectImpl> *result, 
     hobject_t *next,
     Context *on_finish)
 {
@@ -4912,11 +4924,8 @@ void Objecter::enumerate_objects(
   C_EnumerateReply *on_ack = new C_EnumerateReply(
       this, next, result, end, pool_id, on_finish);
 
-  // Construct pgls operation
-  bufferlist filter; // FIXME pass in?
-
   ObjectOperation op;
-  op.pg_nls(max, filter, start, 0);
+  op.pg_nls(max, filter_bl, start, 0);
 
   // Issue.  See you later in _enumerate_reply
   object_locator_t oloc(pool_id, ns);
@@ -5013,3 +5022,94 @@ void Objecter::_enumerate_reply(
   return;
 }
 
+namespace {
+  using namespace librados;
+
+  template <typename T>
+  void do_decode(std::vector<T>& items, std::vector<bufferlist>& bls)
+  {
+    for (auto bl : bls) {
+      auto p = bl.begin();
+      T t;
+      decode(t, p);
+      items.push_back(t);
+    }
+  }
+
+  struct C_ObjectOperation_scrub_ls : public Context {
+    bufferlist bl;
+    uint32_t *interval;
+    std::vector<inconsistent_obj_t> *objects = nullptr;
+    std::vector<inconsistent_snapset_t> *snapsets = nullptr;
+    int *rval;
+
+    C_ObjectOperation_scrub_ls(uint32_t *interval,
+			       std::vector<inconsistent_obj_t> *objects,
+			       int *rval)
+      : interval(interval), objects(objects), rval(rval) {}
+    C_ObjectOperation_scrub_ls(uint32_t *interval,
+			       std::vector<inconsistent_snapset_t> *snapsets,
+			       int *rval)
+      : interval(interval), snapsets(snapsets), rval(rval) {}
+    void finish(int r) override {
+      if (r < 0 && r != -EAGAIN)
+	return;
+      try {
+	decode();
+      } catch (buffer::error&) {
+	if (rval)
+	  *rval = -EIO;
+      }
+    }
+  private:
+    void decode() {
+      scrub_ls_result_t result;
+      auto p = bl.begin();
+      result.decode(p);
+      *interval = result.interval;
+      if (objects) {
+	do_decode(*objects, result.vals);
+      } else {
+	do_decode(*snapsets, result.vals);
+      }
+    }
+  };
+
+  template <typename T>
+  void do_scrub_ls(::ObjectOperation *op,
+		   const scrub_ls_arg_t& arg,
+		   std::vector<T> *items,
+		   uint32_t *interval,
+		   int *rval)
+  {
+    OSDOp& osd_op = op->add_op(CEPH_OSD_OP_SCRUBLS);
+    op->flags |= CEPH_OSD_FLAG_PGOP;
+    assert(interval);
+    arg.encode(osd_op.indata);
+    unsigned p = op->ops.size() - 1;
+    auto *h = new C_ObjectOperation_scrub_ls{interval, items, rval};
+    op->out_handler[p] = h;
+    op->out_bl[p] = &h->bl;
+    op->out_rval[p] = rval;
+  }
+}
+
+void ::ObjectOperation::scrub_ls(const librados::object_id_t& start_after,
+				 uint64_t max_to_get,
+				 std::vector<librados::inconsistent_obj_t> *objects,
+				 uint32_t *interval,
+				 int *rval)
+{
+  scrub_ls_arg_t arg = {*interval, 0, start_after, max_to_get};
+  do_scrub_ls(this, arg, objects, interval, rval);
+}
+
+void ::ObjectOperation::scrub_ls(const librados::object_id_t& start_after,
+				 uint64_t max_to_get,
+				 std::vector<librados::inconsistent_snapset_t> *snapsets,
+				 uint32_t *interval,
+				 int *rval)
+{
+  scrub_ls_arg_t arg = {*interval, 1, start_after, max_to_get};
+  do_scrub_ls(this, arg, snapsets, interval, rval);
+}

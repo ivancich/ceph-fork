@@ -21,6 +21,10 @@ PrivateDevices=yes
 ProtectHome=true
 ProtectSystem=full
 PrivateTmp=true
+TasksMax=infinity
+Restart=on-failure
+StartLimitInterval=30min
+StartLimitBurst=3
 
 [Install]
 WantedBy=ceph-mon.target

@@ -860,6 +860,19 @@ void MemStore::_do_transaction(Transaction& t)
         coll_t newcid = i.get_cid(op->dest_cid);
         ghobject_t newoid = i.get_oid(op->dest_oid);
 	r = _collection_move_rename(oldcid, oldoid, newcid, newoid);
+	if (r == -ENOENT)
+	  r = 0;
+      }
+      break;
+
+    case Transaction::OP_TRY_RENAME:
+      {
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oldoid = i.get_oid(op->oid);
+        ghobject_t newoid = i.get_oid(op->dest_oid);
+	r = _collection_move_rename(cid, oldoid, cid, newoid);
+	if (r == -ENOENT)
+	  r = 0;
       }
       break;
 
@@ -1341,15 +1354,8 @@ int MemStore::_collection_move_rename(const coll_t& oldcid, const ghobject_t& ol
     return -ENOENT;
 
   // note: c and oc may be the same
-  if (&(*c) == &(*oc)) {
-    c->lock.get_write();
-  } else if (&(*c) < &(*oc)) {
-    c->lock.get_write();
-    oc->lock.get_write();
-  } else if (&(*c) > &(*oc)) {
-    oc->lock.get_write();
-    c->lock.get_write();
-  }
+  assert(&(*c) == &(*oc));
+  c->lock.get_write();
 
   int r = -EEXIST;
   if (c->object_hash.count(oid))
@@ -1367,8 +1373,6 @@ int MemStore::_collection_move_rename(const coll_t& oldcid, const ghobject_t& ol
   r = 0;
  out:
   c->lock.put_write();
-  if (&(*c) != &(*oc))
-    oc->lock.put_write();
   return r;
 }
 

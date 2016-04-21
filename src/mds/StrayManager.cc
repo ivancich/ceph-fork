@@ -128,16 +128,14 @@ void StrayManager::purge(CDentry *dn, uint32_t op_allowance)
   }
 
   if (in->is_file()) {
-    uint64_t period = (uint64_t)in->inode.layout.fl_object_size *
-		      (uint64_t)in->inode.layout.fl_stripe_count;
     uint64_t to = in->inode.get_max_size();
     to = MAX(in->inode.size, to);
     // when truncating a file, the filer does not delete stripe objects that are
     // truncated to zero. so we need to purge stripe objects up to the max size
     // the file has ever been.
     to = MAX(in->inode.max_size_ever, to);
-    if (to && period) {
-      uint64_t num = (to + period - 1) / period;
+    if (to > 0) {
+      uint64_t num = Striper::get_num_objects(in->inode.layout, to);
       dout(10) << __func__ << " 0~" << to << " objects 0~" << num
 	       << " snapc " << snapc << " on " << *in << dendl;
       filer.purge_range(in->inode.ino, &in->inode.layout, *snapc,
@@ -149,8 +147,8 @@ void StrayManager::purge(CDentry *dn, uint32_t op_allowance)
   inode_t *pi = in->get_projected_inode();
   object_t oid = CInode::get_object_name(pi->ino, frag_t(), "");
   // remove the backtrace object if it was not purged
-  if (!gather.has_subs()) {
-    object_locator_t oloc(pi->layout.fl_pg_pool);
+  if (!gather.has_subs() || !pi->layout.pool_ns.empty()) {
+    object_locator_t oloc(pi->layout.pool_id);
     dout(10) << __func__ << " remove backtrace object " << oid
 	     << " pool " << oloc.pool << " snapc " << snapc << dendl;
     mds->objecter->remove(oid, oloc, *snapc,
@@ -320,12 +318,6 @@ void StrayManager::enqueue(CDentry *dn, bool trunc)
   dn->get(CDentry::PIN_PURGING);
   in->state_set(CInode::STATE_PURGING);
 
-  if (dn->item_stray.is_on_list()) {
-    dn->item_stray.remove_myself();
-    num_strays_delayed--;
-    logger->set(l_mdc_num_strays_delayed, num_strays_delayed);
-  }
-
   /* We must clear this as soon as enqueuing it, to prevent the journal
    * expiry code from seeing a dirty parent and trying to write a backtrace */
   if (!trunc) {
@@ -444,12 +436,10 @@ uint32_t StrayManager::_calculate_ops_required(CInode *in, bool trunc)
     ops_required = 1 + ls.size();
   } else {
     // File, work out concurrent Filer::purge deletes
-    const uint64_t period = (uint64_t)in->inode.layout.fl_object_size *
-		      (uint64_t)in->inode.layout.fl_stripe_count;
     const uint64_t to = MAX(in->inode.max_size_ever,
             MAX(in->inode.size, in->inode.get_max_size()));
 
-    const uint64_t num = MAX(1, (to + period - 1) / period);
+    const uint64_t num = (to > 0) ? Striper::get_num_objects(in->inode.layout, to) : 1;
     ops_required = MIN(num, g_conf->filer_max_purge_ops);
 
     // Account for removing (or zeroing) backtrace
@@ -547,6 +537,15 @@ bool StrayManager::__eval_stray(CDentry *dn, bool delay)
 
     in->mdcache->touch_dentry_bottom(dn);
     return false;
+  }
+
+  if (dn->item_stray.is_on_list()) {
+    if (delay)
+      return false;
+
+    dn->item_stray.remove_myself();
+    num_strays_delayed--;
+    logger->set(l_mdc_num_strays_delayed, num_strays_delayed);
   }
 
   // purge?
@@ -804,27 +803,26 @@ void StrayManager::truncate(CDentry *dn, uint32_t op_allowance)
   dout(10) << " realm " << *realm << dendl;
   const SnapContext *snapc = &realm->get_snap_context();
 
-  uint64_t period = (uint64_t)in->inode.layout.fl_object_size *
-		    (uint64_t)in->inode.layout.fl_stripe_count;
   uint64_t to = in->inode.get_max_size();
   to = MAX(in->inode.size, to);
   // when truncating a file, the filer does not delete stripe objects that are
   // truncated to zero. so we need to purge stripe objects up to the max size
   // the file has ever been.
   to = MAX(in->inode.max_size_ever, to);
-  if (period && to > period) {
-    uint64_t num = (to - 1) / period;
+  if (to > 0) {
+    uint64_t num = Striper::get_num_objects(in->inode.layout, to);
     dout(10) << __func__ << " 0~" << to << " objects 0~" << num
-      << " snapc " << snapc << " on " << *in << dendl;
-    filer.purge_range(in->ino(), &in->inode.layout, *snapc,
-		      1, num, ceph::real_clock::now(g_ceph_context),
-		      0, gather.new_sub());
-  }
+	     << " snapc " << snapc << " on " << *in << dendl;
 
-  // keep backtrace object
-  if (period && to > 0) {
+    // keep backtrace object
+    if (num > 1) {
+      filer.purge_range(in->ino(), &in->inode.layout, *snapc,
+			1, num - 1, ceph::real_clock::now(g_ceph_context),
+			0, gather.new_sub());
+    }
     filer.zero(in->ino(), &in->inode.layout, *snapc,
-	       0, period, ceph::real_clock::now(g_ceph_context),
+	       0, in->inode.layout.object_size,
+	       ceph::real_clock::now(g_ceph_context),
 	       0, true, NULL, gather.new_sub());
   }
 

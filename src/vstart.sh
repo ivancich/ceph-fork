@@ -10,55 +10,45 @@ if [ -n "$VSTART_DEST" ]; then
   CEPH_DIR=$SRC_PATH
   CEPH_BIN=$SRC_PATH
   CEPH_LIB=$SRC_PATH/.libs
+
+  if [ -e CMakeCache.txt ]; then
+      CEPH_BIN=$VSTART_DEST/../../bin
+      CEPH_LIB=$VSTART_DEST/../../lib
+  fi
+
   CEPH_CONF_PATH=$VSTART_DEST
   CEPH_DEV_DIR=$VSTART_DEST/dev
   CEPH_OUT_DIR=$VSTART_DEST/out
 fi
 
+# for running out of the CMake build directory
 if [ -e CMakeCache.txt ]; then
   # Out of tree build, learn source location from CMakeCache.txt
-  SRC_ROOT=`grep Ceph_SOURCE_DIR CMakeCache.txt | cut -d "=" -f 2`
-  [ -z "$PYBIND" ] && PYBIND=$SRC_ROOT/src/pybind
-  [ -z "$CEPH_ADM" ] && CEPH_ADM=./ceph
-  [ -z "$INIT_CEPH" ] && INIT_CEPH=./init-ceph
-  [ -z "$CEPH_BIN" ] && CEPH_BIN=src
-  [ -z "$CEPH_LIB" ] && CEPH_LIB=src
-  [ -z "$OBJCLASS_PATH" ] && OBJCLASS_PATH=src/cls
-
-  # Gather symlinks to EC plugins in one dir, because with CMake they
-  # are built into multiple locations
-  mkdir -p ec_plugins
-  for file in ./src/erasure-code/*/libec_*.so*;
-  do
-    ln -sf ../${file} ec_plugins/`basename $file`
-  done
-  [ -z "$EC_PATH" ] && EC_PATH=./ec_plugins
-  # check for compression plugins
-  mkdir -p .libs/compressor
-  for file in ./src/compressor/*/libcs_*.so*;
-  do
-    ln -sf ../${file} .libs/compressor/`basename $file`
-  done
-else
-    mkdir -p .libs/compressor
-    for f in `ls -d compressor/*/`; 
-    do 
-        cp .libs/libceph_`basename $f`.so* .libs/compressor/;
-    done
+  CEPH_ROOT=`grep Ceph_SOURCE_DIR CMakeCache.txt | cut -d "=" -f 2`
+  CEPH_BUILD_DIR=`pwd`
 fi
 
-if [ -z "$CEPH_BUILD_ROOT" ]; then
-        [ -z "$CEPH_BIN" ] && CEPH_BIN=.
-        [ -z "$CEPH_LIB" ] && CEPH_LIB=.libs
-        [ -z $EC_PATH ] && EC_PATH=$CEPH_LIB
-        [ -z $CS_PATH ] && CS_PATH=$CEPH_LIB
-        [ -z $OBJCLASS_PATH ] && OBJCLASS_PATH=$CEPH_LIB
-else
+# use CEPH_BUILD_ROOT to vstart from a 'make install' 
+if [ -n "$CEPH_BUILD_ROOT" ]; then
         [ -z $CEPH_BIN ] && CEPH_BIN=$CEPH_BUILD_ROOT/bin
         [ -z $CEPH_LIB ] && CEPH_LIB=$CEPH_BUILD_ROOT/lib
         [ -z $EC_PATH ] && EC_PATH=$CEPH_LIB/erasure-code
         [ -z $CS_PATH ] && CS_PATH=$CEPH_LIB/compressor
         [ -z $OBJCLASS_PATH ] && OBJCLASS_PATH=$CEPH_LIB/rados-classes
+elif [ -n "$CEPH_ROOT" ]; then
+        [ -z "$PYBIND" ] && PYBIND=$CEPH_ROOT/src/pybind
+        [ -z "$CEPH_BIN" ] && CEPH_BIN=$CEPH_BUILD_DIR/bin
+        [ -z "$CEPH_ADM" ] && CEPH_ADM=$CEPH_BIN/ceph
+        [ -z "$INIT_CEPH" ] && INIT_CEPH=$CEPH_BIN/init-ceph
+        [ -z "$CEPH_LIB" ] && CEPH_LIB=$CEPH_BUILD_DIR/lib
+        [ -z "$OBJCLASS_PATH" ] && OBJCLASS_PATH=$CEPH_LIB
+        [ -z "$EC_PATH" ] && EC_PATH=$CEPH_LIB
+else
+        [ -z "$CEPH_BIN" ] && CEPH_BIN=.
+        [ -z "$CEPH_LIB" ] && CEPH_LIB=.libs
+        [ -z $EC_PATH ] && EC_PATH=$CEPH_LIB
+        [ -z $CS_PATH ] && CS_PATH=$CEPH_LIB
+        [ -z $OBJCLASS_PATH ] && OBJCLASS_PATH=$CEPH_LIB
 fi
 
 if [ -z "${CEPH_VSTART_WRAPPER}" ]; then
@@ -67,18 +57,20 @@ fi
 
 [ -z "$PYBIND" ] && PYBIND=./pybind
 
-export PYTHONPATH=$PYBIND
+export PYTHONPATH=$PYBIND:$PYTHONPATH
 export LD_LIBRARY_PATH=$CEPH_LIB:$LD_LIBRARY_PATH
 export DYLD_LIBRARY_PATH=$CEPH_LIB:$DYLD_LIBRARY_PATH
 
 [ -z "$CEPH_NUM_MON" ] && CEPH_NUM_MON="$MON"
 [ -z "$CEPH_NUM_OSD" ] && CEPH_NUM_OSD="$OSD"
 [ -z "$CEPH_NUM_MDS" ] && CEPH_NUM_MDS="$MDS"
+[ -z "$CEPH_NUM_FS"  ] && CEPH_NUM_FS="$FS"
 [ -z "$CEPH_NUM_RGW" ] && CEPH_NUM_RGW="$RGW"
 
 [ -z "$CEPH_NUM_MON" ] && CEPH_NUM_MON=3
 [ -z "$CEPH_NUM_OSD" ] && CEPH_NUM_OSD=3
 [ -z "$CEPH_NUM_MDS" ] && CEPH_NUM_MDS=3
+[ -z "$CEPH_NUM_FS"  ] && CEPH_NUM_FS=1
 [ -z "$CEPH_NUM_RGW" ] && CEPH_NUM_RGW=1
 
 [ -z "$CEPH_DIR" ] && CEPH_DIR="$PWD"
@@ -99,6 +91,7 @@ start_rgw=0
 ip=""
 nodaemon=0
 smallmds=0
+short=0
 ec=0
 hitset=""
 overwrite_conf=1
@@ -114,13 +107,13 @@ keyring_fn="$CEPH_CONF_PATH/keyring"
 osdmap_fn="/tmp/ceph_osdmap.$$"
 monmap_fn="/tmp/ceph_monmap.$$"
 
-usage="usage: $0 [option]... [mon] [mds] [osd]\n"
+usage="usage: $0 [option]... [\"mon\"] [\"mds\"] [\"osd\"]\n"
 usage=$usage"options:\n"
 usage=$usage"\t-d, --debug\n"
 usage=$usage"\t-s, --standby_mds: Generate standby-replay MDS for each active\n"
 usage=$usage"\t-l, --localhost: use localhost instead of hostname\n"
 usage=$usage"\t-i <ip>: bind to specific ip\n"
-usage=$usage"\t-r start radosgw (needs ceph compiled with --radosgw and apache2 with mod_fastcgi)\n"
+usage=$usage"\t-r start radosgw (needs ceph compiled with --radosgw)\n"
 usage=$usage"\t-n, --new\n"
 usage=$usage"\t--valgrind[_{osd,mds,mon}] 'toolname args...'\n"
 usage=$usage"\t--nodaemon: use ceph-run as wrapper for mon/osd/mds\n"
@@ -139,6 +132,7 @@ usage=$usage"\t--rgw_port specify ceph rgw http listen port\n"
 usage=$usage"\t--bluestore use bluestore as the osd objectstore backend\n"
 usage=$usage"\t--memstore use memstore as the osd objectstore backend\n"
 usage=$usage"\t--cache <pool>: enable cache tiering on pool\n"
+usage=$usage"\t--short: short object names only; necessary for ext4 dev\n"
 
 usage_exit() {
 	printf "$usage"
@@ -169,6 +163,9 @@ case $1 in
 	    ;;
     --new | -n )
 	    new=1
+	    ;;
+    --short )
+	    short=1
 	    ;;
     --valgrind )
 	    [ -z "$2" ] && usage_exit
@@ -268,6 +265,13 @@ case $1 in
 esac
 shift
 done
+
+if [ "$overwrite_conf" -eq 0 ]; then
+  CEPH_NUM_MON=`awk -F= '/CEPH_NUM_MON/{print $2}' $conf_fn`
+  CEPH_NUM_OSD=`awk -F= '/CEPH_NUM_OSD/{print $2}' $conf_fn`
+  CEPH_NUM_MDS=`awk -F= '/CEPH_NUM_MDS/{print $2}' $conf_fn`
+  CEPH_NUM_RGW=`awk -F= '/CEPH_NUM_RGW/{print $2}' $conf_fn`
+fi
 
 if [ "$start_all" -eq 1 ]; then
 	start_mon=1
@@ -430,6 +434,10 @@ if [ "$start_mon" -eq 1 ]; then
 		if [ $overwrite_conf -eq 1 ]; then
 		        cat <<EOF > $conf_fn
 ; generated by vstart.sh on `date`
+; CEPH_NUM_MON=$CEPH_NUM_MON
+; CEPH_NUM_OSD=$CEPH_NUM_OSD
+; CEPH_NUM_MDS=$CEPH_NUM_MDS
+; CEPH_NUM_RGW=$CEPH_NUM_RGW
 [global]
         fsid = $(uuidgen)
         osd pg bits = 3
@@ -461,6 +469,10 @@ cat <<EOF >> $conf_fn
 	auth service required = none
 	auth client required = none
 EOF
+fi
+if [ "$short" -eq 1 ]; then
+    COSDSHORT="        osd max object name len = 460
+        osd max object namespace len = 64"
 fi
 			cat <<EOF >> $conf_fn
 
@@ -502,6 +514,7 @@ $DAEMONOPTS
 	bluestore block wal create = true
 $COSDDEBUG
 $COSDMEMSTORE
+$COSDSHORT
 $extra_conf
 [mon]
         mon pg warn min per osd = 3
@@ -593,7 +606,7 @@ EOF
 	    fi
 
 	    rm -rf $CEPH_DEV_DIR/osd$osd || true
-	    for f in $CEPH_DEV_DIR/osd$osd/* ; do btrfs sub delete $f || true ; done || true
+	    for f in $CEPH_DEV_DIR/osd$osd/*; do btrfs sub delete $f &> /dev/null || true; done
 	    mkdir -p $CEPH_DEV_DIR/osd$osd
 
 	    uuid=`uuidgen`
@@ -621,6 +634,25 @@ EOF
 fi
 
 if [ "$start_mds" -eq 1 -a "$CEPH_NUM_MDS" -gt 0 ]; then
+    if [ "$CEPH_NUM_FS" -gt "1" ] ; then
+        $CEPH_ADM fs flag set enable_multiple true --yes-i-really-mean-it
+    fi
+
+    fs=0
+    for name in a b c d e f g h i j k l m n o p
+    do
+        cmd="$CEPH_ADM osd pool create cephfs_data_${name} 8"
+        $cmd
+
+        cmd="$CEPH_ADM osd pool create cephfs_metadata_${name} 8"
+        $cmd
+
+        cmd="$CEPH_ADM fs new cephfs_${name} cephfs_metadata_${name} cephfs_data_${name}"
+        $cmd
+        fs=$(($fs + 1))
+        [ $fs -eq $CEPH_NUM_FS ] && break
+    done
+
     mds=0
     for name in a b c d e f g h i j k l m n o p
     do
@@ -651,17 +683,6 @@ EOF
 			mon 'allow *' osd 'allow *' mds 'allow'
 	    fi
 
-        cmd="$CEPH_ADM osd pool create cephfs_data 8"
-        echo $cmd
-        $cmd
-
-        cmd="$CEPH_ADM osd pool create cephfs_metadata 8"
-        echo $cmd
-        $cmd
-
-        cmd="$CEPH_ADM fs new cephfs cephfs_metadata cephfs_data"
-        echo $cmd
-        $cmd
 	fi
 	
 	run 'mds' $CEPH_BIN/ceph-mds -i $name $ARGS $CMDS_ARGS
@@ -676,9 +697,6 @@ EOF
 #$CEPH_BIN/ceph-mds -d $ARGS --mds_thrash_fragments 0 --mds_thrash_exports 0 #--debug_ms 20
 #$CEPH_ADM mds set max_mds 2
     done
-    cmd="$CEPH_ADM mds set max_mds $CEPH_NUM_MDS"
-    echo $cmd
-    $cmd
 fi
 
 if [ "$ec" -eq 1 ]; then
@@ -721,17 +739,6 @@ do_hitsets $hitset
 
 do_rgw()
 {
-    # Start server
-    echo start rgw on http://localhost:$CEPH_RGW_PORT
-    RGWDEBUG=""
-    if [ "$debug" -ne 0 ]; then
-        RGWDEBUG="--debug-rgw=20"
-    fi
-
-    RGWSUDO=
-    [ $CEPH_RGW_PORT -lt 1024 ] && RGWSUDO=sudo
-    $RGWSUDO $CEPH_BIN/radosgw -c $conf_fn --log-file=${CEPH_OUT_DIR}/rgw.log ${RGWDEBUG} --debug-ms=1
-
     # Create S3 user
     local akey='0555b35654ad1656d804'
     local skey='h7GhxuBLTrlhVUyxSPUKUV8r/2EI4ngqJxD7iBdBYLhwluN30JaT3Q=='
@@ -768,6 +775,17 @@ do_rgw()
     echo "  user      : tester"
     echo "  password  : testing"
     echo ""
+
+    # Start server
+    echo start rgw on http://localhost:$CEPH_RGW_PORT
+    RGWDEBUG=""
+    if [ "$debug" -ne 0 ]; then
+        RGWDEBUG="--debug-rgw=20"
+    fi
+
+    RGWSUDO=
+    [ $CEPH_RGW_PORT -lt 1024 ] && RGWSUDO=sudo
+    $RGWSUDO $CEPH_BIN/radosgw -c $conf_fn --log-file=${CEPH_OUT_DIR}/rgw.log ${RGWDEBUG} --debug-ms=1
 }
 if [ "$start_rgw" -eq 1 ]; then
     do_rgw
@@ -776,7 +794,7 @@ fi
 echo "started.  stop.sh to stop.  see out/* (e.g. 'tail -f out/????') for debug output."
 
 echo ""
-echo "export PYTHONPATH=./pybind"
+echo "export PYTHONPATH=./pybind:$PYTHONPATH"
 echo "export LD_LIBRARY_PATH=$CEPH_LIB"
 
 if [ "$CEPH_DIR" != "$PWD" ]; then

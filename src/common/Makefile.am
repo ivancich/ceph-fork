@@ -23,12 +23,14 @@ libcommon_internal_la_SOURCES = \
 	common/Finisher.cc \
 	common/environment.cc\
 	common/assert.cc \
+	xxHash/xxhash.c \
 	common/run_cmd.cc \
 	common/WorkQueue.cc \
 	common/ConfUtils.cc \
 	common/MemoryModel.cc \
 	common/armor.c \
 	common/fd.cc \
+	common/fs_types.cc \
 	common/safe_io.c \
 	common/snap_types.cc \
 	common/str_list.cc \
@@ -73,7 +75,9 @@ libcommon_internal_la_SOURCES = \
 	common/Cycles.cc \
 	common/ContextCompletion.cc \
 	common/TracepointProvider.cc \
-	common/PluginRegistry.cc
+	common/PluginRegistry.cc \
+	common/scrub_types.cc \
+	common/blkdev.cc
 
 common/PluginRegistry.cc: ./ceph_ver.h
 
@@ -101,12 +105,6 @@ libcommon_internal_la_SOURCES += \
         common/aix_errno.cc
 endif
 
-# used by RBD and FileStore
-if LINUX
-libcommon_internal_la_SOURCES += \
-	common/blkdev.cc
-endif
-
 if ENABLE_XIO
 libcommon_internal_la_SOURCES += \
 	common/address_helper.cc
@@ -122,9 +120,11 @@ libcommon_internal_la_SOURCES += \
 	osd/ECMsgTypes.cc \
 	osd/HitSet.cc \
 	mds/MDSMap.cc \
+	mds/FSMap.cc \
 	mds/inode_backtrace.cc \
 	mds/mdstypes.cc \
 	mds/flock.cc
+
 LIBCOMMON_DEPS += libcommon_internal.la
 noinst_LTLIBRARIES += libcommon_internal.la
 
@@ -154,7 +154,10 @@ noinst_HEADERS += \
 	common/sctp_crc32.h \
 	common/crc32c_intel_baseline.h \
 	common/crc32c_intel_fast.h \
-	common/crc32c_aarch64.h
+	common/crc32c_aarch64.h \
+	common/cohort_lru.h \
+	common/sstring.hh \
+	xxHash/xxhash.h
 
 
 # important; libmsg before libauth!
@@ -274,6 +277,7 @@ noinst_HEADERS += \
 	common/TracepointProvider.h \
 	common/event_socket.h \
 	common/PluginRegistry.h \
+	common/scrub_types.h \
 	common/ceph_time.h \
 	common/ceph_timer.h \
 	common/align.h \

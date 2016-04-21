@@ -454,7 +454,7 @@ int RGWOrphanSearch::build_linked_oids_for_bucket(const string& bucket_instance_
     return ret;
   }
 
-  RGWRados::Bucket target(store, bucket_info.bucket);
+  RGWRados::Bucket target(store, bucket_info);
   RGWRados::Bucket::List list_op(&target);
 
   string marker;
@@ -578,7 +578,11 @@ int RGWOrphanSearch::build_linked_oids_index()
     return ret;
   }
 
-  save_state();
+  ret = save_state();
+  if (ret < 0) {
+    cerr << __func__ << ": ERROR: failed to write state ret=" << ret << std::endl;
+    return ret;
+  }
 
   return 0;
 }

@@ -10,17 +10,18 @@
 #include "common/Cond.h"
 #include "common/Mutex.h"
 #include "common/RefCountedObj.h"
+#include "common/WorkQueue.h"
 #include "cls/journal/cls_journal_types.h"
 #include "journal/AsyncOpTracker.h"
 #include <boost/intrusive_ptr.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
+#include <functional>
 #include <list>
 #include <map>
 #include <string>
 #include "include/assert.h"
 
-class Finisher;
 class SafeTimer;
 
 namespace journal {
@@ -30,8 +31,9 @@ typedef boost::intrusive_ptr<JournalMetadata> JournalMetadataPtr;
 
 class JournalMetadata : public RefCountedObject, boost::noncopyable {
 public:
-  typedef cls::journal::EntryPosition EntryPosition;
-  typedef cls::journal::EntryPositions EntryPositions;
+  typedef std::function<Context*()> CreateContext;
+  typedef cls::journal::ObjectPosition ObjectPosition;
+  typedef cls::journal::ObjectPositions ObjectPositions;
   typedef cls::journal::ObjectSetPosition ObjectSetPosition;
   typedef cls::journal::Client Client;
   typedef cls::journal::Tag Tag;
@@ -44,21 +46,34 @@ public:
     virtual void handle_update(JournalMetadata *) = 0;
   };
 
-  JournalMetadata(librados::IoCtx &ioctx, const std::string &oid,
+  JournalMetadata(ContextWQ *work_queue, SafeTimer *timer, Mutex *timer_lock,
+                  librados::IoCtx &ioctx, const std::string &oid,
                   const std::string &client_id, double commit_interval);
   ~JournalMetadata();
 
   void init(Context *on_init);
-  void shutdown();
+  void shut_down();
+
+  bool is_initialized() const { return m_initialized; }
+
+  void get_immutable_metadata(uint8_t *order, uint8_t *splay_width,
+			      int64_t *pool_id, Context *on_finish);
+
+  void get_mutable_metadata(uint64_t *minimum_set, uint64_t *active_set,
+			    RegisteredClients *clients, Context *on_finish);
 
   void add_listener(Listener *listener);
   void remove_listener(Listener *listener);
 
-  int register_client(const bufferlist &data);
-  int unregister_client();
+  void register_client(const bufferlist &data, Context *on_finish);
+  void update_client(const bufferlist &data, Context *on_finish);
+  void unregister_client(Context *on_finish);
+  void get_client(const std::string &client_id, cls::journal::Client *client,
+                  Context *on_finish);
 
   void allocate_tag(uint64_t tag_class, const bufferlist &data,
                     Tag *tag, Context *on_finish);
+  void get_tag(uint64_t tag_tid, Tag *tag, Context *on_finish);
   void get_tags(const boost::optional<uint64_t> &tag_class, Tags *tags,
                 Context *on_finish);
 
@@ -75,15 +90,15 @@ public:
     return m_pool_id;
   }
 
-  inline Finisher &get_finisher() {
-    return *m_finisher;
+  inline void queue(Context *on_finish, int r) {
+    m_work_queue->queue(on_finish, r);
   }
 
   inline SafeTimer &get_timer() {
     return *m_timer;
   }
   inline Mutex &get_timer_lock() {
-    return m_timer_lock;
+    return *m_timer_lock;
   }
 
   void set_minimum_set(uint64_t object_set);
@@ -99,8 +114,7 @@ public:
   }
 
   void flush_commit_position();
-  void set_commit_position(const ObjectSetPosition &commit_position,
-                           Context *on_safe);
+  void flush_commit_position(Context *on_safe);
   void get_commit_position(ObjectSetPosition *commit_position) const {
     Mutex::Locker locker(m_lock);
     *commit_position = m_client.commit_position;
@@ -120,7 +134,7 @@ public:
 
   uint64_t allocate_commit_tid(uint64_t object_num, uint64_t tag_tid,
                                uint64_t entry_tid);
-  bool committed(uint64_t commit_tid, ObjectSetPosition *object_set_position);
+  void committed(uint64_t commit_tid, const CreateContext &create_context);
 
   void notify_update();
   void async_notify_update();
@@ -185,6 +199,7 @@ private:
       journal_metadata->m_async_op_tracker.finish_op();
     }
     virtual void finish(int r) {
+      Mutex::Locker locker(journal_metadata->m_lock);
       journal_metadata->handle_commit_position_task();
     };
   };
@@ -274,9 +289,9 @@ private:
   int64_t m_pool_id;
   bool m_initialized;
 
-  Finisher *m_finisher;
+  ContextWQ *m_work_queue;
   SafeTimer *m_timer;
-  Mutex m_timer_lock;
+  Mutex *m_timer_lock;
 
   mutable Mutex m_lock;
 
@@ -298,6 +313,7 @@ private:
   size_t m_update_notifications;
   Cond m_update_cond;
 
+  uint64_t m_commit_position_tid = 0;
   ObjectSetPosition m_commit_position;
   Context *m_commit_position_ctx;
   Context *m_commit_position_task_ctx;
@@ -309,6 +325,7 @@ private:
   void refresh(Context *on_finish);
   void handle_refresh_complete(C_Refresh *refresh, int r);
 
+  void cancel_commit_task();
   void schedule_commit_task();
   void handle_commit_position_task();
 

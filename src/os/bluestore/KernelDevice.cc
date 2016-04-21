@@ -119,7 +119,17 @@ int KernelDevice::open(string p)
   } else {
     size = st.st_size;
   }
-  block_size = st.st_blksize;
+
+  // Operate as though the block size is 4 KB.  The backing file
+  // blksize doesn't strictly matter except that some file systems may
+  // require a read/modify/write if we write something smaller than
+  // it.
+  block_size = g_conf->bdev_block_size;
+  if (block_size != (unsigned)st.st_blksize) {
+    dout(1) << __func__ << " backing device/file reports st_blksize "
+	    << st.st_blksize << ", using bdev_block_size "
+	    << block_size << " anyway" << dendl;
+  }
 
   fs = FS::create_by_fd(fd_direct);
   assert(fs);
@@ -240,7 +250,7 @@ void KernelDevice::_aio_thread()
       for (int i = 0; i < r; ++i) {
 	IOContext *ioc = static_cast<IOContext*>(aio[i]->priv);
 	_aio_log_finish(ioc, aio[i]->offset, aio[i]->length);
-	int left = ioc->num_running.dec();
+	int left = --ioc->num_running;
 	int r = aio[i]->get_return_value();
 	dout(10) << __func__ << " finished aio " << aio[i] << " r " << r
 		 << " ioc " << ioc
@@ -249,11 +259,7 @@ void KernelDevice::_aio_thread()
 	if (left == 0) {
 	  // check waiting count before doing callback (which may
 	  // destroy this ioc).
-	  if (ioc->num_waiting.read()) {
-	    dout(20) << __func__ << " waking waiter" << dendl;
-	    Mutex::Locker l(ioc->lock);
-	    ioc->cond.Signal();
-	  }
+	  ioc->aio_wake();
 	  if (ioc->priv) {
 	    aio_callback(aio_callback_priv, ioc->priv);
 	  }
@@ -308,8 +314,8 @@ void KernelDevice::_aio_log_finish(
 void KernelDevice::aio_submit(IOContext *ioc)
 {
   dout(20) << __func__ << " ioc " << ioc
-	   << " pending " << ioc->num_pending.read()
-	   << " running " << ioc->num_running.read()
+	   << " pending " << ioc->num_pending.load()
+	   << " running " << ioc->num_running.load()
 	   << dendl;
   // move these aside, and get our end iterator position now, as the
   // aios might complete as soon as they are submitted and queue more
@@ -318,10 +324,10 @@ void KernelDevice::aio_submit(IOContext *ioc)
   ioc->running_aios.splice(e, ioc->pending_aios);
   list<FS::aio_t>::iterator p = ioc->running_aios.begin();
 
-  int pending = ioc->num_pending.read();
-  ioc->num_running.add(pending);
-  ioc->num_pending.sub(pending);
-  assert(ioc->num_pending.read() == 0);  // we should be only thread doing this
+  int pending = ioc->num_pending.load();
+  ioc->num_running += pending;
+  ioc->num_pending -= pending;
+  assert(ioc->num_pending.load() == 0);  // we should be only thread doing this
 
   bool done = false;
   while (!done) {
@@ -360,16 +366,18 @@ int KernelDevice::aio_write(
   bool buffered)
 {
   uint64_t len = bl.length();
-  dout(20) << __func__ << " " << off << "~" << len << dendl;
+  dout(20) << __func__ << " " << off << "~" << len
+	   << (buffered ? " (buffered)" : " (direct)")
+	   << dendl;
   assert(off % block_size == 0);
   assert(len % block_size == 0);
   assert(len > 0);
   assert(off < size);
   assert(off + len <= size);
 
-  if (!bl.is_n_page_sized() || !bl.is_page_aligned()) {
-    dout(20) << __func__ << " rebuilding buffer to be page-aligned" << dendl;
-    bl.rebuild();
+  if (!bl.is_n_align_sized(block_size) || !bl.is_aligned(block_size)) {
+    dout(20) << __func__ << " rebuilding buffer to be aligned" << dendl;
+    bl.rebuild_aligned(block_size);
   }
 
   dout(40) << "data: ";
@@ -381,7 +389,7 @@ int KernelDevice::aio_write(
 #ifdef HAVE_LIBAIO
   if (aio && dio && !buffered) {
     ioc->pending_aios.push_back(FS::aio_t(ioc, fd_direct));
-    ioc->num_pending.inc();
+    ++ioc->num_pending;
     FS::aio_t& aio = ioc->pending_aios.back();
     if (g_conf->bdev_inject_crash &&
 	rand() % g_conf->bdev_inject_crash == 0) {
@@ -465,7 +473,9 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
 		      IOContext *ioc,
 		      bool buffered)
 {
-  dout(5) << __func__ << " " << off << "~" << len << dendl;
+  dout(5) << __func__ << " " << off << "~" << len
+	  << (buffered ? " (buffered)" : " (direct)")
+	  << dendl;
   assert(off % block_size == 0);
   assert(len % block_size == 0);
   assert(len > 0);
@@ -473,7 +483,7 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
   assert(off + len <= size);
 
   _aio_log_start(ioc, off, len);
-  ioc->num_reading.inc();;
+  ++ioc->num_reading;
 
   bufferptr p = buffer::create_page_aligned(len);
   int r = ::pread(buffered ? fd_buffered : fd_direct,
@@ -492,12 +502,8 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
 
  out:
   _aio_log_finish(ioc, off, len);
-  ioc->num_reading.dec();
-  if (ioc->num_waiting.read()) {
-    dout(20) << __func__ << " waking waiter" << dendl;
-    Mutex::Locker l(ioc->lock);
-    ioc->cond.Signal();
-  }
+  --ioc->num_reading;
+  ioc->aio_wake();
   return r < 0 ? r : 0;
 }
 

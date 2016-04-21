@@ -6,17 +6,16 @@
 
 #include "common/Thread.h"
 
-#include <assert.h>
 #include <pthread.h>
-#include <boost/asio.hpp>
 
 #include "Entry.h"
 #include "EntryQueue.h"
 #include "SubsystemMap.h"
-#include "common/Graylog.h"
 
 namespace ceph {
 namespace log {
+
+class Graylog;
 
 class Log : private Thread
 {
@@ -37,12 +36,16 @@ class Log : private Thread
 
   std::string m_log_file;
   int m_fd;
+  uid_t m_uid;
+  gid_t m_gid;
+
+  int m_fd_last_error;  ///< last error we say writing to fd (if any)
 
   int m_syslog_log, m_syslog_crash;
   int m_stderr_log, m_stderr_crash;
   int m_graylog_log, m_graylog_crash;
 
-  Graylog::Ref m_graylog;
+  shared_ptr<Graylog> m_graylog;
 
   bool m_stop;
 
@@ -66,6 +69,7 @@ public:
   void set_max_recent(int n);
   void set_log_file(std::string fn);
   void reopen_log_file();
+  void chown_log_file(uid_t uid, gid_t gid);
 
   void flush();
 
@@ -78,7 +82,7 @@ public:
   void start_graylog();
   void stop_graylog();
 
-  Graylog::Ref graylog() { return m_graylog; }
+  shared_ptr<Graylog> graylog() { return m_graylog; }
 
   Entry *create_entry(int level, int subsys);
   Entry *create_entry(int level, int subsys, size_t* expected_size);

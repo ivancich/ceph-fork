@@ -10,7 +10,7 @@
 
 #define dout_subsys ceph_subsys_rbd_mirror
 #undef dout_prefix
-#define dout_prefix *_dout << "rbd-mirror: "
+#define dout_prefix *_dout << "rbd-mirror: ClusterWatcher::" << __func__ << ": "
 
 using std::list;
 using std::map;
@@ -45,7 +45,7 @@ const std::set<std::string>& ClusterWatcher::get_pool_names() const
 
 void ClusterWatcher::refresh_pools()
 {
-  dout(20) << __func__ << dendl;
+  dout(20) << "enter" << dendl;
   map<peer_t, set<int64_t> > peer_configs;
   set<string> pool_names;
   read_configs(&peer_configs, &pool_names);
@@ -94,14 +94,14 @@ void ClusterWatcher::read_configs(map<peer_t, set<int64_t> > *peer_configs,
       continue;
     }
 
-    bool enabled;
-    r = librbd::mirror_is_enabled(ioctx, &enabled);
+    rbd_mirror_mode_t mirror_mode;
+    r = librbd::mirror_mode_get(ioctx, &mirror_mode);
     if (r < 0) {
       derr << "could not tell whether mirroring was enabled for " << pool_name
 	   << " : " << cpp_strerror(r) << dendl;
       continue;
     }
-    if (!enabled) {
+    if (mirror_mode == RBD_MIRROR_MODE_DISABLED) {
       dout(10) << "mirroring is disabled for pool " << pool_name << dendl;
       continue;
     }

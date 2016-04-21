@@ -27,6 +27,7 @@
 #include "common/errno.h"
 #include "common/lockdep.h"
 #include "common/Formatter.h"
+#include "common/Graylog.h"
 #include "log/Log.h"
 #include "auth/Crypto.h"
 #include "include/str_list.h"
@@ -438,6 +439,10 @@ CephContext::CephContext(uint32_t module_type_, int init_flags_)
     _log(NULL),
     _module_type(module_type_),
     _init_flags(init_flags_),
+    _set_uid(0),
+    _set_gid(0),
+    _set_uid_string(),
+    _set_gid_string(),
     _crypto_inited(false),
     _service_thread(NULL),
     _log_obs(NULL),

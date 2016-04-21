@@ -11,6 +11,7 @@
 #include "librbd/AioImageRequestWQ.h"
 #include "librbd/ExclusiveLock.h"
 #include "librbd/ImageCtx.h"
+#include "librbd/ImageWatcher.h"
 #include "librbd/Journal.h"
 #include "librbd/ObjectMap.h"
 #include "librbd/Utils.h"
@@ -49,36 +50,7 @@ ReleaseRequest<I>::~ReleaseRequest() {
 
 template <typename I>
 void ReleaseRequest<I>::send() {
-  send_block_writes();
-}
-
-template <typename I>
-void ReleaseRequest<I>::send_block_writes() {
-  CephContext *cct = m_image_ctx.cct;
-  ldout(cct, 10) << __func__ << dendl;
-
-  using klass = ReleaseRequest<I>;
-  Context *ctx = create_context_callback<
-    klass, &klass::handle_block_writes>(this);
-
-  {
-    RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
-    m_image_ctx.aio_work_queue->block_writes(ctx);
-  }
-}
-
-template <typename I>
-Context *ReleaseRequest<I>::handle_block_writes(int *ret_val) {
-  CephContext *cct = m_image_ctx.cct;
-  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
-
-  if (*ret_val < 0) {
-    m_image_ctx.aio_work_queue->unblock_writes();
-    return m_on_finish;
-  }
-
   send_cancel_op_requests();
-  return nullptr;
 }
 
 template <typename I>
@@ -99,12 +71,65 @@ Context *ReleaseRequest<I>::handle_cancel_op_requests(int *ret_val) {
 
   assert(*ret_val == 0);
 
+  send_block_writes();
+  return nullptr;
+}
+
+template <typename I>
+void ReleaseRequest<I>::send_block_writes() {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  using klass = ReleaseRequest<I>;
+  Context *ctx = create_context_callback<
+    klass, &klass::handle_block_writes>(this);
+
+  {
+    RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
+    if (m_image_ctx.test_features(RBD_FEATURE_JOURNALING)) {
+      m_image_ctx.aio_work_queue->set_require_lock_on_read();
+    }
+    m_image_ctx.aio_work_queue->block_writes(ctx);
+  }
+}
+
+template <typename I>
+Context *ReleaseRequest<I>::handle_block_writes(int *ret_val) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+
+  if (*ret_val < 0) {
+    m_image_ctx.aio_work_queue->unblock_writes();
+    return m_on_finish;
+  }
+
   if (m_on_releasing != nullptr) {
     // alert caller that we no longer own the exclusive lock
     m_on_releasing->complete(0);
     m_on_releasing = nullptr;
   }
 
+  send_flush_notifies();
+  return nullptr;
+}
+
+template <typename I>
+void ReleaseRequest<I>::send_flush_notifies() {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  using klass = ReleaseRequest<I>;
+  Context *ctx = create_context_callback<
+    klass, &klass::handle_flush_notifies>(this);
+  m_image_ctx.image_watcher->flush(ctx);
+}
+
+template <typename I>
+Context *ReleaseRequest<I>::handle_flush_notifies(int *ret_val) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  assert(*ret_val == 0);
   send_close_journal();
   return nullptr;
 }

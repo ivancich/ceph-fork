@@ -47,11 +47,9 @@ namespace ceph {
 
 enum {
   l_os_first = 84000,
-  l_os_jq_max_ops,
   l_os_jq_ops,
-  l_os_j_ops,
-  l_os_jq_max_bytes,
   l_os_jq_bytes,
+  l_os_j_ops,
   l_os_j_bytes,
   l_os_j_lat,
   l_os_j_wr,
@@ -121,8 +119,10 @@ public:
    * @param path path to device
    * @param fsid [out] osd uuid
    */
-  static int probe_block_device_fsid(const string& path,
-				     uuid_d *fsid);
+  static int probe_block_device_fsid(
+    CephContext *cct,
+    const string& path,
+    uuid_d *fsid);
 
   Logger *logger;
 
@@ -408,6 +408,8 @@ public:
 
       OP_SETALLOCHINT = 39,  // cid, oid, object_size, write_size
       OP_COLL_HINT = 40, // cid, type, bl
+
+      OP_TRY_RENAME = 41,   // oldcid, oldoid, newoid
     };
 
     // Transaction hint type
@@ -438,7 +440,7 @@ public:
       __le32 largest_data_off_in_tbl;
       __le32 fadvise_flags;
 
-      TransactionData() :
+      TransactionData() noexcept :
         ops(0),
         largest_data_len(0),
         largest_data_off(0),
@@ -446,7 +448,7 @@ public:
 	fadvise_flags(0) { }
 
       // override default move operations to reset default values
-      TransactionData(TransactionData&& other) :
+      TransactionData(TransactionData&& other) noexcept :
         ops(other.ops),
         largest_data_len(other.largest_data_len),
         largest_data_off(other.largest_data_off),
@@ -458,7 +460,7 @@ public:
         other.largest_data_off_in_tbl = 0;
         other.fadvise_flags = 0;
       }
-      TransactionData& operator=(TransactionData&& other) {
+      TransactionData& operator=(TransactionData&& other) noexcept {
         ops = other.ops;
         largest_data_len = other.largest_data_len;
         largest_data_off = other.largest_data_off;
@@ -518,7 +520,7 @@ public:
     }
 
     // override default move operations to reset default values
-    Transaction(Transaction&& other) :
+    Transaction(Transaction&& other) noexcept :
       data(std::move(other.data)),
       osr(other.osr),
       use_tbl(other.use_tbl),
@@ -539,7 +541,7 @@ public:
       other.object_id = 0;
     }
 
-    Transaction& operator=(Transaction&& other) {
+    Transaction& operator=(Transaction&& other) noexcept {
       data = std::move(other.data);
       osr = other.osr;
       use_tbl = other.use_tbl;
@@ -579,7 +581,7 @@ public:
     }
     void register_on_complete(Context *c) {
       if (!c) return;
-      RunOnDeleteRef _complete(new RunOnDelete(c));
+      RunOnDeleteRef _complete (std::make_shared<RunOnDelete>(c));
       register_on_applied(new ContainerContext<RunOnDeleteRef>(_complete));
       register_on_commit(new ContainerContext<RunOnDeleteRef>(_complete));
     }
@@ -630,7 +632,7 @@ public:
       return use_tbl;
     }
 
-    void swap(Transaction& other) {
+    void swap(Transaction& other) noexcept {
       std::swap(data, other.data);
       std::swap(on_applied, other.on_applied);
       std::swap(on_commit, other.on_commit);
@@ -718,9 +720,17 @@ public:
         op->dest_oid = om[op->dest_oid];
         break;
 
+      case OP_TRY_RENAME:
+        assert(op->cid < cm.size());
+        assert(op->oid < om.size());
+        assert(op->dest_oid < om.size());
+        op->cid = cm[op->cid];
+        op->oid = om[op->oid];
+        op->dest_oid = om[op->dest_oid];
+
       case OP_SPLIT_COLLECTION2:
         assert(op->cid < cm.size());
-        op->dest_cid = cm[op->dest_oid];
+	assert(op->dest_cid < cm.size());
         op->cid = cm[op->cid];
         op->dest_cid = cm[op->dest_cid];
         break;
@@ -808,7 +818,37 @@ public:
         return 1 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + tbl.length();
       else {
         //layout: data_bl + op_bl + coll_index + object_index + data
-        //TODO: maybe we need better way to get encoded bytes;
+
+        // coll_index size, object_index size and sizeof(transaction_data)
+        // all here, so they may be computed at compile-time
+        size_t final_size = sizeof(__u32) * 2 + sizeof(data);
+
+        // coll_index second and object_index second
+        final_size += (coll_index.size() + object_index.size()) * sizeof(__le32);
+
+        // coll_index first
+        for (auto p = coll_index.begin(); p != coll_index.end(); ++p) {
+          final_size += p->first.encoded_size();
+        }
+
+        // object_index first
+        for (auto p = object_index.begin(); p != object_index.end(); ++p) {
+          final_size += p->first.encoded_size();
+        }
+        
+        return data_bl.length() +
+          op_bl.length() +
+          final_size;
+      }
+    }
+
+    /// Retain old version for regression testing purposes
+    uint64_t get_encoded_bytes_test() {
+      if (use_tbl)
+        return 1 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + tbl.length();
+      else {
+        //layout: data_bl + op_bl + coll_index + object_index + data
+
         bufferlist bl;
         ::encode(coll_index, bl);
         ::encode(object_index, bl);
@@ -1415,13 +1455,30 @@ public:
       }
       data.ops++;
     }
+    void try_rename(coll_t cid, const ghobject_t& oldoid,
+                    const ghobject_t& oid) {
+      if (use_tbl) {
+        __u32 op = OP_TRY_RENAME;
+        ::encode(op, tbl);
+        ::encode(cid, tbl);
+        ::encode(oldoid, tbl);
+        ::encode(oid, tbl);
+      } else {
+        Op* _op = _get_next_op();
+        _op->op = OP_TRY_RENAME;
+        _op->cid = _get_coll_id(cid);
+        _op->oid = _get_object_id(oldoid);
+        _op->dest_oid = _get_object_id(oid);
+      }
+      data.ops++;
+    }
 
     // NOTE: Collection attr operations are all DEPRECATED.  new
     // backends need not implement these at all.
 
     /// Set an xattr on a collection
-    void collection_setattr(const coll_t& cid, const string& name, bufferlist& val)
-      __attribute__ ((deprecated)) {
+    void collection_setattr(const coll_t& cid, const string& name,
+			    bufferlist& val) {
       if (use_tbl) {
         __u32 op = OP_COLL_SETATTR;
         ::encode(op, tbl);
@@ -1439,8 +1496,7 @@ public:
     }
 
     /// Remove an xattr from a collection
-    void collection_rmattr(const coll_t& cid, const string& name)
-      __attribute__ ((deprecated)) {
+    void collection_rmattr(const coll_t& cid, const string& name) {
       if (use_tbl) {
         __u32 op = OP_COLL_RMATTR;
         ::encode(op, tbl);
@@ -1455,8 +1511,7 @@ public:
       data.ops++;
     }
     /// Set multiple xattrs on a collection
-    void collection_setattrs(const coll_t& cid, map<string,bufferptr>& aset)
-      __attribute__ ((deprecated)) {
+    void collection_setattrs(const coll_t& cid, map<string,bufferptr>& aset) {
       if (use_tbl) {
         __u32 op = OP_COLL_SETATTRS;
         ::encode(op, tbl);
@@ -1471,8 +1526,7 @@ public:
       data.ops++;
     }
     /// Set multiple xattrs on a collection
-    void collection_setattrs(const coll_t& cid, map<string,bufferlist>& aset)
-      __attribute__ ((deprecated)) {
+    void collection_setattrs(const coll_t& cid, map<string,bufferlist>& aset) {
       if (use_tbl) {
         __u32 op = OP_COLL_SETATTRS;
         ::encode(op, tbl);
@@ -1874,7 +1928,15 @@ public:
   virtual int fsck() {
     return -EOPNOTSUPP;
   }
-  virtual unsigned get_max_object_name_length() = 0;
+
+  /**
+   * Returns 0 if the hobject is valid, -error otherwise
+   *
+   * Errors:
+   * -ENAMETOOLONG: locator/namespace/name too large
+   */
+  virtual int validate_hobject_key(const hobject_t &obj) const = 0;
+
   virtual unsigned get_max_attr_name_length() = 0;
   virtual int mkfs() = 0;  // wipe
   virtual int mkjournal() = 0; // journal only
@@ -2161,8 +2223,7 @@ public:
    * @returns 0 on success, negative error code on failure
    */
   virtual int collection_getattr(const coll_t& cid, const char *name,
-	                         void *value, size_t size)
-    __attribute__ ((deprecated)) {
+	                         void *value, size_t size) {
     return -EOPNOTSUPP;
   }
 
@@ -2174,8 +2235,8 @@ public:
    * @param bl buffer to receive value
    * @returns 0 on success, negative error code on failure
    */
-  virtual int collection_getattr(const coll_t& cid, const char *name, bufferlist& bl)
-    __attribute__ ((deprecated)) {
+  virtual int collection_getattr(const coll_t& cid, const char *name,
+				 bufferlist& bl) {
     return -EOPNOTSUPP;
   }
 
@@ -2186,8 +2247,8 @@ public:
    * @param aset map of keys and buffers that contain the values
    * @returns 0 on success, negative error code on failure
    */
-  virtual int collection_getattrs(const coll_t& cid, map<string,bufferptr> &aset)
-    __attribute__ ((deprecated)) {
+  virtual int collection_getattrs(const coll_t& cid,
+				  map<string,bufferptr> &aset) {
     return -EOPNOTSUPP;
   }
 

@@ -14,18 +14,16 @@
 
 #define dout_subsys ceph_subsys_rbd_mirror
 #undef dout_prefix
-#define dout_prefix *_dout << "rbd-mirror: "
+#define dout_prefix *_dout << "rbd-mirror: PoolWatcher::" << __func__ << ": "
 
 using std::list;
-using std::map;
-using std::set;
 using std::string;
 using std::unique_ptr;
 using std::vector;
 
 using librados::Rados;
 using librados::IoCtx;
-using librbd::cls_client::dir_list;
+using librbd::cls_client::mirror_image_list;
 
 namespace rbd {
 namespace mirror {
@@ -36,7 +34,7 @@ PoolWatcher::PoolWatcher(RadosRef cluster, double interval_seconds,
   m_refresh_cond(cond),
   m_stopping(false),
   m_cluster(cluster),
-  m_timer(g_ceph_context, m_lock),
+  m_timer(g_ceph_context, m_lock, false),
   m_interval(interval_seconds)
 {
   m_timer.init();
@@ -49,7 +47,7 @@ PoolWatcher::~PoolWatcher()
   m_timer.shutdown();
 }
 
-const map<int64_t, set<string> >& PoolWatcher::get_images() const
+const PoolWatcher::PoolImageIds& PoolWatcher::get_images() const
 {
   assert(m_lock.is_locked());
   return m_images;
@@ -57,8 +55,8 @@ const map<int64_t, set<string> >& PoolWatcher::get_images() const
 
 void PoolWatcher::refresh_images(bool reschedule)
 {
-  dout(20) << __func__ << dendl;
-  map<int64_t, set<string> > images;
+  dout(20) << "enter" << dendl;
+  PoolImageIds images;
   list<pair<int64_t, string> > pools;
   int r = m_cluster->pool_list2(pools);
   if (r < 0) {
@@ -93,45 +91,39 @@ void PoolWatcher::refresh_images(bool reschedule)
       continue;
     }
 
-    // TODO: read mirrored images from mirroring settings object. For
-    // now just treat all images in a pool with mirroring enabled as mirrored
-    bool enabled;
-    r = librbd::mirror_is_enabled(ioctx, &enabled);
+    rbd_mirror_mode_t mirror_mode;
+    r = librbd::mirror_mode_get(ioctx, &mirror_mode);
     if (r < 0) {
       derr << "could not tell whether mirroring was enabled for " << pool_name
 	   << " : " << cpp_strerror(r) << dendl;
       continue;
     }
-    if (!enabled) {
+    if (mirror_mode == RBD_MIRROR_MODE_DISABLED) {
       dout(20) << "pool " << pool_name << " has mirroring disabled" << dendl;
       continue;
     }
 
-    set<string> image_ids;
-
-    // only format 2 images can be mirrored, so only check the format
-    // 2 rbd_directory structure
+    std::set<ImageIds> image_ids;
+    std::string last_read = "";
     int max_read = 1024;
-    string last_read = "";
     do {
-      map<string, string> pool_images;
-      r = dir_list(&ioctx, RBD_DIRECTORY,
-		   last_read, max_read, &pool_images);
+      std::map<std::string, std::string> mirror_images;
+      r =  mirror_image_list(&ioctx, last_read, max_read, &mirror_images);
       if (r < 0) {
-        derr << "error listing images in pool " << pool_name << ": "
-	     << cpp_strerror(r) << dendl;
+        derr << "error listing mirrored image directory: "
+             << cpp_strerror(r) << dendl;
         continue;
       }
-      for (auto& pair : pool_images) {
-	image_ids.insert(pair.second);
+      for (auto it = mirror_images.begin(); it != mirror_images.end(); ++it) {
+        image_ids.insert(ImageIds(it->first, it->second));
       }
-      if (!pool_images.empty()) {
-	last_read = pool_images.rbegin()->first;
+      if (!mirror_images.empty()) {
+        last_read = mirror_images.rbegin()->first;
       }
-      r = pool_images.size();
+      r = mirror_images.size();
     } while (r == max_read);
 
-    if (r > 0) {
+    if (!image_ids.empty()) {
       images[pool_id] = std::move(image_ids);
     }
   }

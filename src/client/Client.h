@@ -30,6 +30,7 @@ using std::set;
 using std::map;
 using std::fstream;
 
+#include "include/unordered_set.h"
 #include "include/unordered_map.h"
 
 #include "include/filepath.h"
@@ -56,7 +57,7 @@ using std::fstream;
 #include "InodeRef.h"
 #include "UserGroups.h"
 
-class MDSMap;
+class FSMap;
 class MonClient;
 
 class CephContext;
@@ -292,6 +293,10 @@ protected:
   map<mds_rank_t, MetaSession*> mds_sessions;  // mds -> push seq
   list<Cond*> waiting_for_mdsmap;
 
+  // FSMap, for when using mds_command
+  list<Cond*> waiting_for_fsmap;
+  FSMap *fsmap;
+
   // MDS command state
   std::map<ceph_tid_t, CommandOp> commands;
   void handle_command_reply(MCommandReply *m);
@@ -421,6 +426,8 @@ protected:
   // file handles, etc.
   interval_set<int> free_fd_set;  // unused fds
   ceph::unordered_map<int, Fh*> fd_map;
+  set<Fh*> ll_unclosed_fh_set;
+  ceph::unordered_set<dir_result_t*> opened_dirs;
   
   int get_fd() {
     int fd = free_fd_set.range_start();
@@ -534,7 +541,7 @@ protected:
   bool is_quota_bytes_exceeded(Inode *in, int64_t new_bytes);
   bool is_quota_bytes_approaching(Inode *in);
 
-  std::map<int64_t, int> pool_perms;
+  std::map<std::pair<int64_t,std::string>, int> pool_perms;
   list<Cond*> waiting_for_pool_perm;
   int check_pool_perm(Inode *in, int need);
 
@@ -568,6 +575,7 @@ protected:
 
   // messaging
   void handle_mds_map(class MMDSMap *m);
+  void handle_fs_map(class MFSMap *m);
   void handle_osd_map(class MOSDMap *m);
 
   void handle_lease(MClientLease *m);
@@ -830,6 +838,7 @@ private:
   size_t _vxattrcb_layout_stripe_count(Inode *in, char *val, size_t size);
   size_t _vxattrcb_layout_object_size(Inode *in, char *val, size_t size);
   size_t _vxattrcb_layout_pool(Inode *in, char *val, size_t size);
+  size_t _vxattrcb_layout_pool_namespace(Inode *in, char *val, size_t size);
   size_t _vxattrcb_dir_entries(Inode *in, char *val, size_t size);
   size_t _vxattrcb_dir_files(Inode *in, char *val, size_t size);
   size_t _vxattrcb_dir_subdirs(Inode *in, char *val, size_t size);
@@ -866,6 +875,9 @@ private:
   int _posix_acl_create(Inode *dir, mode_t *mode, bufferlist& xattrs_bl, int uid, int gid);
   int _posix_acl_chmod(Inode *in, mode_t mode, int uid, int gid);
   int _posix_acl_permission(Inode *in, uid_t uid, UserGroups& groups, unsigned want);
+
+  mds_rank_t _get_random_up_mds() const;
+
 public:
   int mount(const std::string &mount_root, bool require_mds=false);
   void unmount();
@@ -880,7 +892,7 @@ public:
   int statfs(const char *path, struct statvfs *stbuf);
 
   // crap
-  int chdir(const char *s);
+  int chdir(const char *s, std::string &new_cwd);
   void getcwd(std::string& cwd);
 
   // namespace ops
@@ -994,8 +1006,8 @@ public:
   int lazyio_synchronize(int fd, loff_t offset, size_t count);
 
   // expose file layout
-  int describe_layout(const char *path, ceph_file_layout* layout);
-  int fdescribe_layout(int fd, ceph_file_layout* layout);
+  int describe_layout(const char *path, file_layout_t* layout);
+  int fdescribe_layout(int fd, file_layout_t* layout);
   int get_file_stripe_address(int fd, loff_t offset, vector<entity_addr_t>& address);
   int get_file_extent_osds(int fd, loff_t off, loff_t *len, vector<int>& osds);
   int get_osd_addr(int osd, entity_addr_t& addr);
@@ -1064,11 +1076,11 @@ public:
 		struct stat *attr, Inode **out, Fh **fhp, int uid = -1,
 		int gid = -1);
   int ll_read_block(Inode *in, uint64_t blockid, char *buf,  uint64_t offset,
-		    uint64_t length, ceph_file_layout* layout);
+		    uint64_t length, file_layout_t* layout);
 
   int ll_write_block(Inode *in, uint64_t blockid,
 		     char* buf, uint64_t offset,
-		     uint64_t length, ceph_file_layout* layout,
+		     uint64_t length, file_layout_t* layout,
 		     uint64_t snapseq, uint32_t sync);
   int ll_commit_blocks(Inode *in, uint64_t offset, uint64_t length);
 
@@ -1077,7 +1089,7 @@ public:
   int ll_listxattr_chunks(Inode *in, char *names, size_t size,
 			  int *cookie, int *eol, int uid, int gid);
   uint32_t ll_stripe_unit(Inode *in);
-  int ll_file_layout(Inode *in, ceph_file_layout *layout);
+  int ll_file_layout(Inode *in, file_layout_t *layout);
   uint64_t ll_snap_seq(Inode *in);
 
   int ll_read(Fh *fh, loff_t off, loff_t len, bufferlist *bl);
@@ -1090,14 +1102,14 @@ public:
   int ll_getlk(Fh *fh, struct flock *fl, uint64_t owner);
   int ll_setlk(Fh *fh, struct flock *fl, uint64_t owner, int sleep);
   int ll_flock(Fh *fh, int cmd, uint64_t owner);
-  int ll_file_layout(Fh *fh, ceph_file_layout *layout);
+  int ll_file_layout(Fh *fh, file_layout_t *layout);
   void ll_interrupt(void *d);
   bool ll_handle_umask() {
     return acl_type != NO_ACL;
   }
 
   int ll_get_stripe_osd(struct Inode *in, uint64_t blockno,
-			ceph_file_layout* layout);
+			file_layout_t* layout);
   uint64_t ll_get_internal_offset(struct Inode *in, uint64_t blockno);
 
   int ll_num_osds(void);

@@ -246,7 +246,9 @@ void MDSDaemon::set_up_admin_socket()
 				     "show slowest recent ops");
   assert(r == 0);
   r = admin_socket->register_command("scrub_path",
-                                     "scrub_path name=path,type=CephString",
+				     "scrub_path name=path,type=CephString "
+				     "name=scrubops,type=CephChoices,"
+				     "strings=force|recursive|repair,n=N,req=false",
                                      asok_hook,
                                      "scrub an inode and output results");
   assert(r == 0);
@@ -335,11 +337,19 @@ void MDSDaemon::clean_up_admin_socket()
   admin_socket->unregister_command("dump_blocked_ops");
   admin_socket->unregister_command("dump_historic_ops");
   admin_socket->unregister_command("scrub_path");
+  admin_socket->unregister_command("tag path");
   admin_socket->unregister_command("flush_path");
+  admin_socket->unregister_command("export dir");
+  admin_socket->unregister_command("dump cache");
   admin_socket->unregister_command("session evict");
+  admin_socket->unregister_command("osdmap barrier");
   admin_socket->unregister_command("session ls");
   admin_socket->unregister_command("flush journal");
   admin_socket->unregister_command("force_readonly");
+  admin_socket->unregister_command("get subtrees");
+  admin_socket->unregister_command("dirfrag split");
+  admin_socket->unregister_command("dirfrag merge");
+  admin_socket->unregister_command("dirfrag ls");
   delete asok_hook;
   asok_hook = NULL;
 }
@@ -472,8 +482,21 @@ int MDSDaemon::init(MDSMap::DaemonState wanted_state)
     mds_lock.Unlock();
     return r;
   }
+
+  int rotating_auth_attempts = 0;
+  const int max_rotating_auth_attempts = 10;
+
   while (monc->wait_auth_rotating(30.0) < 0) {
-    derr << "unable to obtain rotating service keys; retrying" << dendl;
+    if (++rotating_auth_attempts <= max_rotating_auth_attempts) {
+      derr << "unable to obtain rotating service keys; retrying" << dendl;
+      continue;
+    }
+    derr << "ERROR: failed to refresh rotating keys, "
+         << "maximum retry time reached." << dendl;
+    mds_lock.Lock();
+    suicide();
+    mds_lock.Unlock();
+    return -ETIMEDOUT;
   }
 
   objecter->start();
@@ -557,7 +580,9 @@ int MDSDaemon::init(MDSMap::DaemonState wanted_state)
   if (wanted_state == MDSMap::STATE_NULL) {
     wanted_state = MDSMap::STATE_BOOT;
   }
-  beacon.init(mdsmap, wanted_state, standby_for_rank, standby_for_name);
+  beacon.init(mdsmap, wanted_state,
+    standby_for_rank, standby_for_name,
+    fs_cluster_id_t(g_conf->mds_standby_for_fscid));
   messenger->set_myname(entity_name_t::MDS(MDS_RANK_NONE));
 
   // schedule tick
@@ -684,6 +709,10 @@ COMMAND("session ls " \
 COMMAND("session evict " \
 	"name=filters,type=CephString,n=N,req=false",
 	"Evict client session(s)", "mds", "rw", "cli,rest")
+COMMAND("damage ls",
+	"List detected metadata damage", "mds", "r", "cli,rest")
+COMMAND("damage rm name=damage_id,type=CephInt",
+	"Remove a damage table entry", "mds", "rw", "cli,rest")
 COMMAND("heap " \
 	"name=heapcmd,type=CephChoices,strings=dump|start_profiler|stop_profiler|release|stats", \
 	"show heap usage info (available only if compiled with tcmalloc)", \
@@ -793,6 +822,7 @@ int MDSDaemon::_handle_command(
     if (mds_rank == NULL) {
       r = -EINVAL;
       ss << "MDS not active";
+      goto out;
     }
     // FIXME harmonize `session kill` with admin socket session evict
     int64_t session_id = 0;
@@ -971,7 +1001,7 @@ void MDSDaemon::handle_mds_map(MMDSMap *m)
       // here!
       if (g_conf->mds_enforce_unique_name) {
         if (mds_gid_t existing = mdsmap->find_mds_gid_by_name(name)) {
-          MDSMap::mds_info_t& i = mdsmap->get_info_gid(existing);
+          const MDSMap::mds_info_t& i = mdsmap->get_info_gid(existing);
           if (i.global_id > monc->get_global_id()) {
             dout(1) << "handle_mds_map i (" << addr
                     << ") dne in the mdsmap, new instance has larger gid " << i.global_id
@@ -980,6 +1010,7 @@ void MDSDaemon::handle_mds_map(MMDSMap *m)
             // has taken our ID, we don't want to keep restarting and
             // fighting them for the ID.
             suicide();
+            m->put();
             return;
           }
         }
@@ -1098,8 +1129,6 @@ void MDSDaemon::suicide()
   }
   beacon.shutdown();
 
-  timer.shutdown();
-
   if (mds_rank) {
     mds_rank->shutdown();
   } else {
@@ -1107,6 +1136,7 @@ void MDSDaemon::suicide()
     if (objecter->initialized.read()) {
       objecter->shutdown();
     }
+    timer.shutdown();
 
     monc->shutdown();
     messenger->shutdown();
@@ -1237,6 +1267,7 @@ bool MDSDaemon::handle_core_message(Message *m)
     if (mds_rank) {
       mds_rank->handle_osd_map();
     }
+    m->put();
     break;
 
   default:

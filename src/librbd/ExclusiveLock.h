@@ -32,7 +32,7 @@ public:
   bool is_lock_owner() const;
   bool accept_requests() const;
 
-  void init(Context *on_init);
+  void init(uint64_t features, Context *on_init);
   void shut_down(Context *on_shutdown);
 
   void try_lock(Context *on_tried_lock);
@@ -67,7 +67,7 @@ private:
    *    |
    *    |
    *    v
-   * SHUTTING_DOWN ---> SHUTDOWN ---> <finish>
+   * PRE_SHUTTING_DOWN ---> SHUTTING_DOWN ---> SHUTDOWN ---> <finish>
    */
   enum State {
     STATE_UNINITIALIZED,
@@ -79,6 +79,7 @@ private:
     STATE_WAITING_FOR_PEER,
     STATE_PRE_RELEASING,
     STATE_RELEASING,
+    STATE_PRE_SHUTTING_DOWN,
     STATE_SHUTTING_DOWN,
     STATE_SHUTDOWN,
   };
@@ -151,6 +152,8 @@ private:
 
   void send_shutdown();
   void send_shutdown_release();
+  void handle_shutdown_releasing(int r);
+  void handle_shutdown_released(int r);
   void handle_shutdown(int r);
   void complete_shutdown(int r);
 };

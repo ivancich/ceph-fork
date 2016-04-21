@@ -23,34 +23,49 @@
 namespace rbd {
 namespace mirror {
 
+struct Threads;
+class ReplayerAdminSocketHook;
+
 /**
  * Controls mirroring for a single remote cluster.
  */
 class Replayer {
 public:
-  Replayer(RadosRef local_cluster, const peer_t &peer);
+  Replayer(Threads *threads, RadosRef local_cluster, const peer_t &peer,
+	   const std::vector<const char*> &args);
   ~Replayer();
   Replayer(const Replayer&) = delete;
   Replayer& operator=(const Replayer&) = delete;
 
   int init();
   void run();
-  void shutdown();
+
+  void print_status(Formatter *f, stringstream *ss);
+  void flush();
 
 private:
-  void set_sources(const std::map<int64_t, std::set<std::string> > &images);
+  typedef PoolWatcher::ImageIds ImageIds;
+  typedef PoolWatcher::PoolImageIds PoolImageIds;
 
+  void set_sources(const PoolImageIds &pool_image_ids);
+
+  void start_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer);
+  bool stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer);
+
+  Threads *m_threads;
   Mutex m_lock;
   Cond m_cond;
   atomic_t m_stopping;
 
   peer_t m_peer;
+  std::vector<const char*> m_args;
   RadosRef m_local, m_remote;
   std::unique_ptr<PoolWatcher> m_pool_watcher;
   // index by pool so it's easy to tell what is affected
   // when a pool's configuration changes
   std::map<int64_t, std::map<std::string,
-			     std::unique_ptr<ImageReplayer> > > m_images;
+			     std::unique_ptr<ImageReplayer<> > > > m_images;
+  ReplayerAdminSocketHook *m_asok_hook;
 
   class ReplayerThread : public Thread {
     Replayer *m_replayer;

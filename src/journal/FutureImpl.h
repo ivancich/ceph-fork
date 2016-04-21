@@ -14,7 +14,6 @@
 #include "include/assert.h"
 
 class Context;
-class Finisher;
 
 namespace journal {
 
@@ -31,8 +30,7 @@ public:
   };
   typedef boost::intrusive_ptr<FlushHandler> FlushHandlerPtr;
 
-  FutureImpl(Finisher &finisher, uint64_t tag_tid, uint64_t entry_tid,
-             uint64_t commit_tid);
+  FutureImpl(uint64_t tag_tid, uint64_t entry_tid, uint64_t commit_tid);
 
   void init(const FutureImplPtr &prev_future);
 
@@ -95,7 +93,6 @@ private:
     virtual void finish(int r) {}
   };
 
-  Finisher &m_finisher;
   uint64_t m_tag_tid;
   uint64_t m_entry_tid;
   uint64_t m_commit_tid;

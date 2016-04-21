@@ -58,17 +58,6 @@ using std::string;
 
 const char *CEPH_CONF_FILE_DEFAULT = "$data_dir/config, /etc/ceph/$cluster.conf, ~/.ceph/$cluster.conf, $cluster.conf";
 
-// file layouts
-struct ceph_file_layout g_default_file_layout = {
- fl_stripe_unit: init_le32(1<<22),
- fl_stripe_count: init_le32(1),
- fl_object_size: init_le32(1<<22),
- fl_cas_hash: init_le32(0),
- fl_object_stripe_unit: init_le32(0),
- fl_unused: init_le32(-1),
- fl_pg_pool : init_le32(-1),
-};
-
 #define _STR(x) #x
 #define STRINGIFY(x) _STR(x)
 
@@ -121,7 +110,7 @@ int ceph_resolve_file_search(const std::string& filename_list,
 }
 
 md_config_t::md_config_t()
-  : cluster("ceph"),
+  : cluster(""),
 
 #define OPTION_OPT_INT(name, def_val) name(def_val),
 #define OPTION_OPT_LONGLONG(name, def_val) name((1LL) * def_val),
@@ -199,13 +188,22 @@ void md_config_t::remove_observer(md_config_obs_t* observer_)
 }
 
 int md_config_t::parse_config_files(const char *conf_files,
-				    std::deque<std::string> *parse_errors,
 				    std::ostream *warnings,
 				    int flags)
 {
   Mutex::Locker l(lock);
+
   if (internal_safe_to_start_threads)
     return -ENOSYS;
+
+  if (!cluster.size() && !conf_files) {
+    /*
+     * set the cluster name to 'ceph' when neither cluster name nor
+     * configuration file are specified.
+     */
+    cluster = "ceph";
+  }
+
   if (!conf_files) {
     const char *c = getenv("CEPH_CONF");
     if (c) {
@@ -220,6 +218,7 @@ int md_config_t::parse_config_files(const char *conf_files,
 
   std::list<std::string> cfl;
   get_str_list(conf_files, cfl);
+
   auto p = cfl.begin();
   while (p != cfl.end()) {
     // expand $data_dir?
@@ -236,11 +235,10 @@ int md_config_t::parse_config_files(const char *conf_files,
       ++p;
     }
   }
-  return parse_config_files_impl(cfl, parse_errors, warnings);
+  return parse_config_files_impl(cfl, warnings);
 }
 
 int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_files,
-					 std::deque<std::string> *parse_errors,
 					 std::ostream *warnings)
 {
   assert(lock.is_locked());
@@ -251,7 +249,7 @@ int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_file
     cf.clear();
     string fn = *c;
     expand_meta(fn, warnings);
-    int ret = cf.parse_file(fn.c_str(), parse_errors, warnings);
+    int ret = cf.parse_file(fn.c_str(), &parse_errors, warnings);
     if (ret == 0)
       break;
     else if (ret != -ENOENT)
@@ -259,6 +257,26 @@ int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_file
   }
   if (c == conf_files.end())
     return -EINVAL;
+
+  if (cluster.size() == 0) {
+    /*
+     * If cluster name is not set yet, use the prefix of the
+     * basename of configuration file as cluster name.
+     */
+    const char *fn = c->c_str();
+    std::string name(basename(fn));
+    int pos = name.find(".conf");
+    if (pos < 0) {
+      /*
+       * If the configuration file does not follow $cluster.conf
+       * convention, we do the last try and assign the cluster to
+       * 'ceph'.
+       */
+      cluster = "ceph";
+    } else {
+      cluster = name.substr(0, pos);      
+    }
+  }
 
   std::vector <std::string> my_sections;
   _get_my_sections(my_sections);
@@ -302,15 +320,14 @@ int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_file
   }
   if (!old_style_section_names.empty()) {
     ostringstream oss;
-    oss << "ERROR! old-style section name(s) found: ";
+    cerr << "ERROR! old-style section name(s) found: ";
     string sep;
     for (std::deque < std::string >::const_iterator os = old_style_section_names.begin();
 	 os != old_style_section_names.end(); ++os) {
-      oss << sep << *os;
+      cerr << sep << *os;
       sep = ", ";
     }
-    oss << ". Please use the new style section names that include a period.";
-    parse_errors->push_back(oss.str());
+    cerr << ". Please use the new style section names that include a period.";
   }
   return 0;
 }
@@ -580,7 +597,11 @@ int md_config_t::parse_injectargs(std::vector<const char*>& args,
 void md_config_t::apply_changes(std::ostream *oss)
 {
   Mutex::Locker l(lock);
-  _apply_changes(oss);
+  /*
+   * apply changes until the cluster name is assigned
+   */
+  if (cluster.size())
+    _apply_changes(oss);
 }
 
 bool md_config_t::_internal_field(const string& s)
@@ -1204,4 +1225,9 @@ void md_config_t::diff(
     if (strcmp(local_val, other_val))
       diff->insert(make_pair(opt->name, make_pair(local_val, other_val)));
   }
+}
+
+void md_config_t::complain_about_parse_errors(CephContext *cct)
+{
+  ::complain_about_parse_errors(cct, &parse_errors);
 }

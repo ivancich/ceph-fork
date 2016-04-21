@@ -34,22 +34,45 @@
 #ifndef SPDK_PCI_H
 #define SPDK_PCI_H
 
-#define spdk_pci_device_get_domain(dev)	(dev->domain)
-#define spdk_pci_device_get_bus(dev)	(dev->bus)
-#define spdk_pci_device_get_dev(dev)	(dev->dev)
-#define spdk_pci_device_get_func(dev)	(dev->func)
-#define spdk_pci_device_get_vendor_id(dev) (dev->vendor_id)
-#define spdk_pci_device_get_device_id(dev) (dev->device_id)
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#define PCI_CFG_SIZE		256
-#define PCI_EXT_CAP_ID_SN	0x03
-#define PCI_UIO_DRIVER		"uio_pci_generic"
+#include <inttypes.h>
+#include <stddef.h>
 
-int pci_device_get_serial_number(struct pci_device *dev, char *sn, int len);
-int pci_device_has_non_uio_driver(struct pci_device *dev);
-int pci_device_unbind_kernel_driver(struct pci_device *dev);
-int pci_device_bind_uio_driver(struct pci_device *dev, char *driver_name);
-int pci_device_switch_to_uio_driver(struct pci_device *pci_dev);
-int pci_device_claim(struct pci_device *dev);
+struct spdk_pci_device;
+
+int spdk_pci_enumerate(int (*enum_cb)(void *enum_ctx, struct spdk_pci_device *pci_dev),
+		       void *enum_ctx);
+
+uint16_t spdk_pci_device_get_domain(struct spdk_pci_device *dev);
+uint8_t spdk_pci_device_get_bus(struct spdk_pci_device *dev);
+uint8_t spdk_pci_device_get_dev(struct spdk_pci_device *dev);
+uint8_t spdk_pci_device_get_func(struct spdk_pci_device *dev);
+uint16_t spdk_pci_device_get_vendor_id(struct spdk_pci_device *dev);
+uint16_t spdk_pci_device_get_device_id(struct spdk_pci_device *dev);
+uint16_t spdk_pci_device_get_subvendor_id(struct spdk_pci_device *dev);
+uint16_t spdk_pci_device_get_subdevice_id(struct spdk_pci_device *dev);
+uint32_t spdk_pci_device_get_class(struct spdk_pci_device *dev);
+const char *spdk_pci_device_get_device_name(struct spdk_pci_device *dev);
+
+int spdk_pci_device_cfg_read8(struct spdk_pci_device *dev, uint8_t *value, uint32_t offset);
+int spdk_pci_device_cfg_write8(struct spdk_pci_device *dev, uint8_t value, uint32_t offset);
+int spdk_pci_device_cfg_read16(struct spdk_pci_device *dev, uint16_t *value, uint32_t offset);
+int spdk_pci_device_cfg_write16(struct spdk_pci_device *dev, uint16_t value, uint32_t offset);
+int spdk_pci_device_cfg_read32(struct spdk_pci_device *dev, uint32_t *value, uint32_t offset);
+int spdk_pci_device_cfg_write32(struct spdk_pci_device *dev, uint32_t value, uint32_t offset);
+
+int spdk_pci_device_get_serial_number(struct spdk_pci_device *dev, char *sn, size_t len);
+int spdk_pci_device_has_non_uio_driver(struct spdk_pci_device *dev);
+int spdk_pci_device_unbind_kernel_driver(struct spdk_pci_device *dev);
+int spdk_pci_device_bind_uio_driver(struct spdk_pci_device *dev);
+int spdk_pci_device_switch_to_uio_driver(struct spdk_pci_device *pci_dev);
+int spdk_pci_device_claim(struct spdk_pci_device *dev);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

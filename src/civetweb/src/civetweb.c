@@ -3994,7 +3994,6 @@ static void parse_http_headers(char **buf, struct mg_request_info *ri)
     }
 }
 
-#ifndef RGW
 static int is_valid_http_method(const char *method)
 {
     return !strcmp(method, "GET") || !strcmp(method, "POST") ||
@@ -4004,7 +4003,6 @@ static int is_valid_http_method(const char *method)
            || !strcmp(method, "MKCOL")
            ;
 }
-#endif
 
 /* Parse HTTP request, fill in mg_request_info structure.
    This function modifies the buffer by NUL-terminating

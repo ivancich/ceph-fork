@@ -28,28 +28,43 @@
 #include <sstream>
 #include <vector>
 
-
 const std::string BENCH_LASTRUN_METADATA = "benchmark_last_metadata";
 const std::string BENCH_PREFIX = "benchmark_data";
+static char cached_hostname[30] = {0};
+int cached_pid = 0;
 
 static std::string generate_object_prefix(int pid = 0) {
-  char hostname[30];
-  gethostname(hostname, sizeof(hostname)-1);
-  hostname[sizeof(hostname)-1] = 0;
+  if (cached_hostname[0] == 0) {
+    gethostname(cached_hostname, sizeof(cached_hostname)-1);
+    cached_hostname[sizeof(cached_hostname)-1] = 0;
+  }
 
-  if (!pid)
-    pid = getpid();
+  if (!cached_pid) {
+    if (!pid)
+      pid = getpid();
+    cached_pid = pid;
+  }
 
   std::ostringstream oss;
-  oss << BENCH_PREFIX << "_" << hostname << "_" << pid;
+  oss << BENCH_PREFIX << "_" << cached_hostname << "_" << cached_pid;
   return oss.str();
 }
 
 static std::string generate_object_name(int objnum, int pid = 0)
 {
-  std::ostringstream oss;
-  oss << generate_object_prefix(pid) << "_object" << objnum;
-  return oss.str();
+  if (cached_hostname[0] == 0) {
+    gethostname(cached_hostname, sizeof(cached_hostname)-1);
+    cached_hostname[sizeof(cached_hostname)-1] = 0;
+  }
+  if (!cached_pid) {
+    if (!pid)
+      pid = getpid();
+    cached_pid = pid;
+  }
+
+  char name[1024];
+  size_t l = sprintf(&name[0], "%s_%s_%d_object%d", BENCH_PREFIX.c_str(), cached_hostname, cached_pid, objnum);
+  return string(&name[0], l);
 }
 
 static void sanitize_object_contents (bench_data *data, size_t length) {
@@ -508,7 +523,7 @@ int ObjBencher::write_bench(int secondsToRun,
     ++data.started;
     ++data.in_flight;
     if (max_objects &&
-	data.started > (int)((data.object_size * max_objects + data.op_size - 1) /
+	data.started >= (int)((data.object_size * max_objects + data.op_size - 1) /
 			     data.op_size))
       break;
   }
@@ -553,7 +568,7 @@ int ObjBencher::write_bench(int secondsToRun,
        << "Total writes made:      " << data.finished << std::endl
        << "Write size:             " << data.op_size << std::endl
        << "Object size:            " << data.object_size << std::endl      
-       << "Bandwidth (MB/sec):     " << setprecision(3) << bandwidth << std::endl
+       << "Bandwidth (MB/sec):     " << setprecision(6) << bandwidth << std::endl
        << "Stddev Bandwidth:       " << vec_stddev(data.history.bandwidth) << std::endl
        << "Max bandwidth (MB/sec): " << data.idata.max_bandwidth << std::endl
        << "Min bandwidth (MB/sec): " << data.idata.min_bandwidth << std::endl
@@ -802,7 +817,7 @@ int ObjBencher::seq_read_bench(int seconds_to_run, int num_objects, int concurre
        << "Total reads made:     " << data.finished << std::endl
        << "Read size:            " << data.op_size << std::endl
        << "Object size:          " << data.object_size << std::endl
-       << "Bandwidth (MB/sec):   " << setprecision(3) << bandwidth << std::endl
+       << "Bandwidth (MB/sec):   " << setprecision(6) << bandwidth << std::endl
        << "Average IOPS          " << (int)(data.finished/runtime) << std::endl
        << "Stddev IOPS:          " << vec_stddev(data.history.iops) << std::endl
        << "Max IOPS:             " << data.idata.max_iops << std::endl
@@ -827,7 +842,7 @@ int ObjBencher::seq_read_bench(int seconds_to_run, int num_objects, int concurre
 
   completions_done();
 
-  return 0;
+  return (errors > 0 ? -EIO : 0);
 
  ERR:
   lock.Lock();
@@ -1035,7 +1050,7 @@ int ObjBencher::rand_read_bench(int seconds_to_run, int num_objects, int concurr
        << "Total reads made:     " << data.finished << std::endl
        << "Read size:            " << data.op_size << std::endl
        << "Object size:          " << data.object_size << std::endl
-       << "Bandwidth (MB/sec):   " << setprecision(3) << bandwidth << std::endl
+       << "Bandwidth (MB/sec):   " << setprecision(6) << bandwidth << std::endl
        << "Average IOPS:         " << (int)(data.finished/runtime) << std::endl
        << "Stddev IOPS:          " << vec_stddev(data.history.iops) << std::endl
        << "Max IOPS:             " << data.idata.max_iops << std::endl
@@ -1059,7 +1074,7 @@ int ObjBencher::rand_read_bench(int seconds_to_run, int num_objects, int concurr
   }
   completions_done();
 
-  return 0;
+  return (errors > 0 ? -EIO : 0);
 
  ERR:
   lock.Lock();
@@ -1411,5 +1426,5 @@ int ObjBencher::clean_up_slow(const std::string& prefix, int concurrentios) {
   lock.Lock();
   data.done = 1;
   lock.Unlock();
-  return -5;
+  return -EIO;
 }

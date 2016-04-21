@@ -85,7 +85,7 @@ void usage()
        << "                    check whether a journal is allowed\n"
        << "  --check-needs-journal\n"
        << "                    check whether a journal is required\n"
-       << "  --debug_osd <N>   set debug level (e.g. 10)"
+       << "  --debug_osd <N>   set debug level (e.g. 10)\n"
        << "  --get-device-fsid PATH\n"
        << "                    get OSD fsid for the given block device\n"
        << std::endl;
@@ -189,7 +189,8 @@ int main(int argc, const char **argv)
   }
   if (get_device_fsid) {
     uuid_d uuid;
-    int r = ObjectStore::probe_block_device_fsid(device_path, &uuid);
+    int r = ObjectStore::probe_block_device_fsid(g_ceph_context, device_path,
+						 &uuid);
     if (r < 0) {
       cerr << "failed to get device fsid for " << device_path
 	   << ": " << cpp_strerror(r) << std::endl;
@@ -257,7 +258,8 @@ int main(int argc, const char **argv)
   ObjectStore *store = ObjectStore::create(g_ceph_context,
 					   store_type,
 					   g_conf->osd_data,
-					   g_conf->osd_journal);
+					   g_conf->osd_journal,
+                                           g_conf->osd_os_flags);
   if (!store) {
     derr << "unable to create object store" << dendl;
     return -ENODEV;
@@ -461,6 +463,8 @@ int main(int argc, const char **argv)
   Messenger *ms_objecter = Messenger::create(g_ceph_context, g_conf->ms_type,
 					     entity_name_t::OSD(whoami), "ms_objecter",
 					     getpid());
+  if (!ms_public || !ms_cluster || !ms_hbclient || !ms_hb_back_server || !ms_hb_front_server || !ms_objecter)
+    exit(1);
   ms_cluster->set_cluster_protocol(CEPH_OSD_PROTOCOL);
   ms_hbclient->set_cluster_protocol(CEPH_OSD_PROTOCOL);
   ms_hb_back_server->set_cluster_protocol(CEPH_OSD_PROTOCOL);
@@ -491,13 +495,7 @@ int main(int argc, const char **argv)
   uint64_t osd_required =
     CEPH_FEATURE_UID |
     CEPH_FEATURE_PGID64 |
-    CEPH_FEATURE_OSDENC |
-    CEPH_FEATURE_OSD_SNAPMAPPER |
-    CEPH_FEATURE_INDEP_PG_MAP |
-    CEPH_FEATURE_OSD_PACKED_RECOVERY |
-    CEPH_FEATURE_RECOVERY_RESERVATION |
-    CEPH_FEATURE_BACKFILL_RESERVATION |
-    CEPH_FEATURE_CHUNKY_SCRUB;
+    CEPH_FEATURE_OSDENC;
 
   ms_public->set_default_policy(Messenger::Policy::stateless_server(supported, 0));
   ms_public->set_policy_throttlers(entity_name_t::TYPE_CLIENT,

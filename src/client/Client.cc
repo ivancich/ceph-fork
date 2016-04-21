@@ -67,6 +67,7 @@ using namespace std;
 #include "messages/MGenericMessage.h"
 
 #include "messages/MMDSMap.h"
+#include "messages/MFSMap.h"
 
 #include "mon/MonClient.h"
 
@@ -128,6 +129,8 @@ using namespace std;
 #define O_DIRECT 0x0
 #endif
 
+#define DEBUG_GETATTR_CAPS (CEPH_CAP_XATTR_SHARED)
+
 void client_flush_set_callback(void *p, ObjectCacher::ObjectSet *oset)
 {
   Client *client = static_cast<Client*>(p);
@@ -171,8 +174,8 @@ bool Client::CommandHook::call(std::string command, cmdmap_t& cmdmap,
 // -------------
 
 dir_result_t::dir_result_t(Inode *in)
-  : inode(in), offset(0), this_offset(2), next_offset(2),
-    release_count(0), ordered_count(0), start_shared_gen(0),
+  : inode(in), owner_uid(-1), owner_gid(-1), offset(0), this_offset(2),
+    next_offset(2), release_count(0), ordered_count(0), start_shared_gen(0),
     buffer(0) {
 }
 
@@ -253,7 +256,7 @@ Client::Client(Messenger *m, MonClient *mc)
     objecter_finisher(m->cct),
     tick_event(NULL),
     monclient(mc), messenger(m), whoami(m->get_myname().num()),
-    cap_epoch_barrier(0),
+    cap_epoch_barrier(0), fsmap(nullptr),
     last_tid(0), oldest_tid(0), last_flush_tid(1),
     initialized(false), authenticated(false),
     mounted(false), unmounting(false),
@@ -321,6 +324,7 @@ Client::~Client()
   delete filer;
   delete objecter;
   delete mdsmap;
+  delete fsmap;
 
   delete logger;
 }
@@ -336,6 +340,12 @@ void Client::tear_down_cache()
     _release_fh(fh);
   }
   fd_map.clear();
+
+  while (!opened_dirs.empty()) {
+    dir_result_t *dirp = *opened_dirs.begin();
+    ldout(cct, 1) << "tear_down_cache forcing close of dir " << dirp << " ino " << dirp->inode->ino << dendl;
+    _closedir(dirp);
+  }
 
   // caps!
   // *** FIXME ***
@@ -362,7 +372,10 @@ void Client::tear_down_cache()
 
 inodeno_t Client::get_root_ino()
 {
-  return root->ino;
+  if (use_faked_inos())
+    return root->faked_ino;
+  else
+    return root->ino;
 }
 
 Inode *Client::get_root()
@@ -487,7 +500,17 @@ int Client::init()
   objecter->start();
 
   monclient->set_want_keys(CEPH_ENTITY_TYPE_MDS | CEPH_ENTITY_TYPE_OSD);
-  monclient->sub_want("mdsmap", 0, 0);
+
+  std::string want = "mdsmap";
+  const auto &want_ns = cct->_conf->client_mds_namespace;
+  if (want_ns != FS_CLUSTER_ID_NONE) {
+    std::ostringstream oss;
+    oss << want << "." << want_ns;
+    want = oss.str();
+  }
+  ldout(cct, 10) << "Subscribing to map '" << want << "'" << dendl;
+
+  monclient->sub_want(want, 0, 0);
   monclient->renew_subs();
 
   // logger
@@ -1231,6 +1254,18 @@ Inode* Client::insert_trace(MetaRequest *request, MetaSession *session)
   Inode *in = 0;
   if (reply->head.is_target) {
     ist.decode(p, features);
+    if (cct->_conf->client_debug_getattr_caps) {
+      int op = request->get_op();
+      unsigned wanted = 0;
+      if (op == CEPH_MDS_OP_GETATTR || op == CEPH_MDS_OP_LOOKUP)
+	wanted = request->head.args.getattr.mask;
+      else if (op == CEPH_MDS_OP_OPEN || op == CEPH_MDS_OP_OPEN)
+	wanted = request->head.args.open.mask;
+
+      if ((wanted & CEPH_CAP_XATTR_SHARED) &&
+	  !(ist.xattr_version > 0 && ist.xattrbl.length() > 0))
+	  assert(0 == "MDS reply does not contain xattrs");
+    }
 
     in = add_update_inode(&ist, request->sent_stamp, session);
   }
@@ -1389,7 +1424,7 @@ mds_rank_t Client::choose_target_mds(MetaRequest *req)
 
 random_mds:
   if (mds < 0) {
-    mds = mdsmap->get_random_up_mds();
+    mds = _get_random_up_mds();
     ldout(cct, 10) << "did not get mds through better means, so chose random mds " << mds << dendl;
   }
 
@@ -1596,7 +1631,7 @@ int Client::make_request(MetaRequest *request,
 
 	if (!mdsmap->is_active_or_stopping(mds)) {
 	  ldout(cct, 10) << "hmm, still have no address for mds." << mds << ", trying a random mds" << dendl;
-	  request->resend_mds = mdsmap->get_random_up_mds();
+	  request->resend_mds = _get_random_up_mds();
 	  continue;
 	}
       }
@@ -2287,7 +2322,7 @@ void Client::_handle_full_flag(int64_t pool)
   {
     Inode *inode = i->second;
     if (inode->oset.dirty_or_tx
-        && (pool == -1 || inode->layout.fl_pg_pool == pool)) {
+        && (pool == -1 || inode->layout.pool_id == pool)) {
       ldout(cct, 4) << __func__ << ": FULL: inode 0x" << std::hex << i->first << std::dec
         << " has dirty objects, purging and setting ENOSPC" << dendl;
       objectcacher->purge_set(&inode->oset);
@@ -2352,6 +2387,9 @@ bool Client::ms_dispatch(Message *m)
   case CEPH_MSG_MDS_MAP:
     handle_mds_map(static_cast<MMDSMap*>(m));
     break;
+  case CEPH_MSG_FS_MAP:
+    handle_fs_map(static_cast<MFSMap*>(m));
+    break;
   case CEPH_MSG_CLIENT_SESSION:
     handle_client_session(static_cast<MClientSession*>(m));
     break;
@@ -2410,6 +2448,17 @@ bool Client::ms_dispatch(Message *m)
   return true;
 }
 
+void Client::handle_fs_map(MFSMap *m)
+{
+  delete fsmap;
+  fsmap = new FSMap;
+  *fsmap = m->get_fsmap();
+  m->put();
+
+  signal_cond_list(waiting_for_fsmap);
+
+  monclient->sub_got("fsmap", fsmap->get_epoch());
+}
 
 void Client::handle_mds_map(MMDSMap* m)
 {
@@ -3113,15 +3162,15 @@ void Client::send_cap(Inode *in, MetaSession *session, Cap *cap,
     m->head.xattr_version = in->xattr_version;
   }
   
-  m->head.layout = in->layout;
-  m->head.size = in->size;
-  m->head.max_size = in->max_size;
-  m->head.truncate_seq = in->truncate_seq;
-  m->head.truncate_size = in->truncate_size;
-  in->mtime.encode_timeval(&m->head.mtime);
-  in->atime.encode_timeval(&m->head.atime);
-  in->ctime.encode_timeval(&m->head.ctime);
-  m->head.time_warp_seq = in->time_warp_seq;
+  m->layout = in->layout;
+  m->size = in->size;
+  m->max_size = in->max_size;
+  m->truncate_seq = in->truncate_seq;
+  m->truncate_size = in->truncate_size;
+  m->mtime = in->mtime;
+  m->atime = in->atime;
+  m->ctime = in->ctime;
+  m->time_warp_seq = in->time_warp_seq;
     
   if (flush & CEPH_CAP_FILE_WR) {
     m->inline_version = in->inline_version;
@@ -3395,15 +3444,15 @@ void Client::flush_snaps(Inode *in, bool all_again, CapSnap *again)
     m->head.gid = capsnap->gid;
     m->head.mode = capsnap->mode;
 
-    m->head.size = capsnap->size;
+    m->size = capsnap->size;
 
     m->head.xattr_version = capsnap->xattr_version;
     ::encode(capsnap->xattrs, m->xattrbl);
 
-    capsnap->ctime.encode_timeval(&m->head.ctime);
-    capsnap->mtime.encode_timeval(&m->head.mtime);
-    capsnap->atime.encode_timeval(&m->head.atime);
-    m->head.time_warp_seq = capsnap->time_warp_seq;
+    m->ctime = capsnap->ctime;
+    m->mtime = capsnap->mtime;
+    m->atime = capsnap->atime;
+    m->time_warp_seq = capsnap->time_warp_seq;
 
     if (capsnap->dirty & CEPH_CAP_FILE_WR) {
       m->inline_version = in->inline_version;
@@ -3542,7 +3591,7 @@ bool Client::_flush(Inode *in, Context *onfinish)
     return true;
   }
 
-  if (objecter->osdmap_pool_full(in->layout.fl_pg_pool)) {
+  if (objecter->osdmap_pool_full(in->layout.pool_id)) {
     ldout(cct, 1) << __func__ << ": FULL, purging for ENOSPC" << dendl;
     objectcacher->purge_set(&in->oset);
     if (onfinish) {
@@ -4176,7 +4225,7 @@ bool Client::adjust_realm_parent(SnapRealm *realm, inodeno_t parent)
 static bool has_new_snaps(const SnapContext& old_snapc,
 			  const SnapContext& new_snapc)
 {
-	return !new_snapc.snaps.empty() && new_snapc.snaps[0] > old_snapc.seq;
+  return !new_snapc.snaps.empty() && new_snapc.snaps[0] > old_snapc.seq;
 }
 
 
@@ -4281,9 +4330,8 @@ void Client::handle_snap(MClientSnap *m)
 
   got_mds_push(session);
 
-  list<Inode*> to_move;
+  map<Inode*, SnapContext> to_move;
   SnapRealm *realm = 0;
-  SnapContext old_snapc;
 
   if (m->head.op == CEPH_SNAP_OP_SPLIT) {
     assert(m->head.split);
@@ -4295,7 +4343,6 @@ void Client::handle_snap(MClientSnap *m)
     // flush, then move, ino's.
     realm = get_snap_realm(info.ino());
     ldout(cct, 10) << " splitting off " << *realm << dendl;
-    old_snapc = realm->get_snap_context();
     for (vector<inodeno_t>::iterator p = m->split_inos.begin();
 	 p != m->split_inos.end();
 	 ++p) {
@@ -4313,8 +4360,8 @@ void Client::handle_snap(MClientSnap *m)
 
 
 	in->snaprealm_item.remove_myself();
+	to_move[in] = in->snaprealm->get_snap_context();
 	put_snap_realm(in->snaprealm);
-	to_move.push_back(in);
       }
     }
 
@@ -4334,15 +4381,14 @@ void Client::handle_snap(MClientSnap *m)
   update_snap_trace(m->bl, m->head.op != CEPH_SNAP_OP_DESTROY);
 
   if (realm) {
-    bool queue_snap = has_new_snaps(old_snapc, realm->get_snap_context());
-    for (list<Inode*>::iterator p = to_move.begin(); p != to_move.end(); ++p) {
-      Inode *in = *p;
+    for (auto p = to_move.begin(); p != to_move.end(); ++p) {
+      Inode *in = p->first;
       in->snaprealm = realm;
       realm->inodes_with_caps.push_back(&in->snaprealm_item);
       realm->nref++;
       // queue for snap writeback
-      if (queue_snap)
-	queue_cap_snap(in, old_snapc);
+      if (has_new_snaps(p->second, realm->get_snap_context()))
+	queue_cap_snap(in, p->second);
     }
     put_snap_realm(realm);
   }
@@ -4761,7 +4807,7 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
   if (m->get_op() == CEPH_CAP_OP_IMPORT && m->get_wanted() != wanted)
     check = true;
 
-  check_cap_issue(in, cap, issued);
+  check_cap_issue(in, cap, new_caps);
 
   // update caps
   if (old_caps & ~new_caps) { 
@@ -4816,6 +4862,7 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
 
 int Client::_getgrouplist(gid_t** sgids, int uid, int gid)
 {
+  // cppcheck-suppress variableScope
   int sgid_count;
   gid_t *sgid_buf;
 
@@ -4875,9 +4922,8 @@ int Client::inode_permission(Inode *in, uid_t uid, UserGroups& groups, unsigned 
   if (uid == 0)
     return 0;
 
-  int ret;
   if (uid != in->uid && (in->mode & S_IRWXG)) {
-    ret = _posix_acl_permission(in, uid, groups, want);
+    int ret = _posix_acl_permission(in, uid, groups, want);
     if (ret != -EAGAIN)
       return ret;
   }
@@ -5140,8 +5186,8 @@ inodeno_t Client::_get_inodeno(Inode *in)
 /**
  * Resolve an MDS spec to a list of MDS daemon GIDs.
  *
- * The spec is a string representing a GID, rank or name/id.  It may
- * be * in which case it matches all GIDs.
+ * The spec is a string representing a GID, rank, filesystem:rank, or name/id.
+ * It may be '*' in which case it matches all GIDs.
  *
  * If no error is returned, the `targets` vector will be populated with at least
  * one MDS.
@@ -5150,57 +5196,58 @@ int Client::resolve_mds(
     const std::string &mds_spec,
     std::vector<mds_gid_t> *targets)
 {
+  assert(fsmap != nullptr);
+  assert(targets != nullptr);
+
+  mds_role_t role;
+  std::stringstream ss;
+  int role_r = fsmap->parse_role(mds_spec, &role, ss);
+  if (role_r == 0) {
+    // We got a role, resolve it to a GID
+    ldout(cct, 10) << __func__ << ": resolved '" << mds_spec << "' to role '"
+      << role << "'" << dendl;
+    targets->push_back(
+        fsmap->get_filesystem(role.fscid)->mds_map.get_info(role.rank).global_id);
+    return 0;
+  }
+
   std::string strtol_err;
   long long rank_or_gid = strict_strtoll(mds_spec.c_str(), 10, &strtol_err);
   if (strtol_err.empty()) {
-    // If it parses as an integer, it's GID or a rank
-    if (rank_or_gid >= 0 && rank_or_gid < MAX_MDS) {
-      const mds_rank_t mds_rank = mds_rank_t(rank_or_gid);
-
-      if (mdsmap->is_dne(mds_rank)) {
-        lderr(cct) << __func__ << ": MDS rank " << mds_rank << " does not exist" << dendl;
-        return -ENOENT;
-      }
-
-      if (!mdsmap->is_up(mds_rank)) {
-        lderr(cct) << __func__ << ": MDS rank " << mds_rank << " is not up" << dendl;
-        return -EAGAIN;
-      }
-
-      const mds_gid_t mds_gid = mdsmap->get_info(mds_rank).global_id;
-      ldout(cct, 10) << __func__ << ": resolved rank " << mds_rank << " to GID " << mds_gid << dendl;
+    // It is a possible GID
+    const mds_gid_t mds_gid = mds_gid_t(rank_or_gid);
+    if (fsmap->gid_exists(mds_gid)) {
+      ldout(cct, 10) << __func__ << ": validated GID " << mds_gid << dendl;
       targets->push_back(mds_gid);
     } else {
-      const mds_gid_t mds_gid = mds_gid_t(rank_or_gid);
-      if (mdsmap->is_dne_gid(mds_gid)) {
-        lderr(cct) << __func__ << ": GID " << mds_gid << " not in MDS map" << dendl;
-        return -ENOENT;
-      } else {
-        ldout(cct, 10) << __func__ << ": validated GID " << mds_gid << dendl;
-        targets->push_back(mds_gid);
-      }
+      lderr(cct) << __func__ << ": GID " << mds_gid << " not in MDS map"
+                 << dendl;
+      return -ENOENT;
     }
   } else if (mds_spec == "*") {
     // It is a wildcard: use all MDSs
-    const std::map<mds_gid_t, MDSMap::mds_info_t> &mds_info = mdsmap->get_mds_info();
+    const auto mds_info = fsmap->get_mds_info();
 
     if (mds_info.empty()) {
       lderr(cct) << __func__ << ": * passed but no MDS daemons found" << dendl;
       return -ENOENT;
     }
 
-    for (std::map<mds_gid_t, MDSMap::mds_info_t>::const_iterator i = mds_info.begin();
-        i != mds_info.end(); ++i) {
-      targets->push_back(i->first);
+    for (const auto i : mds_info) {
+      targets->push_back(i.first);
     }
   } else {
     // It did not parse as an integer, it is not a wildcard, it must be a name
-    const mds_gid_t mds_gid = mdsmap->find_mds_gid_by_name(mds_spec);
+    const mds_gid_t mds_gid = fsmap->find_mds_gid_by_name(mds_spec);
     if (mds_gid == 0) {
       lderr(cct) << "MDS ID '" << mds_spec << "' not found" << dendl;
+
+      lderr(cct) << "FSMap: " << *fsmap << dendl;
+
       return -ENOENT;
     } else {
-      ldout(cct, 10) << __func__ << ": resolved ID '" << mds_spec << "' to GID " << mds_gid << dendl;
+      ldout(cct, 10) << __func__ << ": resolved ID '" << mds_spec
+                     << "' to GID " << mds_gid << dendl;
       targets->push_back(mds_gid);
     }
   }
@@ -5258,10 +5305,33 @@ int Client::mds_command(
     return r;
   }
 
-  // Block until we have an MDSMap to resolve IDs
-  if (mdsmap->get_epoch() == 0) {
-    wait_on_list(waiting_for_mdsmap);
+  // Retrieve FSMap to enable looking up daemon addresses.  We need FSMap
+  // rather than MDSMap because no one MDSMap contains all the daemons, and
+  // a `tell` can address any daemon.
+  version_t fsmap_latest;
+  do {
+    C_SaferCond cond;
+    monclient->get_version("fsmap", &fsmap_latest, NULL, &cond);
+    client_lock.Unlock();
+    r = cond.wait();
+    client_lock.Lock();
+  } while (r == -EAGAIN);
+  ldout(cct, 20) << "Learned FSMap version " << fsmap_latest << dendl;
+
+  if (r < 0) {
+    lderr(cct) << "Failed to learn FSMap version: " << cpp_strerror(r) << dendl;
+    return r;
   }
+
+  if (fsmap == nullptr || fsmap->get_epoch() < fsmap_latest) {
+    monclient->sub_want("fsmap", fsmap_latest, CEPH_SUBSCRIBE_ONETIME);
+    monclient->renew_subs();
+    wait_on_list(waiting_for_fsmap);
+  }
+  assert(fsmap != nullptr);
+  assert(fsmap->get_epoch() >= fsmap_latest);
+  ldout(cct, 20) << "Finished waiting for FSMap version " << fsmap_latest
+    << dendl;
 
   // Look up MDS target(s) of the command
   std::vector<mds_gid_t> targets;
@@ -5273,10 +5343,10 @@ int Client::mds_command(
   // If daemons are laggy, we won't send them commands.  If all
   // are laggy then we fail.
   std::vector<mds_gid_t> non_laggy;
-  for (std::vector<mds_gid_t>::iterator target = targets.begin();
-      target != targets.end(); ++target) {
-    if (!mdsmap->is_laggy_gid(*target)) {
-      non_laggy.push_back(*target);
+  for (const auto gid : targets) {
+    const auto info = fsmap->get_info_gid(gid);
+    if (!info.laggy()) {
+      non_laggy.push_back(gid);
     }
   }
   if (non_laggy.size() == 0) {
@@ -5286,12 +5356,12 @@ int Client::mds_command(
 
   // Send commands to targets
   C_GatherBuilder gather(cct, onfinish);
-  for (std::vector<mds_gid_t>::iterator target = non_laggy.begin();
-      target != non_laggy.end(); ++target) {
+  for (const auto target_gid : non_laggy) {
     ceph_tid_t tid = ++last_tid;
+    const auto info = fsmap->get_info_gid(target_gid);
 
     // Open a connection to the target MDS
-    entity_inst_t inst = mdsmap->get_info_gid(*target).get_inst();
+    entity_inst_t inst = info.get_inst();
     ConnectionRef conn = messenger->get_connection(inst);
 
     // Generate CommandOp state
@@ -5300,11 +5370,11 @@ int Client::mds_command(
     op.on_finish = gather.new_sub();
     op.outbl = outbl;
     op.outs = outs;
-    op.mds_gid = *target;
+    op.mds_gid = target_gid;
     op.con = conn;
     commands[op.tid] = op;
 
-    ldout(cct, 4) << __func__ << ": new command op to " << *target
+    ldout(cct, 4) << __func__ << ": new command op to " << target_gid
       << " tid=" << op.tid << cmd << dendl;
 
     // Construct and send MCommand
@@ -5485,6 +5555,19 @@ void Client::unmount()
     ldout(cct, 0) << " destroyed lost open file " << fh << " on " << *fh->inode << dendl;
     _release_fh(fh);
   }
+  
+  while (!ll_unclosed_fh_set.empty()) {
+    set<Fh*>::iterator it = ll_unclosed_fh_set.begin();
+    ll_unclosed_fh_set.erase(*it);
+    ldout(cct, 0) << " destroyed lost open file " << *it << " on " << *((*it)->inode) << dendl;
+    _release_fh(*it);
+  }
+
+  while (!opened_dirs.empty()) {
+    dir_result_t *dirp = *opened_dirs.begin();
+    ldout(cct, 0) << " destroyed lost open dir " << dirp << " on " << *dirp->inode << dendl;
+    _closedir(dirp);
+  }
 
   _ll_drop_pins();
 
@@ -5568,7 +5651,8 @@ void Client::flush_cap_releases()
   for (map<mds_rank_t,MetaSession*>::iterator p = mds_sessions.begin();
        p != mds_sessions.end();
        ++p) {
-    if (p->second->release && mdsmap->is_clientreplay_or_active_or_stopping(p->first)) {
+    if (p->second->release && mdsmap->is_clientreplay_or_active_or_stopping(
+          p->first)) {
       if (cct->_conf->client_inject_release_failure) {
         ldout(cct, 20) << __func__ << " injecting failure to send cap release message" << dendl;
         p->second->release->put();
@@ -5670,7 +5754,11 @@ int Client::_do_lookup(Inode *dir, const string& name, InodeRef *target,
   path.push_dentry(name);
   req->set_filepath(path);
   req->set_inode(dir);
-  req->head.args.getattr.mask = 0;
+  if (cct->_conf->client_debug_getattr_caps && op == CEPH_MDS_OP_LOOKUP)
+      req->head.args.getattr.mask = DEBUG_GETATTR_CAPS;
+  else
+      req->head.args.getattr.mask = 0;
+
   ldout(cct, 10) << "_do_lookup on " << path << dendl;
 
   int r = make_request(req, uid, gid, target);
@@ -6470,14 +6558,16 @@ int Client::fill_stat(Inode *in, struct stat *st, frag_info_t *dirstat, nest_inf
   stat_set_mtime_sec(st, in->mtime.sec());
   stat_set_mtime_nsec(st, in->mtime.nsec());
   if (in->is_dir()) {
-    //st->st_size = in->dirstat.size();
-    st->st_size = in->rstat.rbytes;
+    if (cct->_conf->client_dirsize_rbytes)
+      st->st_size = in->rstat.rbytes;
+    else
+      st->st_size = in->dirstat.size();
     st->st_blocks = 1;
   } else {
     st->st_size = in->size;
     st->st_blocks = (in->size + 511) >> 9;
   }
-  st->st_blksize = MAX(in->layout.fl_stripe_unit, 4096);
+  st->st_blksize = MAX(in->layout.stripe_unit, 4096);
 
   if (dirstat)
     *dirstat = in->dirstat;
@@ -6689,6 +6779,7 @@ int Client::_opendir(Inode *in, dir_result_t **dirpp, int uid, int gid)
   if (!in->is_dir())
     return -ENOTDIR;
   *dirpp = new dir_result_t(in);
+  opened_dirs.insert(*dirpp);
   if (in->dir) {
     (*dirpp)->release_count = in->dir->release_count;
     (*dirpp)->ordered_count = in->dir->ordered_count;
@@ -6721,6 +6812,7 @@ void Client::_closedir(dir_result_t *dirp)
     dirp->inode.reset();
   }
   _readdir_drop_dirp_buffer(dirp);
+  opened_dirs.erase(dirp);
   delete dirp;
 }
 
@@ -7543,7 +7635,7 @@ Fh *Client::_create_fh(Inode *in, int flags, int cmode)
   }
 
   const md_config_t *conf = cct->_conf;
-  loff_t p = in->layout.fl_stripe_count * in->layout.fl_object_size;
+  loff_t p = in->layout.stripe_count * in->layout.object_size;
   f->readahead.set_trigger_requests(1);
   f->readahead.set_min_readahead_size(conf->client_readahead_min);
   uint64_t max_readahead = Readahead::NO_LIMIT;
@@ -7556,7 +7648,7 @@ Fh *Client::_create_fh(Inode *in, int flags, int cmode)
   f->readahead.set_max_readahead_size(max_readahead);
   vector<uint64_t> alignments;
   alignments.push_back(p);
-  alignments.push_back(in->layout.fl_stripe_unit);
+  alignments.push_back(in->layout.stripe_unit);
   f->readahead.set_alignments(alignments);
 
   return f;
@@ -7629,6 +7721,10 @@ int Client::_open(Inode *in, int flags, mode_t mode, Fh **fhp, int uid, int gid)
     req->head.args.open.flags = flags & ~O_CREAT;
     req->head.args.open.mode = mode;
     req->head.args.open.pool = -1;
+    if (cct->_conf->client_debug_getattr_caps)
+      req->head.args.open.mask = DEBUG_GETATTR_CAPS;
+    else
+      req->head.args.open.mask = 0;
     req->head.args.open.old_size = in->size;   // for O_TRUNC
     req->set_inode(in);
     result = make_request(req, uid, gid);
@@ -7659,6 +7755,7 @@ int Client::close(int fd)
     return -EBADF;
   int err = _release_fh(fh);
   fd_map.erase(fd);
+  put_fd(fd);
   ldout(cct, 3) << "close exit(" << fd << ")" << dendl;
   return err;
 }
@@ -7891,7 +7988,7 @@ retry:
   }
 
   if (!conf->client_debug_force_sync_read &&
-      (cct->_conf->client_oc && (have & CEPH_CAP_FILE_CACHE))) {
+      (conf->client_oc && (have & CEPH_CAP_FILE_CACHE))) {
 
     if (f->flags & O_RSYNC) {
       _flush_range(in, offset, size);
@@ -8216,7 +8313,7 @@ int Client::_write(Fh *f, int64_t offset, uint64_t size, const char *buf,
   //ldout(cct, 7) << "write fh " << fh << " size " << size << " offset " << offset << dendl;
   Inode *in = f->inode.get();
 
-  if (objecter->osdmap_pool_full(in->layout.fl_pg_pool)) {
+  if (objecter->osdmap_pool_full(in->layout.pool_id)) {
     return -ENOSPC;
   }
 
@@ -8591,7 +8688,7 @@ int Client::fstat(int fd, struct stat *stbuf)
 
 // not written yet, but i want to link!
 
-int Client::chdir(const char *relpath)
+int Client::chdir(const char *relpath, std::string &new_cwd)
 {
   Mutex::Locker lock(client_lock);
   tout(cct) << "chdir" << std::endl;
@@ -8604,6 +8701,8 @@ int Client::chdir(const char *relpath)
   if (cwd != in)
     cwd.swap(in);
   ldout(cct, 3) << "chdir(" << relpath << ")  cwd now " << cwd->ino << dendl;
+
+  getcwd(new_cwd);
   return 0;
 }
 
@@ -8615,7 +8714,15 @@ void Client::getcwd(string& dir)
   Inode *in = cwd.get();
   while (in != root) {
     assert(in->dn_set.size() < 2); // dirs can't be hard-linked
+
+    // A cwd or ancester is unlinked
+    if (in->dn_set.empty()) {
+      return;
+    }
+
     Dentry *dn = in->get_first_parent();
+
+
     if (!dn) {
       // look it up
       ldout(cct, 10) << "getcwd looking up parent for " << *in << dendl;
@@ -8764,11 +8871,11 @@ int Client::_do_filelock(Inode *in, Fh *fh, int lock_type, int op, int sleep,
       ceph_lock_state_t *lock_state;
       if (lock_type == CEPH_LOCK_FCNTL) {
 	if (!in->fcntl_locks)
-	  in->fcntl_locks = new ceph_lock_state_t(cct);
+	  in->fcntl_locks = new ceph_lock_state_t(cct, CEPH_LOCK_FCNTL);
 	lock_state = in->fcntl_locks;
       } else if (lock_type == CEPH_LOCK_FLOCK) {
 	if (!in->flock_locks)
-	  in->flock_locks = new ceph_lock_state_t(cct);
+	  in->flock_locks = new ceph_lock_state_t(cct, CEPH_LOCK_FLOCK);
 	lock_state = in->flock_locks;
       } else {
 	assert(0);
@@ -8779,11 +8886,11 @@ int Client::_do_filelock(Inode *in, Fh *fh, int lock_type, int op, int sleep,
       if (fh) {
 	if (lock_type == CEPH_LOCK_FCNTL) {
 	  if (!fh->fcntl_locks)
-	    fh->fcntl_locks = new ceph_lock_state_t(cct);
+	    fh->fcntl_locks = new ceph_lock_state_t(cct, CEPH_LOCK_FCNTL);
 	  lock_state = fh->fcntl_locks;
 	} else {
 	  if (!fh->flock_locks)
-	    fh->flock_locks = new ceph_lock_state_t(cct);
+	    fh->flock_locks = new ceph_lock_state_t(cct, CEPH_LOCK_FLOCK);
 	  lock_state = fh->flock_locks;
 	}
 	_update_lock_state(fl, owner, lock_state);
@@ -8918,7 +9025,7 @@ void Client::_update_lock_state(struct flock *fl, uint64_t owner,
     list<ceph_filelock> activated_locks;
     lock_state->remove_lock(filelock, activated_locks);
   } else {
-    bool r = lock_state->add_lock(filelock, false, false);
+    bool r = lock_state->add_lock(filelock, false, false, NULL);
     assert(r);
   }
 }
@@ -9969,52 +10076,55 @@ size_t Client::_vxattrcb_quota_max_files(Inode *in, char *val, size_t size)
 
 bool Client::_vxattrcb_layout_exists(Inode *in)
 {
-  char *p = (char *)&in->layout;
-  for (size_t s = 0; s < sizeof(in->layout); s++, p++)
-    if (*p)
-      return true;
-  return false;
+  return in->layout != file_layout_t();
 }
 size_t Client::_vxattrcb_layout(Inode *in, char *val, size_t size)
 {
   int r = snprintf(val, size,
       "stripe_unit=%lld stripe_count=%lld object_size=%lld pool=",
-      (unsigned long long)in->layout.fl_stripe_unit,
-      (unsigned long long)in->layout.fl_stripe_count,
-      (unsigned long long)in->layout.fl_object_size);
+      (unsigned long long)in->layout.stripe_unit,
+      (unsigned long long)in->layout.stripe_count,
+      (unsigned long long)in->layout.object_size);
   objecter->with_osdmap([&](const OSDMap& o) {
-      if (o.have_pg_pool(in->layout.fl_pg_pool))
+      if (o.have_pg_pool(in->layout.pool_id))
 	r += snprintf(val + r, size - r, "%s",
-		      o.get_pool_name(in->layout.fl_pg_pool).c_str());
+		      o.get_pool_name(in->layout.pool_id).c_str());
       else
 	r += snprintf(val + r, size - r, "%" PRIu64,
-		      (uint64_t)in->layout.fl_pg_pool);
+		      (uint64_t)in->layout.pool_id);
     });
+  if (in->layout.pool_ns.length())
+    r += snprintf(val + r, size - r, " pool_namespace=%s",
+		  in->layout.pool_ns.c_str());
   return r;
 }
 size_t Client::_vxattrcb_layout_stripe_unit(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%lld", (unsigned long long)in->layout.fl_stripe_unit);
+  return snprintf(val, size, "%lld", (unsigned long long)in->layout.stripe_unit);
 }
 size_t Client::_vxattrcb_layout_stripe_count(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%lld", (unsigned long long)in->layout.fl_stripe_count);
+  return snprintf(val, size, "%lld", (unsigned long long)in->layout.stripe_count);
 }
 size_t Client::_vxattrcb_layout_object_size(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%lld", (unsigned long long)in->layout.fl_object_size);
+  return snprintf(val, size, "%lld", (unsigned long long)in->layout.object_size);
 }
 size_t Client::_vxattrcb_layout_pool(Inode *in, char *val, size_t size)
 {
   size_t r;
   objecter->with_osdmap([&](const OSDMap& o) {
-      if (o.have_pg_pool(in->layout.fl_pg_pool))
+      if (o.have_pg_pool(in->layout.pool_id))
 	r = snprintf(val, size, "%s", o.get_pool_name(
-		       in->layout.fl_pg_pool).c_str());
+		       in->layout.pool_id).c_str());
       else
-	r = snprintf(val, size, "%" PRIu64, (uint64_t)in->layout.fl_pg_pool);
+	r = snprintf(val, size, "%" PRIu64, (uint64_t)in->layout.pool_id);
     });
   return r;
+}
+size_t Client::_vxattrcb_layout_pool_namespace(Inode *in, char *val, size_t size)
+{
+  return snprintf(val, size, "%s", in->layout.pool_ns.c_str());
 }
 size_t Client::_vxattrcb_dir_entries(Inode *in, char *val, size_t size)
 {
@@ -10090,6 +10200,7 @@ const Client::VXattr Client::_dir_vxattrs[] = {
   XATTR_LAYOUT_FIELD(dir, layout, stripe_count),
   XATTR_LAYOUT_FIELD(dir, layout, object_size),
   XATTR_LAYOUT_FIELD(dir, layout, pool),
+  XATTR_LAYOUT_FIELD(dir, layout, pool_namespace),
   XATTR_NAME_CEPH(dir, entries),
   XATTR_NAME_CEPH(dir, files),
   XATTR_NAME_CEPH(dir, subdirs),
@@ -10122,6 +10233,7 @@ const Client::VXattr Client::_file_vxattrs[] = {
   XATTR_LAYOUT_FIELD(file, layout, stripe_count),
   XATTR_LAYOUT_FIELD(file, layout, object_size),
   XATTR_LAYOUT_FIELD(file, layout, pool),
+  XATTR_LAYOUT_FIELD(file, layout, pool_namespace),
   { name: "" }     /* Required table terminator */
 };
 
@@ -10312,6 +10424,10 @@ int Client::_create(Inode *dir, const char *name, int flags, mode_t mode,
   req->head.args.open.stripe_unit = stripe_unit;
   req->head.args.open.stripe_count = stripe_count;
   req->head.args.open.object_size = object_size;
+  if (cct->_conf->client_debug_getattr_caps)
+    req->head.args.open.mask = DEBUG_GETATTR_CAPS;
+  else
+    req->head.args.open.mask = 0;
   req->head.args.open.pool = pool_id;
   req->dentry_drop = CEPH_CAP_FILE_SHARED;
   req->dentry_unless = CEPH_CAP_FILE_EXCL;
@@ -10882,7 +10998,7 @@ int Client::ll_osdaddr(int osd, uint32_t *addr)
 uint32_t Client::ll_stripe_unit(Inode *in)
 {
   Mutex::Locker lock(client_lock);
-  return in->layout.fl_stripe_unit;
+  return in->layout.stripe_unit;
 }
 
 uint64_t Client::ll_snap_seq(Inode *in)
@@ -10891,14 +11007,14 @@ uint64_t Client::ll_snap_seq(Inode *in)
   return in->snaprealm->seq;
 }
 
-int Client::ll_file_layout(Inode *in, ceph_file_layout *layout)
+int Client::ll_file_layout(Inode *in, file_layout_t *layout)
 {
   Mutex::Locker lock(client_lock);
   *layout = in->layout;
   return 0;
 }
 
-int Client::ll_file_layout(Fh *fh, ceph_file_layout *layout)
+int Client::ll_file_layout(Fh *fh, file_layout_t *layout)
 {
   return ll_file_layout(fh->inode.get(), layout);
 }
@@ -10911,13 +11027,13 @@ int Client::ll_file_layout(Fh *fh, ceph_file_layout *layout)
    tractable and works for demonstration purposes. */
 
 int Client::ll_get_stripe_osd(Inode *in, uint64_t blockno,
-			      ceph_file_layout* layout)
+			      file_layout_t* layout)
 {
   Mutex::Locker lock(client_lock);
   inodeno_t ino = ll_get_inodeno(in);
-  uint32_t object_size = layout->fl_object_size;
-  uint32_t su = layout->fl_stripe_unit;
-  uint32_t stripe_count = layout->fl_stripe_count;
+  uint32_t object_size = layout->object_size;
+  uint32_t su = layout->stripe_unit;
+  uint32_t stripe_count = layout->stripe_count;
   uint64_t stripes_per_object = object_size / su;
 
   uint64_t stripeno = blockno / stripe_count;    // which horizontal stripe        (Y)
@@ -10928,7 +11044,7 @@ int Client::ll_get_stripe_osd(Inode *in, uint64_t blockno,
   object_t oid = file_object_t(ino, objectno);
   return objecter->with_osdmap([&](const OSDMap& o) {
       ceph_object_layout olayout =
-	o.file_to_object_layout(oid, *layout, string());
+	o.file_to_object_layout(oid, *layout);
       pg_t pg = (pg_t)olayout.ol_pgid;
       vector<int> osds;
       int primary;
@@ -10942,9 +11058,9 @@ int Client::ll_get_stripe_osd(Inode *in, uint64_t blockno,
 uint64_t Client::ll_get_internal_offset(Inode *in, uint64_t blockno)
 {
   Mutex::Locker lock(client_lock);
-  ceph_file_layout *layout=&(in->layout);
-  uint32_t object_size = layout->fl_object_size;
-  uint32_t su = layout->fl_stripe_unit;
+  file_layout_t *layout=&(in->layout);
+  uint32_t object_size = layout->object_size;
+  uint32_t su = layout->stripe_unit;
   uint64_t stripes_per_object = object_size / su;
 
   return (blockno % stripes_per_object) * su;
@@ -10967,13 +11083,7 @@ int Client::ll_opendir(Inode *in, int flags, dir_result_t** dirpp,
       return r;
   }
 
-  int r = 0;
-  if (vino.snapid == CEPH_SNAPDIR) {
-    *dirpp = new dir_result_t(in);
-  } else {
-    r = _opendir(in, dirpp, uid, gid);
-  }
-
+  int r = _opendir(in, dirpp, uid, gid);
   tout(cct) << (unsigned long)*dirpp << std::endl;
 
   ldout(cct, 3) << "ll_opendir " << vino << " = " << r << " (" << *dirpp << ")"
@@ -11029,6 +11139,9 @@ int Client::ll_open(Inode *in, int flags, Fh **fhp, int uid, int gid)
 
  out:
   Fh *fhptr = fhp ? *fhp : NULL;
+  if (fhptr) {
+    ll_unclosed_fh_set.insert(fhptr);
+  }
   tout(cct) << (unsigned long)fhptr << std::endl;
   ldout(cct, 3) << "ll_open " << vino << " " << flags << " = " << r << " (" <<
     fhptr << ")" << dendl;
@@ -11100,6 +11213,9 @@ out:
     attr->st_ino = 0;
 
   Fh *fhptr = fhp ? *fhp : NULL;
+  if (fhptr) {
+    ll_unclosed_fh_set.insert(fhptr);
+  }
   tout(cct) << (unsigned long)fhptr << std::endl;
   tout(cct) << attr->st_ino << std::endl;
   ldout(cct, 3) << "ll_create " << parent << " " << name << " 0" << oct <<
@@ -11142,7 +11258,7 @@ int Client::ll_read_block(Inode *in, uint64_t blockid,
 			  char *buf,
 			  uint64_t offset,
 			  uint64_t length,
-			  ceph_file_layout* layout)
+			  file_layout_t* layout)
 {
   Mutex::Locker lock(client_lock);
   Mutex flock("Client::ll_read_block flock");
@@ -11155,7 +11271,7 @@ int Client::ll_read_block(Inode *in, uint64_t blockid,
   bufferlist bl;
 
   objecter->read(oid,
-		 object_locator_t(layout->fl_pg_pool),
+		 object_locator_t(layout->pool_id),
 		 offset,
 		 length,
 		 vino.snapid,
@@ -11179,7 +11295,7 @@ int Client::ll_read_block(Inode *in, uint64_t blockid,
 
 int Client::ll_write_block(Inode *in, uint64_t blockid,
 			   char* buf, uint64_t offset,
-			   uint64_t length, ceph_file_layout* layout,
+			   uint64_t length, file_layout_t* layout,
 			   uint64_t snapseq, uint32_t sync)
 {
   Mutex flock("Client::ll_write_block flock");
@@ -11224,7 +11340,7 @@ int Client::ll_write_block(Inode *in, uint64_t blockid,
   client_lock.Lock();
 
   objecter->write(oid,
-		  object_locator_t(layout->fl_pg_pool),
+		  object_locator_t(layout->pool_id),
 		  offset,
 		  length,
 		  fakesnap,
@@ -11326,8 +11442,8 @@ int Client::_fallocate(Fh *fh, int mode, int64_t offset, int64_t length)
 
   Inode *in = fh->inode.get();
 
-  if (objecter->osdmap_pool_full(in->layout.fl_pg_pool)
-      && !(mode & FALLOC_FL_PUNCH_HOLE)) {
+  if (objecter->osdmap_pool_full(in->layout.pool_id) &&
+      !(mode & FALLOC_FL_PUNCH_HOLE)) {
     return -ENOSPC;
   }
 
@@ -11495,6 +11611,8 @@ int Client::ll_release(Fh *fh)
   tout(cct) << "ll_release (fh)" << std::endl;
   tout(cct) << (unsigned long)fh << std::endl;
 
+  if (ll_unclosed_fh_set.count(fh))
+    ll_unclosed_fh_set.erase(fh);
   return _release_fh(fh);
 }
 
@@ -11557,7 +11675,7 @@ void Client::ll_interrupt(void *d)
 
 // expose file layouts
 
-int Client::describe_layout(const char *relpath, ceph_file_layout *lp)
+int Client::describe_layout(const char *relpath, file_layout_t *lp)
 {
   Mutex::Locker lock(client_lock);
 
@@ -11573,7 +11691,7 @@ int Client::describe_layout(const char *relpath, ceph_file_layout *lp)
   return 0;
 }
 
-int Client::fdescribe_layout(int fd, ceph_file_layout *lp)
+int Client::fdescribe_layout(int fd, file_layout_t *lp)
 {
   Mutex::Locker lock(client_lock);
 
@@ -11650,7 +11768,7 @@ int Client::get_file_extent_osds(int fd, loff_t off, loff_t *len, vector<int>& o
    * remainder.
    */
   if (len) {
-    uint64_t su = in->layout.fl_stripe_unit;
+    uint64_t su = in->layout.stripe_unit;
     *len = su - (off % su);
   }
 
@@ -11981,10 +12099,12 @@ int Client::check_pool_perm(Inode *in, int need)
   if (!cct->_conf->client_check_pool_perm)
     return 0;
 
-  int64_t pool = in->layout.fl_pg_pool;
+  int64_t pool_id = in->layout.pool_id;
+  std::string pool_ns = in->layout.pool_ns;
+  std::pair<int64_t, std::string> perm_key(pool_id, pool_ns);
   int have = 0;
   while (true) {
-    std::map<int64_t, int>::iterator it = pool_perms.find(pool);
+    auto it = pool_perms.find(perm_key);
     if (it == pool_perms.end())
       break;
     if (it->second == POOL_CHECKING) {
@@ -12005,7 +12125,7 @@ int Client::check_pool_perm(Inode *in, int need)
       return 0;
     }
 
-    pool_perms[pool] = POOL_CHECKING;
+    pool_perms[perm_key] = POOL_CHECKING;
 
     char oid_buf[32];
     snprintf(oid_buf, sizeof(oid_buf), "%llx.00000000", (unsigned long long)in->ino);
@@ -12037,7 +12157,7 @@ int Client::check_pool_perm(Inode *in, int need)
     if (rd_ret == 0 || rd_ret == -ENOENT)
       have |= POOL_READ;
     else if (rd_ret != -EPERM) {
-      ldout(cct, 10) << "check_pool_perm on pool " << pool
+      ldout(cct, 10) << "check_pool_perm on pool " << pool_id << " ns " << pool_ns
 		     << " rd_err = " << rd_ret << " wr_err = " << wr_ret << dendl;
       errored = true;
     }
@@ -12045,7 +12165,7 @@ int Client::check_pool_perm(Inode *in, int need)
     if (wr_ret == 0 || wr_ret == -EEXIST)
       have |= POOL_WRITE;
     else if (wr_ret != -EPERM) {
-      ldout(cct, 10) << "check_pool_perm on pool " << pool
+      ldout(cct, 10) << "check_pool_perm on pool " << pool_id << " ns " << pool_ns
 		     << " rd_err = " << rd_ret << " wr_err = " << wr_ret << dendl;
       errored = true;
     }
@@ -12054,22 +12174,22 @@ int Client::check_pool_perm(Inode *in, int need)
       // Indeterminate: erase CHECKING state so that subsequent calls re-check.
       // Raise EIO because actual error code might be misleading for
       // userspace filesystem user.
-      pool_perms.erase(pool);
+      pool_perms.erase(perm_key);
       signal_cond_list(waiting_for_pool_perm);
       return -EIO;
     }
 
-    pool_perms[pool] = have | POOL_CHECKED;
+    pool_perms[perm_key] = have | POOL_CHECKED;
     signal_cond_list(waiting_for_pool_perm);
   }
 
   if ((need & CEPH_CAP_FILE_RD) && !(have & POOL_READ)) {
-    ldout(cct, 10) << "check_pool_perm on pool " << pool
+    ldout(cct, 10) << "check_pool_perm on pool " << pool_id << " ns " << pool_ns
 		   << " need " << ccap_string(need) << ", but no read perm" << dendl;
     return -EPERM;
   }
   if ((need & CEPH_CAP_FILE_WR) && !(have & POOL_WRITE)) {
-    ldout(cct, 10) << "check_pool_perm on pool " << pool
+    ldout(cct, 10) << "check_pool_perm on pool " << pool_id << " ns " << pool_ns
 		   << " need " << ccap_string(need) << ", but no write perm" << dendl;
     return -EPERM;
   }
@@ -12253,3 +12373,19 @@ void intrusive_ptr_release(Inode *in)
 {
   in->client->put_inode(in);
 }
+
+mds_rank_t Client::_get_random_up_mds() const
+{
+  assert(client_lock.is_locked_by_me());
+
+  std::set<mds_rank_t> up;
+  mdsmap->get_up_mds_set(up);
+
+  if (up.empty())
+    return -1;
+  std::set<mds_rank_t>::const_iterator p = up.begin();
+  for (int n = rand() % up.size(); n; n--)
+    ++p;
+  return *p;
+}
+

@@ -116,7 +116,7 @@ int CrushWrapper::can_rename_item(const string& srcname,
     if (is_valid_crush_name(dstname)) {
       return 0;
     } else {
-      *ss << "srcname = '" << srcname << "' does not match [-_.0-9a-zA-Z]+";
+      *ss << "dstname = '" << dstname << "' does not match [-_.0-9a-zA-Z]+";
       return -EINVAL;
     }
   } else {
@@ -353,7 +353,7 @@ int CrushWrapper::remove_item_under(CephContext *cct, int item, int ancestor, bo
   if (item < 0 && !unlink_only) {
     crush_bucket *t = get_bucket(item);
     if (t && t->size) {
-      ldout(cct, 1) << "remove_item_undef bucket " << item << " has " << t->size
+      ldout(cct, 1) << "remove_item_under bucket " << item << " has " << t->size
 		    << " items, not empty" << dendl;
       return -ENOTEMPTY;
     }
@@ -1567,6 +1567,9 @@ void CrushWrapper::dump_tunables(Formatter *f) const
     f->dump_string("profile", "unknown");
   f->dump_int("optimal_tunables", (int)has_optimal_tunables());
   f->dump_int("legacy_tunables", (int)has_legacy_tunables());
+
+  // be helpful about minimum version required
+  f->dump_string("minimum_required_version", get_min_required_version());
 
   f->dump_int("require_feature_tunables", (int)has_nondefault_tunables());
   f->dump_int("require_feature_tunables2", (int)has_nondefault_tunables2());

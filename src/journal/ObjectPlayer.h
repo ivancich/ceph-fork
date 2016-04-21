@@ -46,11 +46,6 @@ public:
   void watch(Context *on_fetch, double interval);
   void unwatch();
 
-  inline bool is_fetch_in_progress() const {
-    Mutex::Locker locker(m_lock);
-    return m_fetch_in_progress;
-  }
-
   void front(Entry *entry) const;
   void pop_front();
   inline bool empty() const {
@@ -101,7 +96,6 @@ private:
   SafeTimer &m_timer;
   Mutex &m_timer_lock;
 
-  double m_fetch_interval;
   uint8_t m_order;
 
   double m_watch_interval;

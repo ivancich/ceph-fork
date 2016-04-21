@@ -17,6 +17,7 @@
 #define CEPH_RGW_COMMON_H
 
 #include "common/ceph_crypto.h"
+
 #include "common/debug.h"
 #include "common/perf_counters.h"
 
@@ -81,6 +82,9 @@ using ceph::crypto::MD5;
  * user through custom HTTP header named X-Static-Large-Object. */
 #define RGW_ATTR_SLO_UINDICATOR RGW_ATTR_META_PREFIX "static-large-object"
 
+#define RGW_ATTR_PG_VER 	RGW_ATTR_PREFIX "pg_ver"
+#define RGW_ATTR_SOURCE_ZONE    RGW_ATTR_PREFIX "source_zone"
+
 #define RGW_ATTR_TEMPURL_KEY1   RGW_ATTR_META_PREFIX "temp-url-key"
 #define RGW_ATTR_TEMPURL_KEY2   RGW_ATTR_META_PREFIX "temp-url-key-2"
 
@@ -90,6 +94,10 @@ using ceph::crypto::MD5;
 #define RGW_ATTR_OLH_VER        RGW_ATTR_OLH_PREFIX "ver"
 #define RGW_ATTR_OLH_ID_TAG     RGW_ATTR_OLH_PREFIX "idtag"
 #define RGW_ATTR_OLH_PENDING_PREFIX RGW_ATTR_OLH_PREFIX "pending."
+
+/* RGW File Attributes */
+#define RGW_ATTR_UNIX_KEY1      RGW_ATTR_PREFIX "unix-key1"
+#define RGW_ATTR_UNIX1          RGW_ATTR_PREFIX "unix1"
 
 #define RGW_BUCKETS_OBJ_SUFFIX ".buckets"
 
@@ -172,6 +180,7 @@ using ceph::crypto::MD5;
 #define ERR_INVALID_TENANT_NAME  2037
 #define ERR_WEBSITE_REDIRECT     2038
 #define ERR_NO_SUCH_WEBSITE_CONFIGURATION 2039
+#define ERR_AMZ_CONTENT_SHA256_MISMATCH 2040
 #define ERR_USER_SUSPENDED       2100
 #define ERR_INTERNAL_ERROR       2200
 #define ERR_NOT_IMPLEMENTED      2201
@@ -275,10 +284,10 @@ class RGWHTTPArgs
   map<string, string> val_map;
   map<string, string> sys_val_map;
   map<string, string> sub_resources;
-
   bool has_resp_modifier;
+  bool admin_subresource_added;
  public:
-  RGWHTTPArgs() : has_resp_modifier(false) {}
+  RGWHTTPArgs() : has_resp_modifier(false), admin_subresource_added(false) {}
 
   /** Set the arguments; as received */
   void set(string s) {
@@ -289,12 +298,15 @@ class RGWHTTPArgs
   }
   /** parse the received arguments */
   int parse();
+  void append(const string& name, const string& val);
   /** Get the value for a specific argument parameter */
   string& get(const string& name, bool *exists = NULL);
-  string& get(const char *name, bool *exists = NULL);
   int get_bool(const string& name, bool *val, bool *exists);
   int get_bool(const char *name, bool *val, bool *exists);
   void get_bool(const char *name, bool *val, bool def_val);
+
+  /** Get the value for specific system argument parameter */
+  string sys_get(const string& name, bool *exists = nullptr);
 
   /** see if a parameter is contained in this RGWHTTPArgs */
   bool exists(const char *name) {
@@ -371,6 +383,49 @@ enum http_op {
   OP_UNKNOWN,
 };
 
+enum RGWOpType {
+  RGW_OP_UNKNOWN = 0,
+  RGW_OP_GET_OBJ,
+  RGW_OP_LIST_BUCKETS,
+  RGW_OP_STAT_ACCOUNT,
+  RGW_OP_LIST_BUCKET,
+  RGW_OP_GET_BUCKET_LOGGING,
+  RGW_OP_GET_BUCKET_VERSIONING,
+  RGW_OP_SET_BUCKET_VERSIONING,
+  RGW_OP_GET_BUCKET_WEBSITE,
+  RGW_OP_SET_BUCKET_WEBSITE,
+  RGW_OP_STAT_BUCKET,
+  RGW_OP_CREATE_BUCKET,
+  RGW_OP_DELETE_BUCKET,
+  RGW_OP_PUT_OBJ,
+  RGW_OP_STAT_OBJ,
+  RGW_OP_POST_OBJ,
+  RGW_OP_PUT_METADATA_ACCOUNT,
+  RGW_OP_PUT_METADATA_BUCKET,
+  RGW_OP_PUT_METADATA_OBJECT,
+  RGW_OP_SET_TEMPURL,
+  RGW_OP_DELETE_OBJ,
+  RGW_OP_COPY_OBJ,
+  RGW_OP_GET_ACLS,
+  RGW_OP_PUT_ACLS,
+  RGW_OP_GET_CORS,
+  RGW_OP_PUT_CORS,
+  RGW_OP_DELETE_CORS,
+  RGW_OP_OPTIONS_CORS,
+  RGW_OP_GET_REQUEST_PAYMENT,
+  RGW_OP_SET_REQUEST_PAYMENT,
+  RGW_OP_INIT_MULTIPART,
+  RGW_OP_COMPLETE_MULTIPART,
+  RGW_OP_ABORT_MULTIPART,
+  RGW_OP_LIST_MULTIPART,
+  RGW_OP_LIST_BUCKET_MULTIPARTS,
+  RGW_OP_DELETE_MULTI_OBJ,
+  RGW_OP_BULK_DELETE,
+
+  /* rgw specific */
+  RGW_OP_ADMIN_SET_METADATA
+};
+
 class RGWAccessControlPolicy;
 class JSONObj;
 
@@ -380,6 +435,9 @@ struct RGWAccessKey {
   string subuser;
 
   RGWAccessKey() {}
+  RGWAccessKey(std::string _id, std::string _key)
+    : id(std::move(_id)), key(std::move(_key)) {}
+
   void encode(bufferlist& bl) const {
     ENCODE_START(2, 2, bl);
     ::encode(id, bl);
@@ -488,6 +546,13 @@ struct RGWUserInfo
   RGWQuotaInfo user_quota;
 
   RGWUserInfo() : auid(0), suspended(0), max_buckets(RGW_DEFAULT_MAX_BUCKETS), op_mask(RGW_OP_TYPE_ALL), system(0) {}
+
+  RGWAccessKey* get_key0() {
+    if (access_keys.empty())
+      return nullptr;
+    else
+      return &(access_keys.begin()->second);
+  }
 
   void encode(bufferlist& bl) const {
      ENCODE_START(17, 9, bl);
@@ -627,9 +692,11 @@ struct rgw_bucket {
 					 data_extra_pool(b.data_extra_pool),
 					 index_pool(b.index_pool), marker(b.marker),
 					 bucket_id(b.bucket_id) {}
-  // cppcheck-suppress noExplicitConstructor
+  rgw_bucket(const string& s) : name(s) {
+    data_pool = index_pool = s;
+    marker = "";
+  }
   rgw_bucket(const char *n) : name(n) {
-    assert(*n == '.'); // only rgw private buckets should be initialized without pool
     data_pool = index_pool = n;
     marker = "";
   }
@@ -788,6 +855,11 @@ enum RGWBucketFlags {
   BUCKET_VERSIONS_SUSPENDED = 0x4,
 };
 
+enum RGWBucketIndexType {
+  RGWBIType_Normal = 0,
+  RGWBIType_Indexless = 1,
+};
+
 struct RGWBucketInfo
 {
   enum BIShardsHashType {
@@ -797,8 +869,8 @@ struct RGWBucketInfo
   rgw_bucket bucket;
   rgw_user owner;
   uint32_t flags;
-  string region;
-  time_t creation_time;
+  string zonegroup;
+  ceph::real_time creation_time;
   string placement_rule;
   bool has_instance_obj;
   RGWObjVersionTracker objv_tracker; /* we don't need to serialize this, for runtime tracking */
@@ -822,13 +894,19 @@ struct RGWBucketInfo
   bool has_website;
   RGWBucketWebsiteConf website_conf;
 
+  RGWBucketIndexType index_type;
+
+  bool swift_versioning;
+  string swift_ver_location;
+
+
   void encode(bufferlist& bl) const {
-     ENCODE_START(14, 4, bl);
+     ENCODE_START(17, 4, bl);
      ::encode(bucket, bl);
      ::encode(owner.id, bl);
      ::encode(flags, bl);
-     ::encode(region, bl);
-     uint64_t ct = (uint64_t)creation_time;
+     ::encode(zonegroup, bl);
+     uint64_t ct = real_clock::to_time_t(creation_time);
      ::encode(ct, bl);
      ::encode(placement_rule, bl);
      ::encode(has_instance_obj, bl);
@@ -841,10 +919,16 @@ struct RGWBucketInfo
      if (has_website) {
        ::encode(website_conf, bl);
      }
+     ::encode((uint32_t)index_type, bl);
+     ::encode(swift_versioning, bl);
+     if (swift_versioning) {
+       ::encode(swift_ver_location, bl);
+     }
+     ::encode(creation_time, bl);
      ENCODE_FINISH(bl);
   }
   void decode(bufferlist::iterator& bl) {
-    DECODE_START_LEGACY_COMPAT_LEN_32(14, 4, 4, bl);
+    DECODE_START_LEGACY_COMPAT_LEN_32(17, 4, 4, bl);
      ::decode(bucket, bl);
      if (struct_v >= 2) {
        string s;
@@ -854,11 +938,12 @@ struct RGWBucketInfo
      if (struct_v >= 3)
        ::decode(flags, bl);
      if (struct_v >= 5)
-       ::decode(region, bl);
+       ::decode(zonegroup, bl);
      if (struct_v >= 6) {
        uint64_t ct;
        ::decode(ct, bl);
-       creation_time = (time_t)ct;
+       if (struct_v < 17)
+	 creation_time = ceph::real_clock::from_time_t((time_t)ct);
      }
      if (struct_v >= 7)
        ::decode(placement_rule, bl);
@@ -882,6 +967,24 @@ struct RGWBucketInfo
          website_conf = RGWBucketWebsiteConf();
        }
      }
+     if (struct_v >= 15) {
+       uint32_t it;
+       ::decode(it, bl);
+       index_type = (RGWBucketIndexType)it;
+     } else {
+       index_type = RGWBIType_Normal;
+     }
+     swift_versioning = false;
+     swift_ver_location.clear();
+     if (struct_v >= 16) {
+       ::decode(swift_versioning, bl);
+       if (swift_versioning) {
+         ::decode(swift_ver_location, bl);
+       }
+     }
+     if (struct_v >= 17) {
+       ::decode(creation_time, bl);
+     }
      DECODE_FINISH(bl);
   }
   void dump(Formatter *f) const;
@@ -893,8 +996,10 @@ struct RGWBucketInfo
   int versioning_status() { return flags & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED); }
   bool versioning_enabled() { return versioning_status() == BUCKET_VERSIONED; }
 
-  RGWBucketInfo() : flags(0), creation_time(0), has_instance_obj(false), num_shards(0), bucket_index_shard_hash_type(MOD), requester_pays(false),
-                    has_website(false) {}
+  bool has_swift_versioning() { return swift_versioning; }
+
+  RGWBucketInfo() : flags(0), has_instance_obj(false), num_shards(0), bucket_index_shard_hash_type(MOD), requester_pays(false),
+                    has_website(false), swift_versioning(false) {}
 };
 WRITE_CLASS_ENCODER(RGWBucketInfo)
 
@@ -902,27 +1007,28 @@ struct RGWBucketEntryPoint
 {
   rgw_bucket bucket;
   rgw_user owner;
-  time_t creation_time;
+  ceph::real_time creation_time;
   bool linked;
 
   bool has_bucket_info;
   RGWBucketInfo old_bucket_info;
 
-  RGWBucketEntryPoint() : creation_time(0), linked(false), has_bucket_info(false) {}
+  RGWBucketEntryPoint() : linked(false), has_bucket_info(false) {}
 
   void encode(bufferlist& bl) const {
-    ENCODE_START(9, 8, bl);
+    ENCODE_START(10, 8, bl);
     ::encode(bucket, bl);
     ::encode(owner.id, bl);
     ::encode(linked, bl);
-    uint64_t ctime = (uint64_t)creation_time;
+    uint64_t ctime = (uint64_t)real_clock::to_time_t(creation_time);
     ::encode(ctime, bl);
     ::encode(owner, bl);
+    ::encode(creation_time, bl);
     ENCODE_FINISH(bl);
   }
   void decode(bufferlist::iterator& bl) {
     bufferlist::iterator orig_iter = bl;
-    DECODE_START_LEGACY_COMPAT_LEN_32(9, 4, 4, bl);
+    DECODE_START_LEGACY_COMPAT_LEN_32(10, 4, 4, bl);
     if (struct_v < 8) {
       /* ouch, old entry, contains the bucket info itself */
       old_bucket_info.decode(orig_iter);
@@ -935,9 +1041,14 @@ struct RGWBucketEntryPoint
     ::decode(linked, bl);
     uint64_t ctime;
     ::decode(ctime, bl);
-    creation_time = (uint64_t)ctime;
+    if (struct_v < 10) {
+      creation_time = real_clock::from_time_t((time_t)ctime);
+    }
     if (struct_v >= 9) {
       ::decode(owner, bl);
+    }
+    if (struct_v >= 10) {
+      ::decode(creation_time, bl);
     }
     DECODE_FINISH(bl);
   }
@@ -974,6 +1085,7 @@ struct req_info {
   const char *method;
   string script_uri;
   string request_uri;
+  string request_uri_aws4;
   string effective_uri;
   string request_params;
   string domain;
@@ -1062,90 +1174,123 @@ inline ostream& operator<<(ostream& out, const rgw_obj_key &o) {
   }
 }
 
+struct rgw_aws4_auth {
+  string date;
+  string expires;
+  string credential;
+  string signedheaders;
+  string signed_hdrs;
+  string access_key_id;
+  string credential_scope;
+  string canonical_uri;
+  string canonical_qs;
+  string canonical_hdrs;
+  string signature;
+  string new_signature;
+  string payload_hash;
+};
+
 struct req_init_state {
   /* Keeps [[tenant]:]bucket until we parse the token. */
   string url_bucket;
   string src_bucket;
 };
 
+/* XXX why don't RGWRequest (or descendants) hold this state? */
+class RGWRequest;
+
 /** Store all the state necessary to complete and respond to an HTTP request*/
 struct req_state {
-   CephContext *cct;
-   RGWClientIO *cio;
-   http_op op;
-   bool content_started;
-   int format;
-   ceph::Formatter *formatter;
-   string decoded_uri;
-   string relative_uri;
-   const char *length;
-   int64_t content_length;
-   map<string, string> generic_attrs;
-   struct rgw_err err;
-   bool expect_cont;
-   bool header_ended;
-   uint64_t obj_size;
-   bool enable_ops_log;
-   bool enable_usage_log;
-   uint8_t defer_to_bucket_acls;
-   uint32_t perm_mask;
-   utime_t header_time;
+  CephContext *cct;
+  RGWClientIO *cio;
+  RGWRequest *req; /// XXX: re-remove??
+  http_op op;
+  RGWOpType op_type;
+  bool content_started;
+  int format;
+  ceph::Formatter *formatter;
+  string decoded_uri;
+  string relative_uri;
+  const char *length;
+  int64_t content_length;
+  map<string, string> generic_attrs;
+  struct rgw_err err;
+  bool expect_cont;
+  bool header_ended;
+  uint64_t obj_size;
+  bool enable_ops_log;
+  bool enable_usage_log;
+  uint8_t defer_to_bucket_acls;
+  uint32_t perm_mask;
+  utime_t header_time;
 
-   /* Set once when url_bucket is parsed and not violated thereafter. */
-   string bucket_tenant;
-   string bucket_name;
+  /* Set once when url_bucket is parsed and not violated thereafter. */
+  string account_name;
 
-   rgw_bucket bucket;
-   rgw_obj_key object;
-   string src_tenant_name;
-   string src_bucket_name;
-   rgw_obj_key src_object;
-   ACLOwner bucket_owner;
-   ACLOwner owner;
+  string bucket_tenant;
+  string bucket_name;
 
-   string region_endpoint;
-   string bucket_instance_id;
+  rgw_bucket bucket;
+  rgw_obj_key object;
+  string src_tenant_name;
+  string src_bucket_name;
+  rgw_obj_key src_object;
+  ACLOwner bucket_owner;
+  ACLOwner owner;
 
-   string redirect;
+  string zonegroup_name;
+  string zonegroup_endpoint;
+  string bucket_instance_id;
+  int bucket_instance_shard_id;
 
-   RGWBucketInfo bucket_info;
-   map<string, bufferlist> bucket_attrs;
-   bool bucket_exists;
+  string redirect;
 
-   bool has_bad_meta;
+  RGWBucketInfo bucket_info;
+  map<string, bufferlist> bucket_attrs;
+  bool bucket_exists;
 
-   RGWUserInfo user; 
-   RGWAccessControlPolicy *bucket_acl;
-   RGWAccessControlPolicy *object_acl;
+  bool has_bad_meta;
 
-   bool system_request;
+  RGWUserInfo *user;
 
-   string canned_acl;
-   bool has_acl_header;
-   const char *http_auth;
-   bool local_source; /* source is local */
+  RGWAccessControlPolicy *bucket_acl;
+  RGWAccessControlPolicy *object_acl;
 
-   int prot_flags;
+  bool system_request;
 
-   const char *os_auth_token;
-   string swift_user;
-   string swift_groups;
+  /* aws4 auth support */
+  bool aws4_auth_needs_complete;
+  rgw_aws4_auth *aws4_auth;
 
-   utime_t time;
+  string canned_acl;
+  bool has_acl_header;
+  const char *http_auth;
+  bool local_source; /* source is local */
 
-   void *obj_ctx;
+  int prot_flags;
 
-   string dialect;
+  const char *os_auth_token;
+  string swift_user;
+  string swift_groups;
+  /* Content-Disposition override for TempURL of Swift API. */
+  struct {
+    string override;
+    string fallback;
+  } content_disp;
 
-   string req_id;
+  string host_id;
 
-   string trans_id;
+  req_info info;
+  req_init_state init_state;
 
-   req_info info;
-   req_init_state init_state;
+  utime_t time;
+  void *obj_ctx;
+  string dialect;
+  string req_id;
+  string trans_id;
 
-   req_state(CephContext *_cct, class RGWEnv *e);
-   ~req_state();
+  req_state(CephContext* _cct, RGWEnv* e, RGWUserInfo* u);
+  ~req_state();
 };
 
 /** Store basic data on an object */
@@ -1155,7 +1300,7 @@ struct RGWObjEnt {
   rgw_user owner;
   std::string owner_display_name;
   uint64_t size;
-  utime_t mtime;
+  ceph::real_time mtime;
   string etag;
   string content_type;
   string tag;
@@ -1182,10 +1327,10 @@ struct RGWBucketEnt {
   rgw_bucket bucket;
   size_t size;
   size_t size_rounded;
-  time_t creation_time;
+  real_time creation_time;
   uint64_t count;
 
-  RGWBucketEnt() : size(0), size_rounded(0), creation_time(0), count(0) {}
+  RGWBucketEnt() : size(0), size_rounded(0), count(0) {}
 
   explicit RGWBucketEnt(const cls_user_bucket_entry& e) : bucket(e.bucket),
 		  					  size(e.size), 
@@ -1202,9 +1347,9 @@ struct RGWBucketEnt {
   }
 
   void encode(bufferlist& bl) const {
-    ENCODE_START(5, 5, bl);
+    ENCODE_START(6, 5, bl);
     uint64_t s = size;
-    __u32 mt = creation_time;
+    __u32 mt = ceph::real_clock::to_time_t(creation_time);
     string empty_str;  // originally had the bucket name here, but we encode bucket later
     ::encode(empty_str, bl);
     ::encode(s, bl);
@@ -1213,10 +1358,11 @@ struct RGWBucketEnt {
     ::encode(bucket, bl);
     s = size_rounded;
     ::encode(s, bl);
+    ::encode(creation_time, bl);
     ENCODE_FINISH(bl);
   }
   void decode(bufferlist::iterator& bl) {
-    DECODE_START_LEGACY_COMPAT_LEN(5, 5, 5, bl);
+    DECODE_START_LEGACY_COMPAT_LEN(6, 5, 5, bl);
     __u32 mt;
     uint64_t s;
     string empty_str;  // backward compatibility
@@ -1224,7 +1370,9 @@ struct RGWBucketEnt {
     ::decode(s, bl);
     ::decode(mt, bl);
     size = s;
-    creation_time = mt;
+    if (struct_v < 6) {
+      creation_time = ceph::real_clock::from_time_t(mt);
+    }
     if (struct_v >= 2)
       ::decode(count, bl);
     if (struct_v >= 3)
@@ -1232,6 +1380,8 @@ struct RGWBucketEnt {
     if (struct_v >= 4)
       ::decode(s, bl);
     size_rounded = s;
+    if (struct_v >= 6)
+      ::decode(creation_time, bl);
     DECODE_FINISH(bl);
   }
   void dump(Formatter *f) const;
@@ -1687,9 +1837,9 @@ extern void parse_csv_string(const string& ival, vector<string>& ovals);
 extern int parse_key_value(string& in_str, string& key, string& val);
 extern int parse_key_value(string& in_str, const char *delim, string& key, string& val);
 /** time parsing */
-extern int parse_time(const char *time_str, time_t *time);
+extern int parse_time(const char *time_str, real_time *time);
 extern bool parse_rfc2616(const char *s, struct tm *t);
-extern bool parse_iso8601(const char *s, struct tm *t);
+extern bool parse_iso8601(const char *s, struct tm *t, uint32_t *pns = NULL, bool extended_format = true);
 extern string rgw_trim_whitespace(const string& src);
 extern string rgw_trim_quotes(const string& val);
 
@@ -1707,12 +1857,22 @@ extern bool verify_object_permission(struct req_state *s,
 extern bool verify_object_permission(struct req_state *s, int perm);
 /** Convert an input URL into a sane object name
  * by converting %-escaped strings into characters, etc*/
+extern void rgw_uri_escape_char(char c, string& dst);
 extern bool url_decode(const string& src_str, string& dest_str, bool in_query = false);
 extern void url_encode(const string& src, string& dst);
 
+/* destination should be CEPH_CRYPTO_HMACSHA1_DIGESTSIZE bytes long */
 extern void calc_hmac_sha1(const char *key, int key_len,
                           const char *msg, int msg_len, char *dest);
-/* destination should be CEPH_CRYPTO_HMACSHA1_DIGESTSIZE bytes long */
+/* destination should be CEPH_CRYPTO_HMACSHA256_DIGESTSIZE bytes long */
+extern void calc_hmac_sha256(const char *key, int key_len, const char *msg, int msg_len, char *dest);
+extern void calc_hash_sha256(const char *msg, int len, string& dest);
+extern void calc_hash_sha256(const string& msg, string& dest);
+
+using ceph::crypto::SHA256;
+extern SHA256* calc_hash_sha256_open_stream();
+extern void    calc_hash_sha256_update_stream(SHA256 *hash, const char *msg, int len);
+extern string  calc_hash_sha256_close_stream(SHA256 **hash);
 
 extern int rgw_parse_op_type_list(const string& str, uint32_t *perm);
 

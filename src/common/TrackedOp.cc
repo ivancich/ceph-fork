@@ -87,14 +87,23 @@ void OpHistory::dump_ops(utime_t now, Formatter *f)
   f->close_section();
 }
 
-void OpTracker::dump_historic_ops(Formatter *f)
+bool OpTracker::dump_historic_ops(Formatter *f)
 {
+  RWLock::RLocker l(lock);
+  if (!tracking_enabled)
+    return false;
+
   utime_t now = ceph_clock_now(cct);
   history.dump_ops(now, f);
+  return true;
 }
 
-void OpTracker::dump_ops_in_flight(Formatter *f, bool print_only_blocked)
+bool OpTracker::dump_ops_in_flight(Formatter *f, bool print_only_blocked)
 {
+  RWLock::RLocker l(lock);
+  if (!tracking_enabled)
+    return false;
+
   f->open_object_section("ops_in_flight"); // overall dump
   uint64_t total_ops_in_flight = 0;
   f->open_array_section("ops"); // list of TrackedOps
@@ -119,12 +128,14 @@ void OpTracker::dump_ops_in_flight(Formatter *f, bool print_only_blocked)
   } else
     f->dump_int("num_ops", total_ops_in_flight);
   f->close_section(); // overall dump
+  return true;
 }
 
-void OpTracker::register_inflight_op(xlist<TrackedOp*>::item *i)
+bool OpTracker::register_inflight_op(xlist<TrackedOp*>::item *i)
 {
-  // caller checks;
-  assert(tracking_enabled);
+  RWLock::RLocker l(lock);
+  if (!tracking_enabled)
+    return false;
 
   uint64_t current_seq = seq.inc();
   uint32_t shard_index = current_seq % num_optracker_shards;
@@ -135,6 +146,7 @@ void OpTracker::register_inflight_op(xlist<TrackedOp*>::item *i)
     sdata->ops_in_flight_sharded.push_back(i);
     sdata->ops_in_flight_sharded.back()->seq = current_seq;
   }
+  return true;
 }
 
 void OpTracker::unregister_inflight_op(TrackedOp *i)
@@ -152,6 +164,7 @@ void OpTracker::unregister_inflight_op(TrackedOp *i)
   }
   i->_unregistered();
 
+  RWLock::RLocker l(lock);
   if (!tracking_enabled)
     delete i;
   else {
@@ -203,8 +216,7 @@ bool OpTracker::check_ops_in_flight(std::vector<string> &warning_vector)
 
   int slow = 0;     // total slow
   int warned = 0;   // total logged
-  for (uint32_t iter = 0;
-       iter < num_optracker_shards && warned < log_threshold; iter++) {
+  for (uint32_t iter = 0; iter < num_optracker_shards; iter++) {
     ShardedTrackingData* sdata = sharded_in_flight_list[iter];
     assert(NULL != sdata);
     Mutex::Locker locker(sdata->ops_in_flight_lock_sharded);
@@ -215,12 +227,10 @@ bool OpTracker::check_ops_in_flight(std::vector<string> &warning_vector)
       slow++;
 
       // exponential backoff of warning intervals
-      if (((*i)->get_initiated() +
-	 (complaint_time * (*i)->warn_interval_multiplier)) < now) {
-      // will warn
+      if (warned < log_threshold &&
+         ((*i)->get_initiated() + (complaint_time * (*i)->warn_interval_multiplier)) < now) {
+        // will warn, increase counter
         warned++;
-        if (warned > log_threshold)
-          break;
 
         utime_t age = now - (*i)->get_initiated();
         stringstream ss;
@@ -247,7 +257,7 @@ bool OpTracker::check_ops_in_flight(std::vector<string> &warning_vector)
     warning_vector[0] = ss.str();
   }
 
-  return warned;
+  return warned > 0;
 }
 
 void OpTracker::get_age_ms_histogram(pow2_hist_t *h)
@@ -315,6 +325,9 @@ void TrackedOp::mark_event(const string &event)
 
 void TrackedOp::dump(utime_t now, Formatter *f) const
 {
+  // Ignore if still in the constructor
+  if (!is_tracked)
+    return;
   stringstream name;
   _dump_op_descriptor_unlocked(name);
   f->dump_string("description", name.str().c_str()); // this TrackedOp

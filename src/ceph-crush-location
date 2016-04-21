@@ -20,10 +20,10 @@ if [ `dirname $0` = "." ] && [ $PWD != "/usr/bin" ]; then
     LIBDIR=.
     ETCDIR=.
 else
-    BINDIR=/usr/local/bin
-    SBINDIR=/usr/local/sbin
-    LIBDIR=/usr/local/lib/ceph
-    ETCDIR=/usr/local/etc/ceph
+    BINDIR=/usr/bin
+    SBINDIR=/usr/sbin
+    LIBDIR=/usr/lib/ceph
+    ETCDIR=/etc/ceph
 fi
 
 usage_exit() {

@@ -666,13 +666,15 @@ int main(int argc, const char **argv)
 				      entity_name_t::MON(rank),
 				      "mon",
 				      0);
+  if (!msgr)
+    exit(1);
   msgr->set_cluster_protocol(CEPH_MON_PROTOCOL);
   msgr->set_default_send_priority(CEPH_MSG_PRIO_HIGH);
 
   uint64_t supported =
     CEPH_FEATURE_UID |
     CEPH_FEATURE_NOSRCADDR |
-    CEPH_FEATURE_MONCLOCKCHECK |
+    DEPRECATED_CEPH_FEATURE_MONCLOCKCHECK |
     CEPH_FEATURE_PGID64 |
     CEPH_FEATURE_MSG_AUTH;
   msgr->set_default_policy(Messenger::Policy::stateless_server(supported, 0));

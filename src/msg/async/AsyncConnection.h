@@ -17,6 +17,7 @@
 #ifndef CEPH_MSG_ASYNCCONNECTION_H
 #define CEPH_MSG_ASYNCCONNECTION_H
 
+#include <atomic>
 #include <pthread.h>
 #include <signal.h>
 #include <climits>
@@ -36,6 +37,8 @@ using namespace std;
 
 class AsyncMessenger;
 
+static const int ASYNC_IOV_MAX = (IOV_MAX >= 1024 ? IOV_MAX / 4 : IOV_MAX);
+
 /*
  * AsyncConnection maintains a logic session between two endpoints. In other
  * word, a pair of addresses can find the only AsyncConnection. AsyncConnection
@@ -51,11 +54,12 @@ class AsyncConnection : public Connection {
   ssize_t do_sendmsg(struct msghdr &msg, unsigned len, bool more);
   ssize_t try_send(bufferlist &bl, bool send=true, bool more=false) {
     Mutex::Locker l(write_lock);
-    return _try_send(bl, send, more);
+    outcoming_bl.claim_append(bl);
+    return _try_send(send, more);
   }
   // if "send" is false, it will only append bl to send buffer
   // the main usage is avoid error happen outside messenger threads
-  ssize_t _try_send(bufferlist &bl, bool send=true, bool more=false);
+  ssize_t _try_send(bool send=true, bool more=false);
   ssize_t _send(Message *m);
   void prepare_send_message(uint64_t features, Message *m, bufferlist &bl);
   ssize_t read_until(unsigned needed, char *p);
@@ -72,7 +76,7 @@ class AsyncConnection : public Connection {
   int randomize_out_seq();
   void handle_ack(uint64_t seq);
   void _send_keepalive_or_ack(bool ack=false, utime_t *t=NULL);
-  ssize_t write_message(Message *m, bufferlist& bl);
+  ssize_t write_message(Message *m, bufferlist& bl, bool more);
   ssize_t _reply_accept(char tag, ceph_msg_connect &connect, ceph_msg_connect_reply &reply,
                     bufferlist &authorizer_reply) {
     bufferlist reply_bl;
@@ -115,6 +119,10 @@ class AsyncConnection : public Connection {
     }
     return m;
   }
+  bool _has_next_outgoing() {
+    assert(write_lock.is_locked());
+    return !out_q.empty();
+  }
 
  public:
   AsyncConnection(CephContext *cct, AsyncMessenger *m, EventCenter *c, PerfCounters *p);
@@ -123,8 +131,7 @@ class AsyncConnection : public Connection {
   ostream& _conn_prefix(std::ostream *_dout);
 
   bool is_connected() override {
-    Mutex::Locker l(lock);
-    return state >= STATE_OPEN && state <= STATE_OPEN_TAG_CLOSE;
+    return can_write.load() == WriteStatus::CANWRITE;
   }
 
   // Only call when AsyncConnection first construct
@@ -233,11 +240,12 @@ class AsyncConnection : public Connection {
   Messenger::Policy policy;
 
   Mutex write_lock;
-  enum {
+  enum class WriteStatus {
     NOWRITE,
     CANWRITE,
     CLOSED
-  } can_write;
+  };
+  std::atomic<WriteStatus> can_write;
   bool open_write;
   map<int, list<pair<bufferlist, Message*> > > out_q;  // priority queue for outbound msgs
   list<Message*> sent; // the first bufferlist need to inject seq
@@ -254,7 +262,7 @@ class AsyncConnection : public Connection {
   EventCallbackRef connect_handler;
   EventCallbackRef local_deliver_handler;
   EventCallbackRef wakeup_handler;
-  struct iovec msgvec[IOV_MAX];
+  struct iovec msgvec[ASYNC_IOV_MAX];
   char *recv_buf;
   uint32_t recv_max_prefetch;
   uint32_t recv_start;

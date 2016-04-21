@@ -121,22 +121,6 @@ string ceph_osd_op_flag_string(unsigned flags)
   return string("-");
 }
 
-const char *num_char_map = "0123456789abcdef";
-template<typename T, const int base>
-static inline
-char* ritoa(T u, char *buf) {
-  if (u < base) {
-    *--buf = num_char_map[u];
-    return buf;
-  }
- 
-  while (u) {
-    *--buf = num_char_map[u % base]; 
-    u /= base;
-  }
-  return buf;
-}
-
 void pg_shard_t::encode(bufferlist &bl) const
 {
   ENCODE_START(1, 1, bl);
@@ -463,7 +447,7 @@ char *spg_t::calc_name(char *buf, const char *suffix_backwords) const
     *--buf = *suffix_backwords++;
 
   if (!is_no_shard()) {
-    buf = ritoa<int8_t, 10>(shard.id, buf);
+    buf = ritoa<uint8_t, 10>((uint8_t)shard.id, buf);
     *--buf = 's';
   }
 
@@ -667,6 +651,7 @@ bool coll_t::parse(const std::string& s)
 
 void coll_t::encode(bufferlist& bl) const
 {
+  // when changing this, remember to update encoded_size() too.
   if (is_temp()) {
     // can't express this as v2...
     __u8 struct_v = 3;
@@ -680,6 +665,33 @@ void coll_t::encode(bufferlist& bl) const
     snapid_t snap = CEPH_NOSNAP;
     ::encode(snap, bl);
   }
+}
+
+size_t coll_t::encoded_size() const
+{
+  size_t r = sizeof(__u8);
+  if (is_temp()) {
+    // v3
+    r += sizeof(__u32);
+    if (_str) {
+      r += strlen(_str);
+    }
+  } else {
+      // v2
+      // 1. type
+      r += sizeof(__u8);
+      // 2. pgid
+      //  - encoding header
+      r += sizeof(ceph_le32) + 2 * sizeof(__u8);
+      // - pg_t
+      r += sizeof(__u8) + sizeof(uint64_t) + 2 * sizeof(uint32_t);
+      // - shard_id_t
+      r += sizeof(int8_t);
+      // 3. snapid_t
+      r += sizeof(uint64_t);
+  }
+
+  return r;
 }
 
 void coll_t::decode(bufferlist::iterator& bl)
@@ -876,6 +888,10 @@ int pg_string_state(const std::string& state)
     type = PG_STATE_RECOVERY_WAIT;
   else if (state == "undersized")
     type = PG_STATE_UNDERSIZED;
+  else if (state == "activating")
+    type = PG_STATE_ACTIVATING;
+  else if (state == "peered")
+    type = PG_STATE_PEERED;
   else
     type = -1;
   return type;
@@ -884,9 +900,12 @@ int pg_string_state(const std::string& state)
 // -- eversion_t --
 string eversion_t::get_key_name() const
 {
-  char key[40];
-  snprintf(
-    key, sizeof(key), "%010u.%020llu", epoch, (long long unsigned)version);
+  char key[32];
+  // Below is equivalent of sprintf("%010u.%020llu");
+  key[31] = 0;
+  ritoa<uint64_t, 10, 20>(version, key + 31);
+  key[10] = '.';
+  ritoa<uint32_t, 10, 10>(epoch, key + 10);
   return string(key);
 }
 
@@ -947,7 +966,9 @@ static opt_mapping_t opt_mapping = boost::assign::map_list_of
            ("recovery_priority", pool_opts_t::opt_desc_t(
              pool_opts_t::RECOVERY_PRIORITY, pool_opts_t::INT))
            ("recovery_op_priority", pool_opts_t::opt_desc_t(
-             pool_opts_t::RECOVERY_OP_PRIORITY, pool_opts_t::INT));
+             pool_opts_t::RECOVERY_OP_PRIORITY, pool_opts_t::INT))
+           ("scrub_priority", pool_opts_t::opt_desc_t(
+             pool_opts_t::SCRUB_PRIORITY, pool_opts_t::INT));
 
 bool pool_opts_t::is_opt_name(const std::string& name) {
     return opt_mapping.find(name) != opt_mapping.end();
@@ -1105,8 +1126,8 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_int("min_size", get_min_size());
   f->dump_int("crush_ruleset", get_crush_ruleset());
   f->dump_int("object_hash", get_object_hash());
-  f->dump_int("pg_num", get_pg_num());
-  f->dump_int("pg_placement_num", get_pgp_num());
+  f->dump_unsigned("pg_num", get_pg_num());
+  f->dump_unsigned("pg_placement_num", get_pgp_num());
   f->dump_unsigned("crash_replay_interval", get_crash_replay_interval());
   f->dump_stream("last_change") << get_last_change();
   f->dump_stream("last_force_op_resend") << get_last_force_op_resend();
@@ -1122,11 +1143,11 @@ void pg_pool_t::dump(Formatter *f) const
   }
   f->close_section();
   f->dump_stream("removed_snaps") << removed_snaps;
-  f->dump_int("quota_max_bytes", quota_max_bytes);
-  f->dump_int("quota_max_objects", quota_max_objects);
+  f->dump_unsigned("quota_max_bytes", quota_max_bytes);
+  f->dump_unsigned("quota_max_objects", quota_max_objects);
   f->open_array_section("tiers");
   for (set<uint64_t>::const_iterator p = tiers.begin(); p != tiers.end(); ++p)
-    f->dump_int("pool_id", *p);
+    f->dump_unsigned("pool_id", *p);
   f->close_section();
   f->dump_int("tier_of", tier_of);
   f->dump_int("read_tier", read_tier);
@@ -2225,9 +2246,14 @@ void pg_stat_t::dump(Formatter *f) const
   f->dump_stream("last_deep_scrub") << last_deep_scrub;
   f->dump_stream("last_deep_scrub_stamp") << last_deep_scrub_stamp;
   f->dump_stream("last_clean_scrub_stamp") << last_clean_scrub_stamp;
-  f->dump_unsigned("log_size", log_size);
-  f->dump_unsigned("ondisk_log_size", ondisk_log_size);
-  f->dump_stream("stats_invalid") << stats_invalid;
+  f->dump_int("log_size", log_size);
+  f->dump_int("ondisk_log_size", ondisk_log_size);
+  f->dump_bool("stats_invalid", stats_invalid);
+  f->dump_bool("dirty_stats_invalid", dirty_stats_invalid);
+  f->dump_bool("omap_stats_invalid", omap_stats_invalid);
+  f->dump_bool("hitset_stats_invalid", hitset_stats_invalid);
+  f->dump_bool("hitset_bytes_stats_invalid", hitset_bytes_stats_invalid);
+  f->dump_bool("pin_stats_invalid", pin_stats_invalid);
   stats.dump(f);
   f->open_array_section("up");
   for (vector<int32_t>::const_iterator p = up.begin(); p != up.end(); ++p)
@@ -2518,6 +2544,7 @@ bool operator==(const pg_stat_t& l, const pg_stat_t& r)
     l.last_fresh == r.last_fresh &&
     l.last_change == r.last_change &&
     l.last_active == r.last_active &&
+    l.last_peered == r.last_peered &&
     l.last_clean == r.last_clean &&
     l.last_unstale == r.last_unstale &&
     l.last_undegraded == r.last_undegraded &&
@@ -2542,6 +2569,7 @@ bool operator==(const pg_stat_t& l, const pg_stat_t& r)
     l.mapping_epoch == r.mapping_epoch &&
     l.blocked_by == r.blocked_by &&
     l.last_became_active == r.last_became_active &&
+    l.last_became_peered == r.last_became_peered &&
     l.dirty_stats_invalid == r.dirty_stats_invalid &&
     l.omap_stats_invalid == r.omap_stats_invalid &&
     l.hitset_stats_invalid == r.hitset_stats_invalid &&
@@ -3169,20 +3197,14 @@ ostream& operator<<(ostream& out, const pg_interval_t& i)
 // -- pg_query_t --
 
 void pg_query_t::encode(bufferlist &bl, uint64_t features) const {
-  if (features & CEPH_FEATURE_QUERY_T) {
-    ENCODE_START(3, 2, bl);
-    ::encode(type, bl);
-    ::encode(since, bl);
-    history.encode(bl);
-    ::encode(epoch_sent, bl);
-    ::encode(to, bl);
-    ::encode(from, bl);
-    ENCODE_FINISH(bl);
-  } else {
-    ::encode(type, bl);
-    ::encode(since, bl);
-    history.encode(bl);
-  }
+  ENCODE_START(3, 2, bl);
+  ::encode(type, bl);
+  ::encode(since, bl);
+  history.encode(bl);
+  ::encode(epoch_sent, bl);
+  ::encode(to, bl);
+  ::encode(from, bl);
+  ENCODE_FINISH(bl);
 }
 
 void pg_query_t::decode(bufferlist::iterator &bl) {
@@ -3270,6 +3292,12 @@ void ObjectModDesc::visit(Visitor *visitor) const
 	set<snapid_t> snaps;
 	::decode(snaps, bp);
 	visitor->update_snaps(snaps);
+	break;
+      }
+      case TRY_DELETE: {
+	version_t old_version;
+	::decode(old_version, bp);
+	visitor->try_rmobject(old_version);
 	break;
       }
       default:
@@ -4041,28 +4069,6 @@ void object_copy_data_t::decode_classic(bufferlist::iterator& bl)
 
 void object_copy_data_t::encode(bufferlist& bl, uint64_t features) const
 {
-  if ((features & CEPH_FEATURE_OSD_OBJECT_DIGEST) == 0) {
-    ENCODE_START(4, 1, bl);
-    ::encode(size, bl);
-    ::encode(mtime, bl);
-    ::encode((__u32)0, bl);  // was category; no longer used
-    ::encode(attrs, bl);
-    ::encode(data, bl);
-    if (omap_data.length())
-      bl.append(omap_data);
-    else
-      ::encode((__u32)0, bl);
-    ::encode(cursor, bl);
-    ::encode(omap_header, bl);
-    ::encode(snaps, bl);
-    ::encode(snap_seq, bl);
-    ::encode(flags, bl);
-    ::encode(data_digest, bl);
-    ::encode(omap_digest, bl);
-    ENCODE_FINISH(bl);
-    return;
-  }
-
   ENCODE_START(7, 5, bl);
   ::encode(size, bl);
   ::encode(mtime, bl);
@@ -5497,6 +5503,8 @@ ostream& operator<<(ostream& out, const OSDOp& op)
       break;
     case CEPH_OSD_OP_PG_HITSET_GET:
       out << " " << utime_t(op.op.hit_set_get.stamp);
+      break;
+    case CEPH_OSD_OP_SCRUBLS:
       break;
     }
   } else if (ceph_osd_op_type_multi(op.op.op)) {

@@ -277,7 +277,7 @@ enum {
 
 // pg stuff
 
-#define OSD_SUPERBLOCK_POBJECT ghobject_t(hobject_t(sobject_t(object_t("osd_superblock"), 0)))
+#define OSD_SUPERBLOCK_GOBJECT ghobject_t(hobject_t(sobject_t(object_t("osd_superblock"), 0)))
 
 // placement seed (a hash value)
 typedef uint32_t ps_t;
@@ -497,10 +497,19 @@ struct spg_t {
     DECODE_FINISH(bl);
   }
 
-  hobject_t make_temp_object(const string& name) {
+  hobject_t make_temp_hobject(const string& name) const {
     return hobject_t(object_t(name), "", CEPH_NOSNAP,
 		     pgid.ps(),
 		     hobject_t::POOL_TEMP_START - pgid.pool(), "");
+  }
+
+  ghobject_t make_temp_ghobject(const string& name) const {
+    return ghobject_t(
+      hobject_t(object_t(name), "", CEPH_NOSNAP,
+		pgid.ps(),
+		hobject_t::POOL_TEMP_START - pgid.pool(), ""),
+      ghobject_t::NO_GEN,
+      shard);
   }
 };
 WRITE_CLASS_ENCODER(spg_t)
@@ -624,6 +633,7 @@ public:
 
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& bl);
+  size_t encoded_size() const;
 
   inline bool operator==(const coll_t& rhs) const {
     // only compare type if meta
@@ -953,7 +963,8 @@ public:
     SCRUB_MAX_INTERVAL,
     DEEP_SCRUB_INTERVAL,
     RECOVERY_PRIORITY,
-    RECOVERY_OP_PRIORITY
+    RECOVERY_OP_PRIORITY,
+    SCRUB_PRIORITY
   };
 
   enum type_t {
@@ -1115,7 +1126,8 @@ struct pg_pool_t {
     CACHEMODE_FORWARD = 2,               ///< forward if not in cache
     CACHEMODE_READONLY = 3,              ///< handle reads, forward writes [not strongly consistent]
     CACHEMODE_READFORWARD = 4,           ///< forward reads, write to cache flush later
-    CACHEMODE_READPROXY = 5              ///< proxy reads, write to cache flush later
+    CACHEMODE_READPROXY = 5,             ///< proxy reads, write to cache flush later
+    CACHEMODE_PROXY = 6,                 ///< proxy if not in cache
   } cache_mode_t;
   static const char *get_cache_mode_name(cache_mode_t m) {
     switch (m) {
@@ -1125,6 +1137,7 @@ struct pg_pool_t {
     case CACHEMODE_READONLY: return "readonly";
     case CACHEMODE_READFORWARD: return "readforward";
     case CACHEMODE_READPROXY: return "readproxy";
+    case CACHEMODE_PROXY: return "proxy";
     default: return "unknown";
     }
   }
@@ -1141,6 +1154,8 @@ struct pg_pool_t {
       return CACHEMODE_READFORWARD;
     if (s == "readproxy")
       return CACHEMODE_READPROXY;
+    if (s == "proxy")
+      return CACHEMODE_PROXY;
     return (cache_mode_t)-1;
   }
   const char *get_cache_mode_name() const {
@@ -1151,6 +1166,7 @@ struct pg_pool_t {
     case CACHEMODE_NONE:
     case CACHEMODE_FORWARD:
     case CACHEMODE_READONLY:
+    case CACHEMODE_PROXY:
       return false;
     case CACHEMODE_WRITEBACK:
     case CACHEMODE_READFORWARD:
@@ -1766,7 +1782,7 @@ struct pg_stat_t {
   utime_t last_fresh;   // last reported
   utime_t last_change;  // new state != previous state
   utime_t last_active;  // state & PG_STATE_ACTIVE
-  utime_t last_peered;  // state & PG_STATE_ACTIVE || state & PG_STATE_ACTIVE
+  utime_t last_peered;  // state & PG_STATE_ACTIVE || state & PG_STATE_PEERED
   utime_t last_clean;   // state & PG_STATE_CLEAN
   utime_t last_unstale; // (state & PG_STATE_STALE) == 0
   utime_t last_undegraded; // (state & PG_STATE_DEGRADED) == 0
@@ -2360,6 +2376,15 @@ public:
     virtual void append(uint64_t old_offset) {}
     virtual void setattrs(map<string, boost::optional<bufferlist> > &attrs) {}
     virtual void rmobject(version_t old_version) {}
+    /**
+     * Used to support the unfound_lost_delete log event: if the stashed
+     * version exists, we unstash it, otherwise, we do nothing.  This way
+     * each replica rolls back to whatever state it had prior to the attempt
+     * at mark unfound lost delete
+     */
+    virtual void try_rmobject(version_t old_version) {
+      rmobject(old_version);
+    }
     virtual void create() {}
     virtual void update_snaps(set<snapid_t> &old_snaps) {}
     virtual ~Visitor() {}
@@ -2371,7 +2396,8 @@ public:
     SETATTRS = 2,
     DELETE = 3,
     CREATE = 4,
-    UPDATE_SNAPS = 5
+    UPDATE_SNAPS = 5,
+    TRY_DELETE = 6
   };
   ObjectModDesc() : can_local_rollback(true), rollback_info_completed(false) {}
   void claim(ObjectModDesc &other) {
@@ -2426,6 +2452,16 @@ public:
       return false;
     ENCODE_START(1, 1, bl);
     append_id(DELETE);
+    ::encode(deletion_version, bl);
+    ENCODE_FINISH(bl);
+    rollback_info_completed = true;
+    return true;
+  }
+  bool try_rmobject(version_t deletion_version) {
+    if (!can_local_rollback || rollback_info_completed)
+      return false;
+    ENCODE_START(1, 1, bl);
+    append_id(TRY_DELETE);
     ::encode(deletion_version, bl);
     ENCODE_FINISH(bl);
     rollback_info_completed = true;
@@ -3655,6 +3691,22 @@ public:
       *requeue_snaptrimmer = true;
     }
   }
+  void put_lock_type(
+    ObjectContext::RWState::State type,
+    list<OpRequestRef> *to_wake,
+    bool *requeue_recovery,
+    bool *requeue_snaptrimmer) {
+    switch (type) {
+    case ObjectContext::RWState::RWWRITE:
+      return put_write(to_wake, requeue_recovery, requeue_snaptrimmer);
+    case ObjectContext::RWState::RWREAD:
+      return put_read(to_wake);
+    case ObjectContext::RWState::RWEXCL:
+      return put_excl(to_wake, requeue_recovery, requeue_snaptrimmer);
+    default:
+      assert(0 == "invalid lock type");
+    }
+  }
   bool is_request_pending() {
     return (rwstate.count > 0);
   }
@@ -3749,6 +3801,104 @@ inline ostream& operator<<(ostream& out, const ObjectContext& obc)
 
 
 ostream& operator<<(ostream& out, const object_info_t& oi);
+
+class ObcLockManager {
+  struct ObjectLockState {
+    ObjectContextRef obc;
+    ObjectContext::RWState::State type;
+    ObjectLockState(
+      ObjectContextRef obc,
+      ObjectContext::RWState::State type)
+      : obc(obc), type(type) {}
+  };
+  map<hobject_t, ObjectLockState, hobject_t::BitwiseComparator> locks;
+public:
+  ObcLockManager() = default;
+  ObcLockManager(ObcLockManager &&) = default;
+  ObcLockManager(const ObcLockManager &) = delete;
+  bool empty() const {
+    return locks.empty();
+  }
+  bool get_lock_type(
+    ObjectContext::RWState::State type,
+    const hobject_t &hoid,
+    ObjectContextRef obc,
+    OpRequestRef op) {
+    assert(locks.find(hoid) == locks.end());
+    if (obc->get_lock_type(op, type)) {
+      locks.insert(make_pair(hoid, ObjectLockState(obc, type)));
+      return true;
+    } else {
+      return false;
+    }
+  }
+  /// Get write lock, ignore starvation
+  bool take_write_lock(
+    const hobject_t &hoid,
+    ObjectContextRef obc) {
+    assert(locks.find(hoid) == locks.end());
+    if (obc->rwstate.take_write_lock()) {
+      locks.insert(
+	make_pair(
+	  hoid, ObjectLockState(obc, ObjectContext::RWState::RWWRITE)));
+      return true;
+    } else {
+      return false;
+    }
+  }
+  /// Get write lock for snap trim
+  bool get_snaptrimmer_write(
+    const hobject_t &hoid,
+    ObjectContextRef obc) {
+    assert(locks.find(hoid) == locks.end());
+    if (obc->get_snaptrimmer_write()) {
+      locks.insert(
+	make_pair(
+	  hoid, ObjectLockState(obc, ObjectContext::RWState::RWWRITE)));
+      return true;
+    } else {
+      return false;
+    }
+  }
+  /// Get write lock greedy
+  bool get_write_greedy(
+    const hobject_t &hoid,
+    ObjectContextRef obc,
+    OpRequestRef op) {
+    assert(locks.find(hoid) == locks.end());
+    if (obc->get_write_greedy(op)) {
+      locks.insert(
+	make_pair(
+	  hoid, ObjectLockState(obc, ObjectContext::RWState::RWWRITE)));
+      return true;
+    } else {
+      return false;
+    }
+  }
+  void put_locks(
+    list<pair<hobject_t, list<OpRequestRef> > > *to_requeue,
+    bool *requeue_recovery,
+    bool *requeue_snaptrimmer) {
+    for (auto p: locks) {
+      list<OpRequestRef> _to_requeue;
+      p.second.obc->put_lock_type(
+	p.second.type,
+	&_to_requeue,
+	requeue_recovery,
+	requeue_snaptrimmer);
+      if (to_requeue) {
+	to_requeue->push_back(
+	  make_pair(
+	    p.second.obc->obs.oi.soid,
+	    std::move(_to_requeue)));
+      }
+    }
+    locks.clear();
+  }
+  ~ObcLockManager() {
+    assert(locks.empty());
+  }
+};
 
 
 
@@ -4162,4 +4312,29 @@ enum scrub_error_type {
   DEEP_ERROR,
   SHALLOW_ERROR
 };
+
+// PromoteCounter
+
+struct PromoteCounter {
+  atomic64_t attempts, objects, bytes;
+
+  void attempt() {
+    attempts.inc();
+  }
+
+  void finish(uint64_t size) {
+    objects.inc();
+    bytes.add(size);
+  }
+
+  void sample_and_attenuate(uint64_t *a, uint64_t *o, uint64_t *b) {
+    *a = attempts.read();
+    *o = objects.read();
+    *b = bytes.read();
+    attempts.set(*a / 2);
+    objects.set(*o / 2);
+    bytes.set(*b / 2);
+  }
+};
+
 #endif

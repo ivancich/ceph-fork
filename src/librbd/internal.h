@@ -96,6 +96,13 @@ namespace librbd {
 	     uint64_t stripe_unit, uint64_t stripe_count);
   int create(IoCtx& io_ctx, const char *imgname, uint64_t size,
 	     ImageOptions& opts);
+  int create_v2(IoCtx& io_ctx, const char *imgname, uint64_t bid, uint64_t size,
+		int order, uint64_t features, uint64_t stripe_unit,
+		uint64_t stripe_count, uint8_t journal_order,
+		uint8_t journal_splay_width,
+		const std::string &journal_pool,
+                const std::string &non_primary_global_image_id,
+                const std::string &primary_mirror_uuid);
   int clone(IoCtx& p_ioctx, const char *p_name, const char *p_snap_name,
 	    IoCtx& c_ioctx, const char *c_name,
 	    uint64_t features, int *c_order,
@@ -142,8 +149,6 @@ namespace librbd {
 
   int read_header_bl(librados::IoCtx& io_ctx, const std::string& md_oid,
 		     ceph::bufferlist& header, uint64_t *ver);
-  int notify_change(librados::IoCtx& io_ctx, const std::string& oid,
-		    ImageCtx *ictx);
   int read_header(librados::IoCtx& io_ctx, const std::string& md_oid,
 		  struct rbd_obj_header_ondisk *header, uint64_t *ver);
   int tmap_set(librados::IoCtx& io_ctx, const std::string& imgname);
@@ -173,18 +178,25 @@ namespace librbd {
   int metadata_set(ImageCtx *ictx, const std::string &key, const std::string &value);
   int metadata_remove(ImageCtx *ictx, const std::string &key);
 
-  int mirror_is_enabled(IoCtx& io_ctx, bool *enabled);
-  int mirror_set_enabled(IoCtx& io_ctx, bool enabled);
-  int mirror_peer_add(IoCtx& io_ctx, const std::string &cluster_uuid,
+  int mirror_mode_get(IoCtx& io_ctx, rbd_mirror_mode_t *mirror_mode);
+  int mirror_mode_set(IoCtx& io_ctx, rbd_mirror_mode_t mirror_mode);
+  int mirror_peer_add(IoCtx& io_ctx, std::string *uuid,
                       const std::string &cluster_name,
                       const std::string &client_name);
-  int mirror_peer_remove(IoCtx& io_ctx, const std::string &cluster_uuid);
+  int mirror_peer_remove(IoCtx& io_ctx, const std::string &uuid);
   int mirror_peer_list(IoCtx& io_ctx, std::vector<mirror_peer_t> *peers);
-  int mirror_peer_set_client(IoCtx& io_ctx, const std::string &cluster_uuid,
+  int mirror_peer_set_client(IoCtx& io_ctx, const std::string &uuid,
                              const std::string &client_name);
-  int mirror_peer_set_cluster(IoCtx& io_ctx, const std::string &cluster_uuid,
+  int mirror_peer_set_cluster(IoCtx& io_ctx, const std::string &uuid,
                               const std::string &cluster_name);
 
+  int mirror_image_enable(ImageCtx *ictx);
+  int mirror_image_disable(ImageCtx *ictx, bool force);
+  int mirror_image_promote(ImageCtx *ictx, bool force);
+  int mirror_image_demote(ImageCtx *ictx);
+  int mirror_image_resync(ImageCtx *ictx);
+  int mirror_image_get_info(ImageCtx *ictx, mirror_image_info_t *mirror_image_info,
+                            size_t info_size);
 }
 
 #endif

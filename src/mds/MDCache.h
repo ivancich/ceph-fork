@@ -170,11 +170,11 @@ public:
 
   unsigned max_dir_commit_size;
 
-  static ceph_file_layout gen_default_file_layout(const MDSMap &mdsmap);
-  static ceph_file_layout gen_default_log_layout(const MDSMap &mdsmap);
+  static file_layout_t gen_default_file_layout(const MDSMap &mdsmap);
+  static file_layout_t gen_default_log_layout(const MDSMap &mdsmap);
 
-  ceph_file_layout default_file_layout;
-  ceph_file_layout default_log_layout;
+  file_layout_t default_file_layout;
+  file_layout_t default_log_layout;
 
   void register_perfcounters();
 
@@ -989,10 +989,11 @@ public:
     ::encode(dn->last, bl);
     dn->encode_replica(to, bl);
   }
-  void replicate_inode(CInode *in, mds_rank_t to, bufferlist& bl) {
+  void replicate_inode(CInode *in, mds_rank_t to, bufferlist& bl,
+		       uint64_t features) {
     ::encode(in->inode.ino, bl);  // bleh, minor assymetry here
     ::encode(in->last, bl);
-    in->encode_replica(to, bl);
+    in->encode_replica(to, bl, features);
   }
   
   CDir* add_replica_dir(bufferlist::iterator& p, CInode *diri, mds_rank_t from, list<MDSInternalContextBase*>& finished);
@@ -1128,21 +1129,8 @@ public:
     return p->second;
   }
 
-  void scrub_dentry(const string& path, Formatter *f, Context *fin);
-  /**
-   * Scrub the named dentry only (skip the scrubstack)
-   */
-  void scrub_dentry_work(MDRequestRef& mdr);
-
-  void flush_dentry(const string& path, Context *fin);
+protected:
   void flush_dentry_work(MDRequestRef& mdr);
-
-  /**
-   * Create and start an OP_ENQUEUE_SCRUB
-   */
-  void enqueue_scrub(const string& path, const std::string &tag,
-                     Formatter *f, Context *fin);
-
   /**
    * Resolve path to a dentry and pass it onto the ScrubStack.
    *
@@ -1152,6 +1140,19 @@ public:
    * long time)
    */
   void enqueue_scrub_work(MDRequestRef& mdr);
+  void repair_inode_stats_work(MDRequestRef& mdr);
+  void repair_dirfrag_stats_work(MDRequestRef& mdr);
+  friend class C_MDC_RepairDirfragStats;
+public:
+  void flush_dentry(const string& path, Context *fin);
+  /**
+   * Create and start an OP_ENQUEUE_SCRUB
+   */
+  void enqueue_scrub(const string& path, const std::string &tag,
+                     bool force, bool recursive, bool repair,
+		     Formatter *f, Context *fin);
+  void repair_inode_stats(CInode *diri);
+  void repair_dirfrag_stats(CDir *dir);
 };
 
 class C_MDS_RetryRequest : public MDSInternalContext {

@@ -155,7 +155,7 @@ void Locker::include_snap_rdlocks(set<SimpleLock*>& rdlocks, CInode *in)
 }
 
 void Locker::include_snap_rdlocks_wlayout(set<SimpleLock*>& rdlocks, CInode *in,
-                                  ceph_file_layout **layout)
+					  file_layout_t **layout)
 {
   //rdlock ancestor snaps
   CInode *t = in;
@@ -2187,6 +2187,7 @@ bool Locker::check_inode_max_size(CInode *in, bool force_wrlock,
 				  utime_t new_mtime)
 {
   assert(in->is_auth());
+  assert(in->is_file());
 
   inode_t *latest = in->get_projected_inode();
   map<client_t, client_writeable_range_t> new_ranges;
@@ -3149,7 +3150,9 @@ bool Locker::_do_cap_update(CInode *in, Capability *cap,
     return false;
 
   Session *session = static_cast<Session *>(m->get_connection()->get_priv());
-  if (!session->check_access(in, MAY_WRITE, m->caller_uid, m->caller_gid, 0, 0)) {
+  if (session->check_access(in, MAY_WRITE,
+			    m->caller_uid, m->caller_gid, 0, 0) < 0) {
+    session->put();
     dout(10) << "check_access failed, dropping cap update on " << *in << dendl;
     return false;
   }

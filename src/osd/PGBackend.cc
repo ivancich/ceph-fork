@@ -17,7 +17,9 @@
 
 
 #include "common/errno.h"
+#include "common/scrub_types.h"
 #include "ReplicatedBackend.h"
+#include "ScrubStore.h"
 #include "ECBackend.h"
 #include "PGBackend.h"
 #include "OSD.h"
@@ -57,6 +59,12 @@ struct RollbackVisitor : public ObjectModDesc::Visitor {
     temp.append(t);
     temp.swap(t);
   }
+  void try_rmobject(version_t old_version) {
+    ObjectStore::Transaction temp;
+    pg->rollback_try_stash(hoid, old_version, &temp);
+    temp.append(t);
+    temp.swap(t);
+  }
   void create() {
     ObjectStore::Transaction temp;
     pg->rollback_create(hoid, &temp);
@@ -79,6 +87,17 @@ void PGBackend::rollback(
   t->append(vis.t);
 }
 
+
+void PGBackend::try_stash(
+  const hobject_t &hoid,
+  version_t v,
+  ObjectStore::Transaction *t)
+{
+  t->try_rename(
+    coll,
+    ghobject_t(hoid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard),
+    ghobject_t(hoid, v, get_parent()->whoami_shard().shard));
+}
 
 void PGBackend::on_change_cleanup(ObjectStore::Transaction *t)
 {
@@ -251,6 +270,20 @@ void PGBackend::rollback_stash(
     ghobject_t(hoid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard));
 }
 
+void PGBackend::rollback_try_stash(
+  const hobject_t &hoid,
+  version_t old_version,
+  ObjectStore::Transaction *t) {
+  assert(!hoid.is_temp());
+  t->remove(
+    coll,
+    ghobject_t(hoid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard));
+  t->try_rename(
+    coll,
+    ghobject_t(hoid, old_version, get_parent()->whoami_shard().shard),
+    ghobject_t(hoid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard));
+}
+
 void PGBackend::rollback_create(
   const hobject_t &hoid,
   ObjectStore::Transaction *t) {
@@ -367,8 +400,8 @@ enum scrub_error_type PGBackend::be_compare_scrub_objects(
   pg_shard_t auth_shard,
   const ScrubMap::object &auth,
   const object_info_t& auth_oi,
-  bool okseed,
   const ScrubMap::object &candidate,
+  shard_info_wrapper &result,
   ostream &errorstream)
 {
   enum scrub_error_type error = CLEAN;
@@ -385,13 +418,14 @@ enum scrub_error_type PGBackend::be_compare_scrub_objects(
       if (error != CLEAN)
         errorstream << ", ";
       error = DEEP_ERROR;
-      bool known = okseed && auth_oi.is_data_digest() &&
+      bool known = auth_oi.is_data_digest() &&
 	auth.digest == auth_oi.data_digest;
       errorstream << "data_digest 0x" << std::hex << candidate.digest
 		  << " != "
 		  << (known ? "known" : "best guess")
 		  << " data_digest 0x" << auth.digest << std::dec
 		  << " from auth shard " << auth_shard;
+      result.set_data_digest_mismatch();
     }
   }
   if (auth.omap_digest_present && candidate.omap_digest_present) {
@@ -399,13 +433,14 @@ enum scrub_error_type PGBackend::be_compare_scrub_objects(
       if (error != CLEAN)
         errorstream << ", ";
       error = DEEP_ERROR;
-      bool known = okseed && auth_oi.is_omap_digest() &&
+      bool known = auth_oi.is_omap_digest() &&
 	auth.omap_digest == auth_oi.omap_digest;
       errorstream << "omap_digest 0x" << std::hex << candidate.omap_digest
 		  << " != "
 		  << (known ? "known" : "best guess")
 		  << " omap_digest 0x" << auth.omap_digest << std::dec
 		  << " from auth shard " << auth_shard;
+      result.set_omap_digest_mismatch();
     }
   }
   if (!candidate.stat_error && auth.size != candidate.size) {
@@ -418,6 +453,7 @@ enum scrub_error_type PGBackend::be_compare_scrub_objects(
 		<< " != "
                 << (known ? "known" : "best guess")
                 << " size " << auth.size;
+    result.set_size_mismatch();
   }
   for (map<string,bufferptr>::const_iterator i = auth.attrs.begin();
        i != auth.attrs.end();
@@ -428,12 +464,14 @@ enum scrub_error_type PGBackend::be_compare_scrub_objects(
       if (error != DEEP_ERROR)
 	error = SHALLOW_ERROR;
       errorstream << "missing attr " << i->first;
+      result.set_attr_missing();
     } else if (candidate.attrs.find(i->first)->second.cmp(i->second)) {
       if (error != CLEAN)
         errorstream << ", ";
       if (error != DEEP_ERROR)
 	error = SHALLOW_ERROR;
       errorstream << "attr value mismatch " << i->first;
+      result.set_attr_mismatch();
     }
   }
   for (map<string,bufferptr>::const_iterator i = candidate.attrs.begin();
@@ -445,6 +483,7 @@ enum scrub_error_type PGBackend::be_compare_scrub_objects(
       if (error != DEEP_ERROR)
 	error = SHALLOW_ERROR;
       errorstream << "extra attr " << i->first;
+      result.set_attr_unexpected();
     }
   }
   return error;
@@ -454,7 +493,6 @@ map<pg_shard_t, ScrubMap *>::const_iterator
   PGBackend::be_select_auth_object(
   const hobject_t &obj,
   const map<pg_shard_t,ScrubMap*> &maps,
-  bool okseed,
   object_info_t *auth_oi)
 {
   map<pg_shard_t, ScrubMap *>::const_iterator auth = maps.end();
@@ -516,7 +554,7 @@ map<pg_shard_t, ScrubMap *>::const_iterator
       continue;
     }
     if (parent->get_pool().is_replicated()) {
-      if (okseed && oi.is_data_digest() && i->second.digest_present &&
+      if (oi.is_data_digest() && i->second.digest_present &&
 	  oi.data_digest != i->second.digest) {
 	dout(10) << __func__ << ": rejecting osd " << j->first
 		 << " for obj " << obj
@@ -525,7 +563,7 @@ map<pg_shard_t, ScrubMap *>::const_iterator
 		 << std::dec << dendl;
 	continue;
       }
-      if (okseed && oi.is_omap_digest() && i->second.omap_digest_present &&
+      if (oi.is_omap_digest() && i->second.omap_digest_present &&
 	  oi.omap_digest != i->second.omap_digest) {
 	dout(10) << __func__ << ": rejecting osd " << j->first
 		 << " for obj " << obj
@@ -546,13 +584,13 @@ map<pg_shard_t, ScrubMap *>::const_iterator
 
 void PGBackend::be_compare_scrubmaps(
   const map<pg_shard_t,ScrubMap*> &maps,
-  bool okseed,
   bool repair,
   map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> &missing,
   map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> &inconsistent,
   map<hobject_t, list<pg_shard_t>, hobject_t::BitwiseComparator> &authoritative,
   map<hobject_t, pair<uint32_t,uint32_t>, hobject_t::BitwiseComparator> &missing_digest,
   int &shallow_errors, int &deep_errors,
+  Scrub::Store *store,
   const spg_t& pgid,
   const vector<int> &acting,
   ostream &errorstream)
@@ -575,9 +613,12 @@ void PGBackend::be_compare_scrubmaps(
        ++k) {
     object_info_t auth_oi;
     map<pg_shard_t, ScrubMap *>::const_iterator auth =
-      be_select_auth_object(*k, maps, okseed, &auth_oi);
+      be_select_auth_object(*k, maps, &auth_oi);
+    inconsistent_obj_wrapper object_error{*k};
+
     list<pg_shard_t> auth_list;
     if (auth == maps.end()) {
+      object_error.set_auth_missing(*k, maps);
       ++shallow_errors;
       errorstream << pgid.pgid << " soid " << *k
 		  << ": failed to pick suitable auth object\n";
@@ -592,15 +633,17 @@ void PGBackend::be_compare_scrubmaps(
     for (j = maps.begin(); j != maps.end(); ++j) {
       if (j == auth)
 	continue;
+      shard_info_wrapper shard_info;
       if (j->second->objects.count(*k)) {
+	shard_info.set_object(j->second->objects[*k]);
 	// Compare
 	stringstream ss;
 	enum scrub_error_type error =
 	  be_compare_scrub_objects(auth->first,
 				   auth_object,
 				   auth_oi,
-				   okseed,
 				   j->second->objects[*k],
+				   shard_info,
 				   ss);
         if (error != CLEAN) {
 	  clean = false;
@@ -620,7 +663,9 @@ void PGBackend::be_compare_scrubmaps(
 	++shallow_errors;
 	errorstream << pgid << " shard " << j->first << " missing " << *k
 		    << "\n";
+	shard_info.set_missing();
       }
+      object_error.add_shard(j->first, shard_info);
     }
     if (!cur_missing.empty()) {
       missing[*k] = cur_missing;
@@ -630,10 +675,11 @@ void PGBackend::be_compare_scrubmaps(
     }
     if (!cur_inconsistent.empty() || !cur_missing.empty()) {
       authoritative[*k] = auth_list;
+      shard_info_wrapper auth_shard{auth_object};
+      object_error.add_shard(auth->first, auth_shard);
     }
 
-    if (okseed &&
-	clean &&
+    if (clean &&
 	parent->get_pool().is_replicated()) {
       enum {
 	NO = 0,
@@ -641,9 +687,24 @@ void PGBackend::be_compare_scrubmaps(
 	FORCE = 2,
       } update = NO;
 
+      if (auth_object.digest_present && auth_object.omap_digest_present &&
+	  (!auth_oi.is_data_digest() || !auth_oi.is_omap_digest())) {
+	dout(20) << __func__ << " missing digest on " << *k << dendl;
+	update = MAYBE;
+      }
+      if (auth_object.digest_present && auth_object.omap_digest_present &&
+	  g_conf->osd_debug_scrub_chance_rewrite_digest &&
+	  (((unsigned)rand() % 100) >
+	   g_conf->osd_debug_scrub_chance_rewrite_digest)) {
+	dout(20) << __func__ << " randomly updating digest on " << *k << dendl;
+	update = MAYBE;
+      }
+
+      shard_info_wrapper auth_shard{auth_object};
       // recorded digest != actual digest?
       if (auth_oi.is_data_digest() && auth_object.digest_present &&
 	  auth_oi.data_digest != auth_object.digest) {
+	auth_shard.set_data_digest_mismatch_oi();
 	++deep_errors;
 	errorstream << pgid << " recorded data digest 0x"
 		    << std::hex << auth_oi.data_digest << " != on disk 0x"
@@ -654,6 +715,7 @@ void PGBackend::be_compare_scrubmaps(
       }
       if (auth_oi.is_omap_digest() && auth_object.omap_digest_present &&
 	  auth_oi.omap_digest != auth_object.omap_digest) {
+	auth_shard.set_omap_digest_mismatch_oi();
 	++deep_errors;
 	errorstream << pgid << " recorded omap digest 0x"
 		    << std::hex << auth_oi.omap_digest << " != on disk 0x"
@@ -662,18 +724,8 @@ void PGBackend::be_compare_scrubmaps(
 	if (repair)
 	  update = FORCE;
       }
+      object_error.add_shard(auth->first, auth_shard);
 
-      if (auth_object.digest_present && auth_object.omap_digest_present &&
-	  (!auth_oi.is_data_digest() || !auth_oi.is_omap_digest())) {
-	dout(20) << __func__ << " missing digest on " << *k << dendl;
-	update = MAYBE;
-      }
-      if (g_conf->osd_debug_scrub_chance_rewrite_digest &&
-	  (((unsigned)rand() % 100) >
-	   g_conf->osd_debug_scrub_chance_rewrite_digest)) {
-	dout(20) << __func__ << " randomly updating digest on " << *k << dendl;
-	update = MAYBE;
-      }
       if (update != NO) {
 	utime_t age = now - auth_oi.local_mtime;
 	if (update == FORCE ||
@@ -687,6 +739,9 @@ void PGBackend::be_compare_scrubmaps(
 		   << " on " << *k << dendl;
 	}
       }
+    }
+    if (object_error.errors) {
+      store->add_object_error(k->pool, object_error);
     }
   }
 }

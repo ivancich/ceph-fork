@@ -31,9 +31,28 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __PCI_IDS_H__
-#define __PCI_IDS_H__
+#ifndef SPDK_PCI_IDS
+#define SPDK_PCI_IDS
 
-#define PCI_VENDOR_ID_INTEL	0x8086
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#endif /* __PCI_IDS_H__ */
+#include <stdint.h>
+
+#define SPDK_PCI_VID_INTEL		0x8086
+
+/**
+ * PCI class code for NVMe devices.
+ *
+ * Base class code 01h: mass storage
+ * Subclass code 08h: non-volatile memory
+ * Programming interface 02h: NVM Express
+ */
+#define SPDK_PCI_CLASS_NVME		0x010802
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* SPDK_PCI_IDS */

@@ -141,7 +141,7 @@ TEST_F(TestObjectPlayer, FetchCorrupt) {
 
   C_SaferCond cond;
   object->fetch(&cond);
-  ASSERT_EQ(-EINVAL, cond.wait());
+  ASSERT_EQ(-EBADMSG, cond.wait());
 
   journal::ObjectPlayer::Entries entries;
   object->get_entries(&entries);
@@ -267,7 +267,7 @@ TEST_F(TestObjectPlayer, Unwatch) {
   bool done = false;
   int rval = 0;
   C_SafeCond *ctx = new C_SafeCond(&mutex, &cond, &done, &rval);
-  object->watch(ctx, 0.1);
+  object->watch(ctx, 600);
 
   usleep(200000);
   ASSERT_FALSE(done);

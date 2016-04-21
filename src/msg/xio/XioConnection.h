@@ -96,7 +96,9 @@ private:
     uint32_t in_seq, out_seq_acked; // atomic<uint64_t>, got receipt
     atomic_t out_seq; // atomic<uint32_t>
 
-    lifecycle() : state(lifecycle::INIT), in_seq(0), out_seq(0) {}
+    lifecycle() : state(lifecycle::INIT), reconnects(0), connect_seq(0),
+		  peer_global_seq(0), in_seq(0), out_seq_acked(0), 
+		  out_seq(0) {}
 
     void set_in_seq(uint32_t seq) {
       in_seq = seq;
@@ -143,11 +145,18 @@ private:
     uint32_t flags;
 
     explicit CState(XioConnection* _xcon)
-      : xcon(_xcon),
+      : features(0),
+	authorizer(NULL),
+	xcon(_xcon),
 	protocol_version(0),
 	session_state(INIT),
 	startup_state(IDLE),
+	reconnects(0),
+	connect_seq(0),
+	global_seq(0),
+	peer_global_seq(0),
 	in_seq(0),
+	out_seq_acked(0),
 	out_seq(0),
 	flags(FLAG_NONE) {}
 
@@ -302,7 +311,7 @@ public:
 
   int passive_setup(); /* XXX */
 
-  int on_msg_req(struct xio_session *session, struct xio_msg *req,
+  int on_msg(struct xio_session *session, struct xio_msg *msg,
 		 int more_in_batch, void *cb_user_context);
   int on_ow_msg_send_complete(struct xio_session *session, struct xio_msg *msg,
 			      void *conn_user_context);
@@ -310,7 +319,7 @@ public:
 		   struct xio_msg  *msg, void *conn_user_context);
   void msg_send_fail(XioMsg *xmsg, int code);
   void msg_release_fail(struct xio_msg *msg, int code);
-  int flush_input_queue(uint32_t flags);
+  int flush_out_queues(uint32_t flags);
   int discard_input_queue(uint32_t flags);
   int adjust_clru(uint32_t flags);
 };

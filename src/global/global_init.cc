@@ -22,6 +22,7 @@
 #include "common/safe_io.h"
 #include "common/signal.h"
 #include "common/version.h"
+#include "common/admin_socket.h"
 #include "global/global_context.h"
 #include "global/global_init.h"
 #include "global/pidfile.h"
@@ -65,10 +66,8 @@ void global_pre_init(std::vector < const char * > *alt_def_args,
 		     int flags,
 		     const char *data_dir_option)
 {
-  // You can only call global_init once.
-  assert(!g_ceph_context);
   std::string conf_file_list;
-  std::string cluster = "ceph";
+  std::string cluster = "";
   CephInitParameters iparams = ceph_argparse_early_args(args, module_type, flags,
 							&cluster, &conf_file_list);
   CephContext *cct = common_preinit(iparams, code_env, flags, data_dir_option);
@@ -79,8 +78,8 @@ void global_pre_init(std::vector < const char * > *alt_def_args,
   if (alt_def_args)
     conf->parse_argv(*alt_def_args);  // alternative default args
 
-  std::deque<std::string> parse_errors;
-  int ret = conf->parse_config_files(c_str_or_null(conf_file_list), &parse_errors, &cerr, flags);
+  int ret = conf->parse_config_files(c_str_or_null(conf_file_list),
+				     &cerr, flags);
   if (ret == -EDOM) {
     dout_emergency("global_init: error parsing config file.\n");
     _exit(1);
@@ -107,21 +106,27 @@ void global_pre_init(std::vector < const char * > *alt_def_args,
 
   conf->parse_argv(args); // argv override
 
-  // Expand metavariables. Invoke configuration observers.
-  conf->apply_changes(NULL);
-
   // Now we're ready to complain about config file parse errors
-  complain_about_parse_errors(cct, &parse_errors);
+  g_conf->complain_about_parse_errors(g_ceph_context);
 }
 
 void global_init(std::vector < const char * > *alt_def_args,
 		 std::vector < const char* >& args,
 		 uint32_t module_type, code_environment_t code_env,
 		 int flags,
-		 const char *data_dir_option)
+		 const char *data_dir_option, bool run_pre_init)
 {
-  global_pre_init(alt_def_args, args, module_type, code_env, flags,
-		  data_dir_option);
+  // Ensure we're not calling the global init functions multiple times.
+  static bool first_run = true;
+  if (run_pre_init) {
+    // We will run pre_init from here (default).
+    assert(!g_ceph_context && first_run);
+    global_pre_init(alt_def_args, args, module_type, code_env, flags);
+  } else {
+    // Caller should have invoked pre_init manually.
+    assert(g_ceph_context && first_run);
+  }
+  first_run = false;
 
   // signal stuff
   int siglist[] = { SIGPIPE, 0 };
@@ -148,10 +153,13 @@ void global_init(std::vector < const char * > *alt_def_args,
   }
 
   // drop privileges?
+  ostringstream priv_ss;
   if (g_conf->setgroup.length() ||
       g_conf->setuser.length()) {
     uid_t uid = 0;  // zero means no change; we can only drop privs here.
     gid_t gid = 0;
+    std::string uid_string;
+    std::string gid_string;
     if (g_conf->setuser.length()) {
       uid = atoi(g_conf->setuser.c_str());
       if (!uid) {
@@ -166,6 +174,7 @@ void global_init(std::vector < const char * > *alt_def_args,
 	}
 	uid = p->pw_uid;
 	gid = p->pw_gid;
+	uid_string = g_conf->setuser;
       }
     }
     if (g_conf->setgroup.length() > 0) {
@@ -181,12 +190,16 @@ void global_init(std::vector < const char * > *alt_def_args,
 	  exit(1);
 	}
 	gid = g->gr_gid;
+	gid_string = g_conf->setgroup;
       }
     }
     if ((uid || gid) &&
 	g_conf->setuser_match_path.length()) {
+      // induce early expansion of setuser_match_path config option
+      string match_path = g_conf->setuser_match_path;
+      g_conf->early_expand_meta(match_path, &cerr);
       struct stat st;
-      int r = ::stat(g_conf->setuser_match_path.c_str(), &st);
+      int r = ::stat(match_path.c_str(), &st);
       if (r < 0) {
 	r = -errno;
 	cerr << "unable to stat setuser_match_path "
@@ -196,33 +209,43 @@ void global_init(std::vector < const char * > *alt_def_args,
       }
       if ((uid && uid != st.st_uid) ||
 	  (gid && gid != st.st_gid)) {
-	cerr << "WARNING: will not setuid/gid: " << g_conf->setuser_match_path
+	cerr << "WARNING: will not setuid/gid: " << match_path
 	     << " owned by " << st.st_uid << ":" << st.st_gid
 	     << " and not requested " << uid << ":" << gid
 	     << std::endl;
 	uid = 0;
 	gid = 0;
+	uid_string.erase();
+	gid_string.erase();
       } else {
-	dout(10) << "setuser_match_path "
-		 << g_conf->setuser_match_path << " owned by "
-		 << st.st_uid << ":" << st.st_gid << ", doing setuid/gid"
-		 << dendl;
+	priv_ss << "setuser_match_path "
+		<< match_path << " owned by "
+		<< st.st_uid << ":" << st.st_gid << ". ";
       }
     }
-    if (setgid(gid) != 0) {
-      int r = errno;
-      cerr << "unable to setgid " << gid << ": " << cpp_strerror(r)
-	   << std::endl;
-      exit(1);
+    g_ceph_context->set_uid_gid(uid, gid);
+    g_ceph_context->set_uid_gid_strings(uid_string, gid_string);
+    if ((flags & CINIT_FLAG_DEFER_DROP_PRIVILEGES) == 0) {
+      if (setgid(gid) != 0) {
+	int r = errno;
+	cerr << "unable to setgid " << gid << ": " << cpp_strerror(r)
+	     << std::endl;
+	exit(1);
+      }
+      if (setuid(uid) != 0) {
+	int r = errno;
+	cerr << "unable to setuid " << uid << ": " << cpp_strerror(r)
+	     << std::endl;
+	exit(1);
+      }
+      priv_ss << "set uid:gid to " << uid << ":" << gid << " (" << uid_string << ":" << gid_string << ")";
+    } else {
+      priv_ss << "deferred set uid:gid to " << uid << ":" << gid << " (" << uid_string << ":" << gid_string << ")";
     }
-    if (setuid(uid) != 0) {
-      int r = errno;
-      cerr << "unable to setuid " << uid << ": " << cpp_strerror(r)
-	   << std::endl;
-      exit(1);
-    }
-    dout(0) << "set uid:gid to " << uid << ":" << gid << dendl;
   }
+
+  // Expand metavariables. Invoke configuration observers. Open log file.
+  g_conf->apply_changes(NULL);
 
   if (g_conf->run_dir.length() &&
       code_env == CODE_ENVIRONMENT_DAEMON &&
@@ -239,6 +262,23 @@ void global_init(std::vector < const char * > *alt_def_args,
   // call all observers now.  this has the side-effect of configuring
   // and opening the log file immediately.
   g_conf->call_all_observers();
+
+  if (priv_ss.str().length()) {
+    dout(0) << priv_ss.str() << dendl;
+
+    if (g_ceph_context->get_set_uid() || g_ceph_context->get_set_gid()) {
+      // fix ownership on log, asok files.  this is sadly a bit of a hack :(
+      g_ceph_context->_log->chown_log_file(
+	g_ceph_context->get_set_uid(),
+	g_ceph_context->get_set_gid());
+      g_ceph_context->get_admin_socket()->chown(
+	g_ceph_context->get_set_uid(),
+	g_ceph_context->get_set_gid());
+    }
+  }
+
+  // Now we're ready to complain about config file parse errors
+  g_conf->complain_about_parse_errors(g_ceph_context);
 
   // test leak checking
   if (g_conf->debug_deliberately_leak_memory) {

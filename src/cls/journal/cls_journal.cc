@@ -26,7 +26,8 @@ cls_method_handle_t h_journal_get_active_set;
 cls_method_handle_t h_journal_set_active_set;
 cls_method_handle_t h_journal_get_client;
 cls_method_handle_t h_journal_client_register;
-cls_method_handle_t h_journal_client_update;
+cls_method_handle_t h_journal_client_update_data;
+cls_method_handle_t h_journal_client_update_state;
 cls_method_handle_t h_journal_client_unregister;
 cls_method_handle_t h_journal_client_commit;
 cls_method_handle_t h_journal_client_list;
@@ -151,19 +152,19 @@ int expire_tags(cls_method_context_t hctx, const std::string *skip_client_id) {
         return -EIO;
       }
 
-      // cannot expire tags if a client hasn't committed yet
-      if (client.commit_position.entry_positions.empty()) {
-        return 0;
-      }
-
-      for (auto entry_position : client.commit_position.entry_positions) {
-        minimum_tag_tid = MIN(minimum_tag_tid, entry_position.tag_tid);
+      for (auto object_position : client.commit_position.object_positions) {
+        minimum_tag_tid = MIN(minimum_tag_tid, object_position.tag_tid);
       }
     }
     if (!vals.empty()) {
       last_read = vals.rbegin()->first;
     }
   } while (r == MAX_KEYS_READ);
+
+  // cannot expire tags if a client hasn't committed yet
+  if (minimum_tag_tid == std::numeric_limits<uint64_t>::max()) {
+    return 0;
+  }
 
   // compute the minimum in-use tag for each class
   std::map<uint64_t, uint64_t> minimum_tag_class_to_tids;
@@ -249,9 +250,11 @@ int journal_create(cls_method_context_t hctx, bufferlist *in, bufferlist *out) {
 
   bufferlist stored_orderbl;
   int r = cls_cxx_map_get_val(hctx, HEADER_KEY_ORDER, &stored_orderbl);
-  if (r != -ENOENT) {
+  if (r >= 0) {
     CLS_ERR("journal already exists");
     return -EEXIST;
+  } else if (r != -ENOENT) {
+    return r;
   }
 
   r = write_key(hctx, HEADER_KEY_ORDER, order);
@@ -546,12 +549,20 @@ int journal_client_register(cls_method_context_t hctx, bufferlist *in,
     return -EINVAL;
   }
 
+  uint8_t order;
+  int r = read_key(hctx, HEADER_KEY_ORDER, &order);
+  if (r < 0) {
+    return r;
+  }
+
   std::string key(key_from_client_id(id));
   bufferlist stored_clientbl;
-  int r = cls_cxx_map_get_val(hctx, key, &stored_clientbl);
-  if (r != -ENOENT) {
+  r = cls_cxx_map_get_val(hctx, key, &stored_clientbl);
+  if (r >= 0) {
     CLS_ERR("duplicate client id: %s", id.c_str());
     return -EEXIST;
+  } else if (r != -ENOENT) {
+    return r;
   }
 
   cls::journal::Client client(id, data);
@@ -571,8 +582,8 @@ int journal_client_register(cls_method_context_t hctx, bufferlist *in,
  * Output:
  * @returns 0 on success, negative error code on failure
  */
-int journal_client_update(cls_method_context_t hctx, bufferlist *in,
-                          bufferlist *out) {
+int journal_client_update_data(cls_method_context_t hctx, bufferlist *in,
+                               bufferlist *out) {
   std::string id;
   bufferlist data;
   try {
@@ -592,6 +603,45 @@ int journal_client_update(cls_method_context_t hctx, bufferlist *in,
   }
 
   client.data = data;
+  r = write_key(hctx, key, client);
+  if (r < 0) {
+    return r;
+  }
+  return 0;
+}
+
+/**
+ * Input:
+ * @param id (string) - unique client id
+ * @param state (uint8_t) - client state
+ *
+ * Output:
+ * @returns 0 on success, negative error code on failure
+ */
+int journal_client_update_state(cls_method_context_t hctx, bufferlist *in,
+                                bufferlist *out) {
+  std::string id;
+  cls::journal::ClientState state;
+  bufferlist data;
+  try {
+    bufferlist::iterator iter = in->begin();
+    ::decode(id, iter);
+    uint8_t state_raw;
+    ::decode(state_raw, iter);
+    state = static_cast<cls::journal::ClientState>(state_raw);
+  } catch (const buffer::error &err) {
+    CLS_ERR("failed to decode input parameters: %s", err.what());
+    return -EINVAL;
+  }
+
+  std::string key(key_from_client_id(id));
+  cls::journal::Client client;
+  int r = read_key(hctx, key, &client);
+  if (r < 0) {
+    return r;
+  }
+
+  client.state = state;
   r = write_key(hctx, key, client);
   if (r < 0) {
     return r;
@@ -665,8 +715,8 @@ int journal_client_commit(cls_method_context_t hctx, bufferlist *in,
   if (r < 0) {
     return r;
   }
-  if (commit_position.entry_positions.size() > splay_width) {
-    CLS_ERR("too many entry positions");
+  if (commit_position.object_positions.size() > splay_width) {
+    CLS_ERR("too many object positions");
     return -EINVAL;
   }
 
@@ -820,9 +870,11 @@ int journal_tag_create(cls_method_context_t hctx, bufferlist *in,
   std::string key(key_from_tag_tid(tag_tid));
   bufferlist stored_tag_bl;
   int r = cls_cxx_map_get_val(hctx, key, &stored_tag_bl);
-  if (r != -ENOENT) {
+  if (r >= 0) {
     CLS_ERR("duplicate tag id: %" PRIu64, tag_tid);
     return -EEXIST;
+  } else if (r != -ENOENT) {
+    return r;
   }
 
   // verify tag tid ordering
@@ -918,8 +970,8 @@ int journal_tag_list(cls_method_context_t hctx, bufferlist *in,
     return r;
   }
 
-  for (auto entry_position : client.commit_position.entry_positions) {
-    minimum_tag_tid = MIN(minimum_tag_tid, entry_position.tag_tid);
+  for (auto object_position : client.commit_position.object_positions) {
+    minimum_tag_tid = MIN(minimum_tag_tid, object_position.tag_tid);
   }
 
   // compute minimum tags in use per-class
@@ -928,7 +980,7 @@ int journal_tag_list(cls_method_context_t hctx, bufferlist *in,
   typedef enum { TAG_PASS_CALCULATE_MINIMUMS,
                  TAG_PASS_LIST,
                  TAG_PASS_DONE } TagPass;
-  int tag_pass = (client.commit_position.entry_positions.empty() ?
+  int tag_pass = (minimum_tag_tid == std::numeric_limits<uint64_t>::max() ?
     TAG_PASS_LIST : TAG_PASS_CALCULATE_MINIMUMS);
   std::string last_read = HEADER_KEY_TAG_PREFIX;
   do {
@@ -1069,9 +1121,14 @@ void CEPH_CLS_API __cls_init()
   cls_register_cxx_method(h_class, "client_register",
                           CLS_METHOD_RD | CLS_METHOD_WR,
                           journal_client_register, &h_journal_client_register);
-  cls_register_cxx_method(h_class, "client_update",
+  cls_register_cxx_method(h_class, "client_update_data",
                           CLS_METHOD_RD | CLS_METHOD_WR,
-                          journal_client_update, &h_journal_client_update);
+                          journal_client_update_data,
+                          &h_journal_client_update_data);
+  cls_register_cxx_method(h_class, "client_update_state",
+                          CLS_METHOD_RD | CLS_METHOD_WR,
+                          journal_client_update_state,
+                          &h_journal_client_update_state);
   cls_register_cxx_method(h_class, "client_unregister",
                           CLS_METHOD_RD | CLS_METHOD_WR,
                           journal_client_unregister,

@@ -75,6 +75,10 @@ namespace ceph {
       // introducing configurable clock skew.
       static time_point now(const CephContext* cct) noexcept;
 
+      static bool is_zero(const time_point& t) {
+        return (t == time_point::min());
+      }
+
       // Allow conversion to/from any clock with the same interface as
       // std::chrono::system_clock)
       template<typename Clock, typename Duration>
@@ -378,10 +382,13 @@ void encode(const std::chrono::time_point<Clock, Duration>& t,
 template<typename Clock, typename Duration>
 void decode(std::chrono::time_point<Clock, Duration>& t,
 	    bufferlist::iterator& p) {
-  uint32_t s, ns;
+  uint32_t s;
+  uint32_t ns;
   ::decode(s, p);
   ::decode(ns, p);
-  struct timespec ts = {s, ns};
+  struct timespec ts = {
+    static_cast<time_t>(s),
+    static_cast<long int>(ns)};
 
   t = Clock::from_timespec(ts);
 }

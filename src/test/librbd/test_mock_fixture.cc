@@ -9,15 +9,18 @@
 // template definitions
 #include "librbd/AsyncRequest.cc"
 #include "librbd/AsyncObjectThrottle.cc"
+#include "librbd/ExclusiveLock.cc"
 #include "librbd/operation/Request.cc"
 
 template class librbd::AsyncRequest<librbd::MockImageCtx>;
 template class librbd::AsyncObjectThrottle<librbd::MockImageCtx>;
+template class librbd::ExclusiveLock<librbd::MockImageCtx>;
 template class librbd::operation::Request<librbd::MockImageCtx>;
 
 using ::testing::_;
 using ::testing::DoDefault;
 using ::testing::Return;
+using ::testing::StrEq;
 using ::testing::WithArg;
 
 TestMockFixture::TestRadosClientPtr TestMockFixture::s_test_rados_client;
@@ -37,6 +40,8 @@ void TestMockFixture::SetUpTestCase() {
 void TestMockFixture::TearDownTestCase() {
   TestFixture::TearDownTestCase();
   librados_test_stub::set_rados_client(s_test_rados_client);
+  s_test_rados_client->put();
+  s_test_rados_client.reset();
 }
 
 void TestMockFixture::SetUp() {
@@ -53,7 +58,7 @@ void TestMockFixture::TearDown() {
 
 void TestMockFixture::expect_unlock_exclusive_lock(librbd::ImageCtx &ictx) {
   EXPECT_CALL(get_mock_io_ctx(ictx.md_ctx),
-              exec(_, _, "lock", "unlock", _, _, _))
+              exec(_, _, StrEq("lock"), StrEq("unlock"), _, _, _))
                 .WillRepeatedly(DoDefault());
 }
 
@@ -61,14 +66,6 @@ void TestMockFixture::expect_op_work_queue(librbd::MockImageCtx &mock_image_ctx)
   EXPECT_CALL(*mock_image_ctx.op_work_queue, queue(_, _))
                 .WillRepeatedly(DispatchContext(
                   mock_image_ctx.image_ctx->op_work_queue));
-}
-
-librados::MockTestMemIoCtxImpl &TestMockFixture::get_mock_io_ctx(
-    librados::IoCtx &ioctx) {
-  // TODO become friend of IoCtx so that we can cleanly extract io_ctx_impl
-  librados::MockTestMemIoCtxImpl **mock =
-    reinterpret_cast<librados::MockTestMemIoCtxImpl **>(&ioctx);
-  return **mock;
 }
 
 void TestMockFixture::initialize_features(librbd::ImageCtx *ictx,

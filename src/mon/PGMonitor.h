@@ -141,7 +141,8 @@ private:
    * @return true if we updated pending_inc (and should propose)
    */
   bool check_down_pgs();
-  void _mark_pg_stale(pg_t pgid, const pg_stat_t& cur_stat);
+  void _try_mark_pg_stale(const OSDMap *osdmap, pg_t pgid,
+			  const pg_stat_t& cur_stat);
 
 
   /**
@@ -157,7 +158,7 @@ private:
 			    object_stat_sum_t &sum,
 			    uint64_t avail,
 			    float raw_used_rate,
-			    bool verbose) const;
+			    bool verbose, const pg_pool_t *pool) const;
 
   int64_t get_rule_avail(OSDMap& osdmap, int ruleno) const;
 

@@ -16,6 +16,8 @@
 #ifndef XIO_PORTAL_H
 #define XIO_PORTAL_H
 
+#include <string>
+
 extern "C" {
 #include "libxio.h"
 }
@@ -155,7 +157,7 @@ public:
   int bind(struct xio_session_ops *ops, const string &base_uri,
 	   uint16_t port, uint16_t *assigned_port);
 
-  inline void release_xio_rsp(XioRsp* xrsp) {
+  inline void release_xio_msg(XioRsp* xrsp) {
     struct xio_msg *msg = xrsp->dequeue();
     struct xio_msg *next_msg = NULL;
     int code;
@@ -191,7 +193,7 @@ public:
 	break;
       default:
 	/* INCOMING_MSG_RELEASE */
-	release_xio_rsp(static_cast<XioRsp*>(xs));
+	release_xio_msg(static_cast<XioRsp*>(xs));
       break;
       };
     }
@@ -319,7 +321,7 @@ public:
 	    default:
 	      /* INCOMING_MSG_RELEASE */
 	      q_iter = send_q.erase(q_iter);
-	      release_xio_rsp(static_cast<XioRsp*>(xs));
+	      release_xio_msg(static_cast<XioRsp*>(xs));
 	      continue;
 	    } /* switch (xs->type) */
 	    q_iter = send_q.erase(q_iter);
@@ -427,8 +429,10 @@ public:
     }
 
     for (p_ix = 0; p_ix < nportals; ++p_ix) {
+      string thread_name = "ms_xio_";
+      thread_name.append(std::to_string(p_ix));
       portal = portals[p_ix];
-      portal->create(portal->portal_id);
+      portal->create(thread_name.c_str());
     }
   }
 

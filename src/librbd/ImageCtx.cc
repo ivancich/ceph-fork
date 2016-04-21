@@ -15,17 +15,20 @@
 #include "librbd/AsyncOperation.h"
 #include "librbd/AsyncRequest.h"
 #include "librbd/ExclusiveLock.h"
+#include "librbd/exclusive_lock/StandardPolicy.h"
 #include "librbd/internal.h"
 #include "librbd/ImageCtx.h"
 #include "librbd/ImageState.h"
 #include "librbd/ImageWatcher.h"
 #include "librbd/Journal.h"
+#include "librbd/journal/StandardPolicy.h"
 #include "librbd/LibrbdAdminSocketHook.h"
 #include "librbd/ObjectMap.h"
 #include "librbd/Operations.h"
 #include "librbd/operation/ResizeRequest.h"
 #include "librbd/Utils.h"
 
+#include "osdc/Striper.h"
 #include <boost/bind.hpp>
 
 #define dout_subsys ceph_subsys_rbd
@@ -49,7 +52,7 @@ namespace {
 class ThreadPoolSingleton : public ThreadPool {
 public:
   explicit ThreadPoolSingleton(CephContext *cct)
-    : ThreadPool(cct, "librbd::thread_pool", "tp_librbd", cct->_conf->rbd_op_threads,
+    : ThreadPool(cct, "librbd::thread_pool", "tp_librbd", 1,
                  "rbd_op_threads") {
     start();
   }
@@ -175,10 +178,7 @@ struct C_InvalidateCache : public Context {
     if (snap)
       snap_name = snap;
 
-    asok_hook = new LibrbdAdminSocketHook(this);
-
     memset(&header, 0, sizeof(header));
-    memset(&layout, 0, sizeof(layout));
 
     ThreadPoolSingleton *thread_pool_singleton;
     cct->lookup_or_create_singleton_object<ThreadPoolSingleton>(
@@ -189,6 +189,9 @@ struct C_InvalidateCache : public Context {
     op_work_queue = new ContextWQ("librbd::op_work_queue",
                                   cct->_conf->rbd_op_thread_timeout,
                                   thread_pool_singleton);
+
+    exclusive_lock_policy = new exclusive_lock::StandardPolicy(this);
+    journal_policy = new journal::StandardPolicy(this);
   }
 
   ImageCtx::~ImageCtx() {
@@ -196,6 +199,7 @@ struct C_InvalidateCache : public Context {
     assert(exclusive_lock == NULL);
     assert(object_map == NULL);
     assert(journal == NULL);
+    assert(asok_hook == NULL);
 
     if (perfcounter) {
       perf_stop();
@@ -219,9 +223,10 @@ struct C_InvalidateCache : public Context {
     op_work_queue->drain();
     aio_work_queue->drain();
 
+    delete journal_policy;
+    delete exclusive_lock_policy;
     delete op_work_queue;
     delete aio_work_queue;
-    delete asok_hook;
     delete operations;
     delete state;
   }
@@ -233,6 +238,8 @@ struct C_InvalidateCache : public Context {
       init_layout();
     }
     apply_metadata_confs();
+
+    asok_hook = new LibrbdAdminSocketHook(this);
 
     string pname = string("librbd-") + id + string("-") +
       data_ctx.get_pool_name() + string("-") + name;
@@ -286,6 +293,14 @@ struct C_InvalidateCache : public Context {
     readahead.set_max_readahead_size(readahead_max_bytes);
   }
 
+  void ImageCtx::shutdown() {
+    delete image_watcher;
+    image_watcher = nullptr;
+
+    delete asok_hook;
+    asok_hook = nullptr;
+  }
+
   void ImageCtx::init_layout()
   {
     if (stripe_unit == 0 || stripe_count == 0) {
@@ -299,11 +314,11 @@ struct C_InvalidateCache : public Context {
     alignments.push_back(stripe_unit); // stripe unit
     readahead.set_alignments(alignments);
 
-    memset(&layout, 0, sizeof(layout));
-    layout.fl_stripe_unit = stripe_unit;
-    layout.fl_stripe_count = stripe_count;
-    layout.fl_object_size = 1ull << order;
-    layout.fl_pg_pool = data_ctx.get_id();  // FIXME: pool id overflow?
+    layout = file_layout_t();
+    layout.stripe_unit = stripe_unit;
+    layout.stripe_count = stripe_count;
+    layout.object_size = 1ull << order;
+    layout.pool_id = data_ctx.get_id();  // FIXME: pool id overflow?
 
     delete[] format_string;
     size_t len = object_prefix.length() + 16;
@@ -316,7 +331,7 @@ struct C_InvalidateCache : public Context {
 
     ldout(cct, 10) << "init_layout stripe_unit " << stripe_unit
 		   << " stripe_count " << stripe_count
-		   << " object_size " << layout.fl_object_size
+		   << " object_size " << layout.object_size
 		   << " prefix " << object_prefix
 		   << " format " << format_string
 		   << dendl;
@@ -532,6 +547,12 @@ struct C_InvalidateCache : public Context {
       return info->size;
     }
     return 0;
+  }
+
+  uint64_t ImageCtx::get_object_count(snap_t in_snap_id) const {
+    assert(snap_lock.is_locked());
+    uint64_t image_size = get_image_size(in_snap_id);
+    return Striper::get_num_objects(layout, image_size);
   }
 
   bool ImageCtx::test_features(uint64_t features) const
@@ -771,17 +792,10 @@ struct C_InvalidateCache : public Context {
     object_cacher->clear_nonexistence(object_set);
   }
 
-  int ImageCtx::register_watch() {
+  void ImageCtx::register_watch(Context *on_finish) {
     assert(image_watcher == NULL);
     image_watcher = new ImageWatcher(*this);
-    return image_watcher->register_watch();
-  }
-
-  void ImageCtx::unregister_watch() {
-    assert(image_watcher != NULL);
-    image_watcher->unregister_watch();
-    delete image_watcher;
-    image_watcher = NULL;
+    image_watcher->register_watch(on_finish);
   }
 
   uint64_t ImageCtx::prune_parent_extents(vector<pair<uint64_t,uint64_t> >& objectx,
@@ -930,13 +944,12 @@ struct C_InvalidateCache : public Context {
         "rbd_journal_pool", false);
 
     string start = METADATA_CONF_PREFIX;
-    int r = 0, j = 0;
     md_config_t local_config_t;
 
     bool retrieve_metadata = !old_format;
     while (retrieve_metadata) {
       map<string, bufferlist> pairs, res;
-      r = cls_client::metadata_list(&md_ctx, header_oid, start, max_conf_items,
+      int r = cls_client::metadata_list(&md_ctx, header_oid, start, max_conf_items,
                                     &pairs);
       if (r == -EOPNOTSUPP || r == -EIO) {
         ldout(cct, 10) << "config metadata not supported by OSD" << dendl;
@@ -955,7 +968,7 @@ struct C_InvalidateCache : public Context {
       for (map<string, bufferlist>::iterator it = res.begin();
            it != res.end(); ++it) {
         string val(it->second.c_str(), it->second.length());
-        j = local_config_t.set_val(it->first.c_str(), val);
+        int j = local_config_t.set_val(it->first.c_str(), val);
         if (j < 0) {
           lderr(cct) << __func__ << " failed to set config " << it->first
                      << " with value " << it->second.c_str() << ": " << j
@@ -1016,5 +1029,54 @@ struct C_InvalidateCache : public Context {
 
   Journal<ImageCtx> *ImageCtx::create_journal() {
     return new Journal<ImageCtx>(*this);
+  }
+
+  void ImageCtx::set_image_name(const std::string &image_name) {
+    // update the name so rename can be invoked repeatedly
+    RWLock::RLocker owner_locker(owner_lock);
+    RWLock::WLocker snap_locker(snap_lock);
+    name = image_name;
+    if (old_format) {
+      header_oid = util::old_header_name(image_name);
+    }
+  }
+
+  void ImageCtx::notify_update() {
+    state->handle_update_notification();
+
+    C_SaferCond ctx;
+    image_watcher->notify_header_update(&ctx);
+    ctx.wait();
+  }
+
+  void ImageCtx::notify_update(Context *on_finish) {
+    state->handle_update_notification();
+    image_watcher->notify_header_update(on_finish);
+  }
+
+  exclusive_lock::Policy *ImageCtx::get_exclusive_lock_policy() const {
+    assert(owner_lock.is_locked());
+    assert(exclusive_lock_policy != nullptr);
+    return exclusive_lock_policy;
+  }
+
+  void ImageCtx::set_exclusive_lock_policy(exclusive_lock::Policy *policy) {
+    assert(owner_lock.is_wlocked());
+    assert(policy != nullptr);
+    delete exclusive_lock_policy;
+    exclusive_lock_policy = policy;
+  }
+
+  journal::Policy *ImageCtx::get_journal_policy() const {
+    assert(snap_lock.is_locked());
+    assert(journal_policy != nullptr);
+    return journal_policy;
+  }
+
+  void ImageCtx::set_journal_policy(journal::Policy *policy) {
+    assert(snap_lock.is_wlocked());
+    assert(policy != nullptr);
+    delete journal_policy;
+    journal_policy = policy;
   }
 }

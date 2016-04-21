@@ -70,6 +70,7 @@ check_SCRIPTS += \
 	test/cephtool-test-mon.sh \
 	test/cephtool-test-mds.sh \
 	test/cephtool-test-rados.sh \
+       test/test_pool_create.sh \
 	unittest_bufferlist.sh \
 	test/encoding/check-generated.sh \
 	test/mon/osd-pool-create.sh \
@@ -80,6 +81,7 @@ check_SCRIPTS += \
 	test/mon/osd-erasure-code-profile.sh \
 	test/mon/mkfs.sh \
 	test/mon/mon-scrub.sh \
+       test/mon/test_pool_quota.sh \
 	test/osd/osd-scrub-repair.sh \
 	test/osd/osd-scrub-snaps.sh \
 	test/osd/osd-config.sh \

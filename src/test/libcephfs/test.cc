@@ -81,20 +81,20 @@ TEST(LibCephFS, OpenReadWrite) {
   const char *out_buf = "hello world";
   size_t size = strlen(out_buf);
   char in_buf[100];
-  ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), size);
+  ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), (int)size);
   ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), -EBADF);
   ASSERT_EQ(0, ceph_close(cmount, fd));
 
   fd = ceph_open(cmount, c_path, O_RDONLY, 0);
   ASSERT_LT(0, fd);
   ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), -EBADF);
-  ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), size);
+  ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), (int)size);
   ASSERT_EQ(0, ceph_close(cmount, fd));
 
   fd = ceph_open(cmount, c_path, O_RDWR, 0);
   ASSERT_LT(0, fd);
-  ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), size);
-  ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), size);
+  ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), (int)size);
+  ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), (int)size);
   ASSERT_EQ(0, ceph_close(cmount, fd));
 
   ceph_shutdown(cmount);
@@ -356,7 +356,7 @@ TEST(LibCephFS, DirLs) {
       found.insert(name);
     }
   }
-  ASSERT_EQ(found.size(), r);
+  ASSERT_EQ(found.size(), (unsigned)r);
   free(getdents_entries);
 
   // test readdir_r
@@ -378,7 +378,7 @@ TEST(LibCephFS, DirLs) {
     ASSERT_EQ(len, 1);
     found.insert(rdent.d_name);
   }
-  ASSERT_EQ(found.size(), r);
+  ASSERT_EQ(found.size(), (unsigned)r);
 
   // test readdirplus
   ceph_rewinddir(cmount, ls_dir);
@@ -407,7 +407,7 @@ TEST(LibCephFS, DirLs) {
     ASSERT_EQ(st.st_ino, rdent.d_ino);
     //ASSERT_EQ(st.st_mode, (mode_t)0666);
   }
-  ASSERT_EQ(found.size(), r);
+  ASSERT_EQ(found.size(), (unsigned)r);
 
   ASSERT_EQ(ceph_closedir(cmount, ls_dir), 0);
 
@@ -1319,5 +1319,28 @@ TEST(LibCephFS, GetOsdAddr) {
 
   ASSERT_EQ(0, ceph_get_osd_addr(cmount, 0, &addr));
 
+  ceph_shutdown(cmount);
+}
+
+TEST(LibCephFS, OpenNoClose) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(ceph_create(&cmount, NULL), 0);
+  ASSERT_EQ(ceph_conf_read_file(cmount, NULL), 0);
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  ASSERT_EQ(ceph_mount(cmount, "/"), 0);
+
+  pid_t mypid = getpid();
+  char str_buf[256];
+  sprintf(str_buf, "open_no_close_dir%d", mypid);
+  ASSERT_EQ(0, ceph_mkdirs(cmount, str_buf, 0777));
+
+  struct ceph_dir_result *ls_dir = NULL;
+  ASSERT_EQ(ceph_opendir(cmount, str_buf, &ls_dir), 0);
+
+  sprintf(str_buf, "open_no_close_file%d", mypid);
+  int fd = ceph_open(cmount, str_buf, O_RDONLY|O_CREAT, 0666);
+  ASSERT_LT(0, fd);
+
+  // shutdown should force close opened file/dir
   ceph_shutdown(cmount);
 }

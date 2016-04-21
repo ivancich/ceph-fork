@@ -328,11 +328,33 @@ static void fuse_ll_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
 {
   CephFuse::Handle *cfuse = fuse_ll_req_prepare(req);
   const struct fuse_ctx *ctx = fuse_req_ctx(req);
-  Inode *i2, *i1 = cfuse->iget(parent);
+  Inode *i2, *i1;
   struct fuse_entry_param fe;
 
   memset(&fe, 0, sizeof(fe));
 
+#ifdef HAVE_SYS_SYNCFS
+  if (cfuse->fino_snap(parent) == CEPH_SNAPDIR &&
+      cfuse->client->cct->_conf->fuse_multithreaded &&
+      cfuse->client->cct->_conf->fuse_syncfs_on_mksnap) {
+    int err = 0;
+    int fd = ::open(cfuse->mountpoint, O_RDONLY | O_DIRECTORY);
+    if (fd < 0) {
+      err = -errno;
+    } else {
+      int r = ::syncfs(fd);
+      if (r < 0)
+	err = -errno;
+      ::close(fd);
+    }
+    if (err) {
+      fuse_reply_err(req, err);
+      return;
+    }
+  }
+#endif
+
+  i1 = cfuse->iget(parent);
   int r = cfuse->client->ll_mkdir(i1, name, mode, &fe.attr, &i2, ctx->uid,
 				  ctx->gid);
   if (r == 0) {
@@ -507,14 +529,14 @@ static void fuse_ll_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg, st
 
   switch(cmd) {
     case CEPH_IOC_GET_LAYOUT: {
-      struct ceph_file_layout layout;
+      file_layout_t layout;
       struct ceph_ioctl_layout l;
       Fh *fh = (Fh*)fi->fh;
       cfuse->client->ll_file_layout(fh, &layout);
-      l.stripe_unit = layout.fl_stripe_unit;
-      l.stripe_count = layout.fl_stripe_count;
-      l.object_size = layout.fl_object_size;
-      l.data_pool = layout.fl_pg_pool;
+      l.stripe_unit = layout.stripe_unit;
+      l.stripe_count = layout.stripe_count;
+      l.object_size = layout.object_size;
+      l.data_pool = layout.pool_id;
       fuse_reply_ioctl(req, 0, &l, sizeof(struct ceph_ioctl_layout));
     }
     break;
@@ -1045,6 +1067,9 @@ int CephFuse::Handle::loop()
 
 uint64_t CephFuse::Handle::fino_snap(uint64_t fino)
 {
+  if (fino == FUSE_ROOT_ID)
+    return CEPH_NOSNAP;
+
   if (client->use_faked_inos()) {
     vinodeno_t vino  = client->map_faked_ino(fino);
     return vino.snapid;
@@ -1058,11 +1083,12 @@ uint64_t CephFuse::Handle::fino_snap(uint64_t fino)
 
 Inode * CephFuse::Handle::iget(fuse_ino_t fino)
 {
+  if (fino == FUSE_ROOT_ID)
+    return client->get_root();
+
   if (client->use_faked_inos()) {
     return client->ll_get_inode((ino_t)fino);
   } else {
-    if (fino == 1)
-      fino = inodeno_t(client->get_root_ino());
     vinodeno_t vino(FINO_INO(fino), fino_snap(fino));
     return client->ll_get_inode(vino);
   }
@@ -1077,8 +1103,14 @@ uint64_t CephFuse::Handle::make_fake_ino(inodeno_t ino, snapid_t snapid)
 {
   if (client->use_faked_inos()) {
     // already faked by libcephfs
+    if (ino == client->get_root_ino())
+      return FUSE_ROOT_ID;
+
     return ino;
   } else {
+    if (snapid == CEPH_NOSNAP && ino == client->get_root_ino())
+      return FUSE_ROOT_ID;
+
     Mutex::Locker l(stag_lock);
     uint64_t stag;
     if (snap_stag_map.count(snapid) == 0) {

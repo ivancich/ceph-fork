@@ -123,16 +123,7 @@ void DispatchQueue::run_local_delivery()
     if (can_fast_dispatch(m)) {
       fast_dispatch(m);
     } else {
-      Mutex::Locker l(lock);
-      add_arrival(m);
-      if (priority >= CEPH_MSG_PRIO_LOW) {
-        mqueue.enqueue_strict(
-            0, priority, QueueItem(m));
-      } else {
-        mqueue.enqueue(
-            0, priority, m->get_cost(), QueueItem(m));
-      }
-      cond.Signal();
+      enqueue(m, priority, 0);
     }
     local_delivery_lock.Lock();
   }
@@ -159,6 +150,15 @@ void DispatchQueue::entry()
       lock.Unlock();
 
       if (qitem.is_code()) {
+	if (cct->_conf->ms_inject_internal_delays &&
+	    cct->_conf->ms_inject_delay_probability &&
+	    (rand() % 10000)/10000.0 < cct->_conf->ms_inject_delay_probability) {
+	  utime_t t;
+	  t.set_from_double(cct->_conf->ms_inject_internal_delays);
+	  ldout(cct, 1) << "DispatchQueue::entry  inject delay of " << t
+			<< dendl;
+	  t.sleep();
+	}
 	switch (qitem.get_code()) {
 	case D_BAD_REMOTE_RESET:
 	  msgr->ms_deliver_handle_remote_reset(qitem.get_connection());
