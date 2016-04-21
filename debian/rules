@@ -5,7 +5,7 @@ export DESTDIR=$(CURDIR)/debian/tmp
 
 # Custom "ceph --version" information:
 export COMMIT=61adb020219fbad4508050b5f0a792246ba74dae
-export DEB_VERSION := $(shell dpkg-parsechangelog | egrep '^Version:' | cut -f)
+export DEB_VERSION := $(shell dpkg-parsechangelog | egrep '^Version:' | cut -f 2 -d ' ')
 
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
   NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
@@ -43,6 +43,8 @@ configure-stamp:
 	# Rewrite .git_version file with the correct patch information.
 	echo $(COMMIT) > src/.git_version
 	echo v$(DEB_VERSION) >> src/.git_version
+	# debugging versioning
+	cat src/.git_version
 	./autogen.sh
 	./configure --prefix=/usr --localstatedir=/var \
 	  --sysconfdir=/etc  --libexecdir=/usr/lib $(extraopts) $(confflags) \
@@ -61,6 +63,8 @@ build-stamp: configure-stamp
 	cp src/init-ceph debian/ceph-base.ceph.init
 	cp src/init-radosgw debian/radosgw.init
 	cp src/logrotate.conf debian/ceph.logrotate
+	# debugging versioning
+	cat src/.git_version
 
 	touch $@
 
