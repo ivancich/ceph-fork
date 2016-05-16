@@ -1,3 +1,13 @@
+ceph (10.2.1-2redhat1) stable; urgency=medium
+
+  * New upstream release (rhbz#1333950, rhbz#1333754, rhbz#1333599,
+    rhbz#1332514, rhbz#1332253, rhbz#1331784, rhbz#1331267, rhbz#1331058,
+    rhbz#1330777, rhbz#1328840, rhbz#1327412, rhbz#1327142, rhbz#1326298,
+    rhbz#1326058)
+  * make async messenger experimental downstream (rhbz#1321649)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 16 May 2016 10:38:02 -0600
+
 ceph (10.2.0-4redhat1) stable; urgency=medium
 
   * d/control: Build-Depend dh-systemd

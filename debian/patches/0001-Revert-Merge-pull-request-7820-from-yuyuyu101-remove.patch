@@ -1,0 +1,24 @@
+From: Samuel Just <sjust@redhat.com>
+Date: Mon, 2 May 2016 10:31:49 -0700
+Subject: Revert "Merge pull request #7820 from yuyuyu101/remove-exper"
+
+This reverts commit b83f339f1dbcba4e48c7f4a36235ab9e7c3c9837, reversing
+changes made to cd3385b59ff9764eb5cae9a80faf04ab4e648f05.
+---
+ src/msg/Messenger.cc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/msg/Messenger.cc b/src/msg/Messenger.cc
+index 98cc86f..0fec5f3 100644
+--- a/src/msg/Messenger.cc
++++ b/src/msg/Messenger.cc
+@@ -31,7 +31,8 @@ Messenger *Messenger::create(CephContext *cct, const string &type,
+   }
+   if (r == 0 || type == "simple")
+     return new SimpleMessenger(cct, name, lname, nonce, features);
+-  else if (r == 1 || type == "async")
++  else if ((r == 1 || type == "async") &&
++	   cct->check_experimental_feature_enabled("ms-type-async"))
+     return new AsyncMessenger(cct, name, lname, nonce, features);
+ #ifdef HAVE_XIO
+   else if ((type == "xio") &&
