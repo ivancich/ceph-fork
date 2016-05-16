@@ -43,7 +43,7 @@ logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.WARNING)
 def wait_for_health():
     print "Wait for health_ok...",
     tries = 0
-    while call("./ceph health 2> /dev/null | grep -v 'HEALTH_OK\|HEALTH_WARN' > /dev/null", shell=True) == 0:
+    while call("{path}/ceph health 2> /dev/null | grep -v 'HEALTH_OK\|HEALTH_WARN' > /dev/null".format(path=CEPH_BIN), shell=True) == 0:
         tries += 1
         if tries == 150:
             raise Exception("Time exceeded to go to health")
@@ -139,7 +139,7 @@ def cat_file(level, filename):
 def vstart(new, opt=""):
     print "vstarting....",
     NEW = new and "-n" or ""
-    call("MON=1 OSD=4 CEPH_PORT=7400 {path}/src/vstart.sh -l {new} -d mon osd {opt} > /dev/null 2>&1".format(new=NEW, opt=opt, path=CEPH_ROOT), shell=True)
+    call("MON=1 OSD=4 CEPH_PORT=7400 {path}/src/vstart.sh --short -l {new} -d mon osd {opt} > /dev/null 2>&1".format(new=NEW, opt=opt, path=CEPH_ROOT), shell=True)
     print "DONE"
 
 
@@ -367,11 +367,22 @@ def test_dump_journal(CFSD_PREFIX, osds):
 
     return ERRORS
 
+CEPH_BUILD_DIR = os.environ.get('CEPH_BUILD_DIR')
+CEPH_BIN = os.environ.get('CEPH_BIN')
+CEPH_ROOT = os.environ.get('CEPH_ROOT')
 
-CEPH_DIR = os.environ['CEPH_BUILD_DIR'] + "/ceph_objectstore_tool_dir"
+if not CEPH_BUILD_DIR:
+    CEPH_BUILD_DIR=os.getcwd()
+    os.putenv('CEPH_BUILD_DIR', CEPH_BUILD_DIR)
+    CEPH_BIN=CEPH_BUILD_DIR
+    os.putenv('CEPH_BIN', CEPH_BIN)
+    CEPH_ROOT=os.path.dirname(CEPH_BUILD_DIR)
+    os.putenv('CEPH_ROOT', CEPH_ROOT)
+    CEPH_LIB=os.path.join(CEPH_BIN, '.libs')
+    os.putenv('CEPH_LIB', CEPH_LIB)
+
+CEPH_DIR = CEPH_BUILD_DIR + "/ceph_objectstore_tool_dir"
 CEPH_CONF = os.path.join(CEPH_DIR, 'ceph.conf')
-CEPH_BIN = os.environ['CEPH_BIN']
-CEPH_ROOT = os.environ['CEPH_ROOT']
 
 def kill_daemons():
     call("{path}/init-ceph -c {conf} stop osd mon > /dev/null 2>&1".format(conf=CEPH_CONF, path=CEPH_BIN), shell=True)

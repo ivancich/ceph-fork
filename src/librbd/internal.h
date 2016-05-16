@@ -81,6 +81,8 @@ namespace librbd {
 			std::string* optval);
   int image_options_get(rbd_image_options_t opts, int optname,
 			uint64_t* optval);
+  int image_options_is_set(rbd_image_options_t opts, int optname,
+                           bool* is_set);
   int image_options_unset(rbd_image_options_t opts, int optname);
   void image_options_clear(rbd_image_options_t opts);
   bool image_options_is_empty(rbd_image_options_t opts);
@@ -189,6 +191,10 @@ namespace librbd {
                              const std::string &client_name);
   int mirror_peer_set_cluster(IoCtx& io_ctx, const std::string &uuid,
                               const std::string &cluster_name);
+  int mirror_image_status_list(IoCtx& io_ctx, const std::string &start_id,
+      size_t max, std::map<std::string, mirror_image_status_t> *images);
+  int mirror_image_status_summary(IoCtx& io_ctx,
+      std::map<mirror_image_status_state_t, int> *states);
 
   int mirror_image_enable(ImageCtx *ictx);
   int mirror_image_disable(ImageCtx *ictx, bool force);
@@ -197,6 +203,8 @@ namespace librbd {
   int mirror_image_resync(ImageCtx *ictx);
   int mirror_image_get_info(ImageCtx *ictx, mirror_image_info_t *mirror_image_info,
                             size_t info_size);
+  int mirror_image_get_status(ImageCtx *ictx, mirror_image_status_t *status,
+			      size_t status_size);
 }
 
 #endif

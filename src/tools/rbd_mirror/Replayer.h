@@ -25,6 +25,7 @@ namespace mirror {
 
 struct Threads;
 class ReplayerAdminSocketHook;
+class MirrorStatusWatchCtx;
 
 /**
  * Controls mirroring for a single remote cluster.
@@ -41,6 +42,9 @@ public:
   void run();
 
   void print_status(Formatter *f, stringstream *ss);
+  void start();
+  void stop();
+  void restart();
   void flush();
 
 private:
@@ -52,10 +56,14 @@ private:
   void start_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer);
   bool stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer);
 
+  int mirror_image_status_init(int64_t pool_id, librados::IoCtx& ioctx);
+  void mirror_image_status_shut_down(int64_t pool_id);
+
   Threads *m_threads;
   Mutex m_lock;
   Cond m_cond;
   atomic_t m_stopping;
+  bool m_manual_stop = false;
 
   peer_t m_peer;
   std::vector<const char*> m_args;
@@ -65,6 +73,7 @@ private:
   // when a pool's configuration changes
   std::map<int64_t, std::map<std::string,
 			     std::unique_ptr<ImageReplayer<> > > > m_images;
+  std::map<int64_t, std::unique_ptr<MirrorStatusWatchCtx> > m_status_watchers;
   ReplayerAdminSocketHook *m_asok_hook;
 
   class ReplayerThread : public Thread {

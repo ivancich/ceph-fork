@@ -53,8 +53,9 @@
     zonegroup default          set default zone group
     zonegroup delete           delete a zone group info
     zonegroup get              show zone group info
-    zonegroup modify           set/clear zonegroup master status
+    zonegroup modify           modify an existing zonegroup
     zonegroup set              set zone group info (requires infile)
+    zonegroup remove           remove a zone from a zonegroup
     zonegroup rename           rename a zone group
     zonegroup list             list all zone groups set on this cluster
     zonegroup-map get          show zonegroup-map
@@ -62,7 +63,7 @@
     zone create                create a new zone
     zone delete                delete a zone
     zone get                   show zone cluster params
-    zone modify                set/clear zone master status
+    zone modify                modify an existing zone
     zone set                   set zone cluster params (requires infile)
     zone list                  list all zones set on this cluster
     pool add                   add an existing pool for data placement
@@ -135,7 +136,7 @@
                                  replica mdlog get/delete
                                  replica datalog get/delete
      --metadata-key=<key>      key to retrieve metadata from with metadata get
-     --remote=<remote>         remote to pull period
+     --remote=<remote>         zone or zonegroup id of remote gateway
      --period=<id>             period id
      --epoch=<number>          period epoch
      --commit                  commit the period during 'period update'
@@ -147,7 +148,8 @@
      --realm-id=<realm id>     realm id
      --realm-new-name=<realm new name> realm new name
      --rgw-zonegroup=<zonegroup>   zonegroup name
-     --rgw-zone=<zone>         zone in which radosgw is running
+     --zonegroup-id=<zonegroup id> zonegroup id
+     --rgw-zone=<zone>         name of zone in which radosgw is running
      --zone-id=<zone id>       zone id
      --zone-new-name=<zone>    zone new name
      --source-zone             specify the source zone (for data sync)
