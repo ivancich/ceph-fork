@@ -1,4 +1,154 @@
-3a9fba2 (HEAD, tag: v10.2.0, origin/jewel) 10.2.0
+3a66dd4 (HEAD, tag: v10.2.1) 10.2.1
+a496b70 cmake: fix rbd compile errors
+9a46e13 cmake: add library cls_journal for target unittest_librbd
+48b732f tests: enable make check on ext4 (part 2)
+e1c67d4 qa/workunits/ceph-helpers.sh: make ceph-osd behave on ext4
+867f798 radosgw-admin: 'period commit' sends to new master zone by default
+a6a6c13 radosgw-admin: allow --remote to specify zone or zonegroup id
+dccb5ef radosgw-admin: 'zonegroup add' prints updated zonegroup
+bd6b5fc radosgw-admin: 'zonegroup modify' prints updated zonegroup
+c1e92df radosgw-admin: 'zone modify' prints updated zone
+f071d8c rgw: handle stripe transition when flushing final pending_data_bl
+10b393b cmake: add missing source file to rbd_mirror/image_replayer
+8bb4c7f ceph_test_keyvaluedb: clean up test dir
+108cdfd ceph_test_keyvaluedb: fixup unit test for keyvaluedb
+815967a test: add missing header dependency for MockJournaler
+3218957 rbd-mirror: image sync object copy was not properly mapping snapshots
+d3dc919 rbd-mirror: clean up image sync debug messages
+58e0612 librbd: readahead should not read past end of image
+7dadecb test: randomize rbd-mirror test case IO
+7aef297 rbd-mirror: don't set object map to nonexistent during image sync
+58e90f1 librbd: improve object map debug messages
+6c1af50 test: snapshot stress test rbd-mirror image sync
+0f84aaf rbd-mirror: allocate empty object map during snapshot create
+fa8a61d librbd: optionally skip object map creation upon snapshot
+a140753 rbd-mirror: refactor snapshot create into its own state machine
+ef1e4c8 rbd-mirror: sync snapshot protection status during bootstrap
+c790da5 test: stub test cases for rbd-mirror image bootstrap
+7a78895 test: share journal::MockJournaler between librbd and rbd-mirror
+8605040 librbd: guard object map against incompatible image sizes
+7448d29 librbd: properly handle object map open returning error code
+764b3bd librbd: add client-side memory constraint when loading object map
+5ec1f79 librbd: split large AioWrite journal events
+f1a2e6a journal: prohibit journal entries larger than the soft object size
+2d906e6 rbd-mirror: fixup to get/list mirror image status API
+fb7eb4e rbd-mirror: admin socket commands to start/stop/restart mirroring
+8e46e43 qa/workunits/rbd: fix rbd-mirror log file name
+d73073a rbd-mirror: make image replayer asok commands available when not started
+24ea574 qa/workunits/rbd: add env vars to adapt rbd_mirror.sh to teuthology
+21220a1 qa: rbd_mirror.sh: change parameters to cluster rather than daemon name
+a73b9dd librbd: possible race condition leads to use-after-free
+9bb17db rgw: fix for duplicates in list_periods()
+7ea6e78 rgw: 'period delete' cleans up all period objects
+451246d librbd: disable automatic refresh of image upon lock message
+9e058fc librbd: update_features should release lock if acquired
+e653a15 librbd: avoid applying refreshed image config within librados callback
+a5996e5 rbd-mirror: don't use temporary string for snap operation
+a891919 librbd: avoid recursive locking within operation state machine
+357ad37 librbd: put the validation of image snap context earlier
+a2eb187 librbd: does not crash if image header is too short
+b6ebb25 rbd: helpful error message on map failure
+f221fed librbd: assertion to ensure no concurrent processing of replay events
+37f08e6 journal: suppress notifications if client still in try_pop_front loop
+82c04c5 librbd: delay processing of next journal entry until flush in-progress
+f18b14b journal: incorrectly computed object offset within set
+466b7fe tools/crushtool: add straw2 support for help message
+d6692ed install-deps: remove distribute requirement
+3011eda tools: remove installation for distribute. It is no longer maintained and breaks builds
+45a1f01 set 128MB tcmalloc cache size by bytes
+bb1aeb7 etc/default/ceph: set 128MB tcmalloc cache size
+617004e test: update rbd integration cram test to remove format 1 warning
+7029b9c rgw: fix suffix in RGWZoneParams::fix_pool_names()
+f37318a rgw: code cleanup
+a8b800b rgw: upgrade default zonegroup and set correct zone[group] id
+5fdca84 rgw: RGWHTTPClient requests can unregister themselves early
+5609eb1 rgw: move around sync_env.init()
+faf6b2d rgw: rados crs, explicit cleanup
+b55514c rgw: RGWHTTPManager, avoid referring to req_data->client when completing
+2d0cd8a rgw: civetweb_callback() refer to store inside lock
+2f65b31 rgw: RGWPeriodPusher, stop http manager explicitly
+e5312b1 rgw: RGWHTTPManager, can call stop() more than once
+cbea993 rgw: RGWReadRESTResourceCR, fix refcounting
+93a65f3 rgw: RGWReadRemoteDataLogShardCR fix destructor
+2de1669 rgw: RGWDataSyncStatusManager, cleanup if failing init
+57266e6 rgw: rest crs, explicitly call cleanup
+6b86332 rgw: more leaks fixes
+0fb4854 rgw: drop a reference to http op
+d93fa13 rgw: fix printing wrong X-Storage-Url in Swift's TempAuth.
+a28fe02 radosgw-admin: add missing --zonegroup-id to usage
+c08e90e rgw: don't allow any concurrent sync requests on the same key
+6c61341 rgw: collect children after waiting for them
+4a5f33d rgw: don't pass object context into async coroutines
+1d12f82 rgw: check for status >= 0
+a288a05 rgw: don't try to delete object if does not exist
+308b9f5 rgw, cls/rgw: store removed object mtime in bi log
+1d28aac rgw: add AWS4 completion support for RGW_OP_SET_BUCKET_WEBSITE
+e69bfa1 radosgw-admin: update usage for zone[group] modify
+11d599c test/rgw: add test_zonegroup_remove
+928ccf4 test/rgw: index zones by name instead of insertion order
+5edacdc radosgw-admin: add missing 'zonegroup remove'
+6b1d9eb rgw: RGWZoneGroup::remove_zone() takes zone id
+0e95ee4 librbd: unlock image if journal error encountered during lock
+c1960de rbd-nbd: Fix aio_callback error handling
+4e87c1c Fix RBD-NBD aio_callback error handling
+28ac027 rbd:make a distinction of help message between ''rbd snap rollback" and "rbd snap revert"
+039554d librbd: reduce log level for image format 1 warning
+030883f osdc/Objecter: fix race condition for sortbitwise flag detection
+82838e3 librbd: default clone operation to image format 2
+ca13a95 librbd: add rbd_image_options_is_set helper method to API
+e6aa453 mds: fix upgrades with replay daemons in map
+6c1b792 doc: add cephfs daemon management docs
+bf44c6d mds: omit fscid in single-filesystem status output
+be5274c mds: simplify standby/standby-replay logic
+ae3ce5b messages: add MMDSBeacon::standby_replay
+02e3edd mds: remove ONESHOT_REPLAY mode
+52ca195 mds: remove stale comments
+c1279d8 mds: remove inc array from mdsmap
+9d5162f test/mds: add test for symbols in paths
+af3a4e4 mds: fix auth caps with hyphen in path
+075ee03 rgw_op: pass delete bucket op to master zone first
+1527b56 rgw: add errno entry for -ENOTEMPTY
+791eba8 fix deb package /etc/default/ceph location
+d985135 mon/OSDMonitor: improve reweight_by_utilization() logic
+b0543fd mon/OSDMonitor: avoid potential expensive grace calculation
+53686df mon/OSDMonitor: max_osds must be > 0 for reweight-by-*
+0de6345 OSDMonitor: avoid underflow in reweight-by-utilization if max_change=1
+63738d4 rbd: disk usage now includes all snapshots by default
+895c975 librbd: block RPC requests while updating features
+1f0056a librbd: return -ESHUTDOWN when a refresh is requested on a closed image
+6da1a84 librbd: synchronous block_writes should return possible error result
+04ef40e librbd: refresh image before executing maint op
+64cb645 librbd: reduce log level when lock owner not detected
+49cfb0e librbd: reduce log level for interrupted maint ops
+32c0901 qa/workunits/rbd: test mirror status in pool directory
+9a30a89 rbd-mirror: in replay status store number of entries behind master
+15a9131 librbd: API to retrieve image mirroring status
+98ca7f3 test: MockJournaler: add get_cached_client method
+e57c4d8 rbd: CLI to retrieve rbd mirror state for a pool / specific image
+6111a25 rbd-mirror: store replay status in mirroring object
+f225142 test: cls_rbd: methods to store/retrieve mirroring status
+4a3f0d2 cls::rbd:: methods to store/retrieve mirroring status
+62c6014 objclass: add method to list watchers
+125aab8 librbd: propagate any image refresh errors back to caller
+5fe4bea librbd: avoid second close attempt of invalid parent image
+af1c0bc rbd-mirror: interrupting image replay startup can cause crash
+9b2c173 librbd: fix potential assertion for object map invalidation
+6e5091e systemd: fix typo in preset file
+d302617 systemd: fix typo in preset file
+8cae07c librbd: fix potential double free of SetSnapRequest instance
+37ccacf rpm: Add rpm scripts for ceph-rbd-mirror
+c729bdd rpm: Start all the targets in %post
+c72f0bc rpm: implement scriptlets for the post-split daemon packages
+81f4073 systemd: enable all the ceph .target services by default
+f4d63af python_cephfs: rule out empty/None volume_id
+b609017 python-cephfs: use rados namespace for data isolation.
+96b3726 Signed-off-by: Tamil Muthamizhan <tmuthami@redhat.com>
+77fdbf1 Signed-off-by: Tamil Muthamizhan <tmuthami@redhat.com>
+1fa533e fix ceph init script
+7acbefa test: Fix ceph-objectstore-tool test to run manually from src non-cmake
+af4b31c Drop --setuser/--setgroup from osd prestart
+8a86d08 osd: fix backwards min/max osd utilization
+3a9fba2 (tag: v10.2.0) 10.2.0
 f86f73f rgw: drop rest op reference in error path
 88369e2 doc: rgw multisite, add pools section & minor cosmetic improvements
 7ca01d4 rgw_admin: improve period update errors

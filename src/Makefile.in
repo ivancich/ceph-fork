@@ -956,7 +956,8 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@	test/encoding/test_ceph_time.h
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_218 = libradostest.la \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados_test_stub.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados_test_stub.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	libjournal_test_mock.la
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_219 = ceph_test_rados \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_mutate
 @ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOS_TRUE@am__append_220 = test_build_librados
@@ -1002,8 +1003,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_api_lock \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_api_tmap_migrate \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_stress_watch
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_225 = \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/LibradosTestStub.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_225 = test/librados_test_stub/LibradosTestStub.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/MockTestMemIoCtxImpl.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/MockTestMemRadosClient.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestClassHandler.h \
@@ -1011,8 +1011,8 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestMemRadosClient.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestWatchNotify.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestMemIoCtxImpl.h \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestIoCtxImpl.h
-
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestIoCtxImpl.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/journal/mock/MockJournaler.h
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_226 = ceph_smalliobenchrbd \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_librbd \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_librbd_api \
@@ -1041,8 +1041,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockReadahead.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/object_map/mock/MockInvalidateRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_fixture.h \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_fixture.h \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/mock/MockJournaler.h
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_fixture.h
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_232 = ceph_test_librbd_fsx
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_233 = libradosstripertest.la
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_234 = ceph_test_rados_striper_api_io \
@@ -1143,15 +1142,18 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ImageSync.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Mirror.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/PoolWatcher.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ProgressContext.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Replayer.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Threads.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/types.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/BootstrapRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CloseImageRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ImageCopyRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ObjectCopyRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCopyRequest.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCreateRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointCreateRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointPruneRequest.h
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_269 = $(LIBKRBD)
@@ -2633,6 +2635,17 @@ am__libjournal_la_SOURCES_DIST = journal/AsyncOpTracker.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/Utils.lo
 libjournal_la_OBJECTS = $(am_libjournal_la_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am_libjournal_la_rpath =
+libjournal_test_mock_la_LIBADD =
+am__libjournal_test_mock_la_SOURCES_DIST =  \
+	test/journal/mock/MockJournaler.cc
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am_libjournal_test_mock_la_OBJECTS = test/journal/mock/libjournal_test_mock_la-MockJournaler.lo
+libjournal_test_mock_la_OBJECTS =  \
+	$(am_libjournal_test_mock_la_OBJECTS)
+libjournal_test_mock_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(libjournal_test_mock_la_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am_libjournal_test_mock_la_rpath =
 libjson_spirit_la_DEPENDENCIES = $(am__DEPENDENCIES_1)
 am_libjson_spirit_la_OBJECTS = json_spirit/json_spirit_reader.lo \
 	json_spirit/json_spirit_writer.lo
@@ -3009,9 +3022,11 @@ am__librbd_mirror_internal_la_SOURCES_DIST =  \
 	tools/rbd_mirror/image_replayer/BootstrapRequest.cc \
 	tools/rbd_mirror/image_replayer/CloseImageRequest.cc \
 	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc \
+	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc \
 	tools/rbd_mirror/image_sync/ImageCopyRequest.cc \
 	tools/rbd_mirror/image_sync/ObjectCopyRequest.cc \
 	tools/rbd_mirror/image_sync/SnapshotCopyRequest.cc \
+	tools/rbd_mirror/image_sync/SnapshotCreateRequest.cc \
 	tools/rbd_mirror/image_sync/SyncPointCreateRequest.cc \
 	tools/rbd_mirror/image_sync/SyncPointPruneRequest.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_mirror_internal_la_OBJECTS = tools/rbd_mirror/ClusterWatcher.lo \
@@ -3025,9 +3040,11 @@ am__librbd_mirror_internal_la_SOURCES_DIST =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/BootstrapRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CloseImageRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ImageCopyRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ObjectCopyRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCopyRequest.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCreateRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointCreateRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointPruneRequest.lo
 librbd_mirror_internal_la_OBJECTS =  \
@@ -3111,8 +3128,10 @@ librbd_test_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_test_la_rpath =
 librbd_test_mock_la_LIBADD =
 am__librbd_test_mock_la_SOURCES_DIST =  \
-	test/librbd/mock/MockImageCtx.cc
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_test_mock_la_OBJECTS = test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo
+	test/librbd/mock/MockImageCtx.cc \
+	test/librbd/mock/MockJournal.cc
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_test_mock_la_OBJECTS = test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/librbd_test_mock_la-MockJournal.lo
 librbd_test_mock_la_OBJECTS = $(am_librbd_test_mock_la_OBJECTS)
 librbd_test_mock_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -6409,6 +6428,7 @@ am__unittest_librbd_SOURCES_DIST = test/librbd/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/operation/unittest_librbd-test_mock_SnapshotUnprotectRequest.$(OBJEXT)
 unittest_librbd_OBJECTS = $(am_unittest_librbd_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_DEPENDENCIES = librbd_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libjournal_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_api.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_internal.la \
@@ -6597,24 +6617,27 @@ am__unittest_rbd_mirror_SOURCES_DIST = test/rbd_mirror/test_main.cc \
 	test/rbd_mirror/test_mock_fixture.cc \
 	test/rbd_mirror/test_mock_ImageReplayer.cc \
 	test/rbd_mirror/test_mock_ImageSync.cc \
+	test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc \
+	test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_SyncPointCreateRequest.cc \
-	test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc \
-	test/rbd_mirror/mock/MockJournaler.cc
+	test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_unittest_rbd_mirror_OBJECTS = test/rbd_mirror/unittest_rbd_mirror-test_main.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_fixture.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.$(OBJEXT) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ObjectCopyRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCopyRequest.$(OBJEXT) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.$(OBJEXT) \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointPruneRequest.$(OBJEXT) \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.$(OBJEXT)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointPruneRequest.$(OBJEXT)
 unittest_rbd_mirror_OBJECTS = $(am_unittest_rbd_mirror_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_rbd_mirror_DEPENDENCIES = librbd_mirror_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libjournal_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librados_test_stub.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_internal.la \
@@ -7046,6 +7069,7 @@ SOURCES = $(libkv_a_SOURCES) $(libmon_a_SOURCES) $(libos_a_SOURCES) \
 	$(libec_test_shec_sse4_la_SOURCES) \
 	$(liberasure_code_la_SOURCES) $(libglobal_la_SOURCES) \
 	$(libisa_la_SOURCES) $(libjournal_la_SOURCES) \
+	$(libjournal_test_mock_la_SOURCES) \
 	$(libjson_spirit_la_SOURCES) $(libkrbd_la_SOURCES) \
 	$(liblog_la_SOURCES) $(libmds_la_SOURCES) \
 	$(libmon_types_la_SOURCES) $(libmsg_la_SOURCES) \
@@ -7308,10 +7332,12 @@ DIST_SOURCES = $(am__libkv_a_SOURCES_DIST) \
 	$(am__libec_test_shec_sse4_la_SOURCES_DIST) \
 	$(liberasure_code_la_SOURCES) $(libglobal_la_SOURCES) \
 	$(am__libisa_la_SOURCES_DIST) \
-	$(am__libjournal_la_SOURCES_DIST) $(libjson_spirit_la_SOURCES) \
-	$(am__libkrbd_la_SOURCES_DIST) $(liblog_la_SOURCES) \
-	$(am__libmds_la_SOURCES_DIST) $(libmon_types_la_SOURCES) \
-	$(am__libmsg_la_SOURCES_DIST) $(am__libos_tp_la_SOURCES_DIST) \
+	$(am__libjournal_la_SOURCES_DIST) \
+	$(am__libjournal_test_mock_la_SOURCES_DIST) \
+	$(libjson_spirit_la_SOURCES) $(am__libkrbd_la_SOURCES_DIST) \
+	$(liblog_la_SOURCES) $(am__libmds_la_SOURCES_DIST) \
+	$(libmon_types_la_SOURCES) $(am__libmsg_la_SOURCES_DIST) \
+	$(am__libos_tp_la_SOURCES_DIST) \
 	$(am__libosd_tp_la_SOURCES_DIST) $(libosd_types_la_SOURCES) \
 	$(libosdc_la_SOURCES) $(am__libperfglue_la_SOURCES_DIST) \
 	$(am__librados_la_SOURCES_DIST) \
@@ -7992,8 +8018,8 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	test/librados_test_stub/TestWatchNotify.h \
 	test/librados_test_stub/TestMemIoCtxImpl.h \
 	test/librados_test_stub/TestIoCtxImpl.h \
-	test/librbd/test_fixture.h test/librbd/test_mock_fixture.h \
-	test/librbd/test_support.h \
+	test/journal/mock/MockJournaler.h test/librbd/test_fixture.h \
+	test/librbd/test_mock_fixture.h test/librbd/test_support.h \
 	test/librbd/mock/MockAioImageRequestWQ.h \
 	test/librbd/mock/MockContextWQ.h \
 	test/librbd/mock/MockExclusiveLock.h \
@@ -8007,8 +8033,7 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	test/librbd/mock/MockReadahead.h \
 	test/librbd/object_map/mock/MockInvalidateRequest.h \
 	test/rbd_mirror/test_fixture.h \
-	test/rbd_mirror/test_mock_fixture.h \
-	test/rbd_mirror/mock/MockJournaler.h test/perf_helper.h \
+	test/rbd_mirror/test_mock_fixture.h test/perf_helper.h \
 	test/bench/backend.h test/bench/bencher.h \
 	test/bench/detailed_stat_collector.h test/bench/distribution.h \
 	test/bench/dumb_backend.h test/bench/rados_backend.h \
@@ -8038,14 +8063,16 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	tools/rbd_mirror/ClusterWatcher.h \
 	tools/rbd_mirror/ImageReplayer.h tools/rbd_mirror/ImageSync.h \
 	tools/rbd_mirror/Mirror.h tools/rbd_mirror/PoolWatcher.h \
-	tools/rbd_mirror/Replayer.h tools/rbd_mirror/Threads.h \
-	tools/rbd_mirror/types.h \
+	tools/rbd_mirror/ProgressContext.h tools/rbd_mirror/Replayer.h \
+	tools/rbd_mirror/Threads.h tools/rbd_mirror/types.h \
 	tools/rbd_mirror/image_replayer/BootstrapRequest.h \
 	tools/rbd_mirror/image_replayer/CloseImageRequest.h \
 	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.h \
+	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.h \
 	tools/rbd_mirror/image_sync/ImageCopyRequest.h \
 	tools/rbd_mirror/image_sync/ObjectCopyRequest.h \
 	tools/rbd_mirror/image_sync/SnapshotCopyRequest.h \
+	tools/rbd_mirror/image_sync/SnapshotCreateRequest.h \
 	tools/rbd_mirror/image_sync/SyncPointCreateRequest.h \
 	tools/rbd_mirror/image_sync/SyncPointPruneRequest.h \
 	tools/cephfs/JournalTool.h tools/cephfs/JournalScanner.h \
@@ -11458,6 +11485,10 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestRadosClient.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestWatchNotify.cc
 
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@libjournal_test_mock_la_SOURCES = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/journal/mock/MockJournaler.cc
+
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@libjournal_test_mock_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@unittest_journal_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/journal/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@        test/journal/test_Entry.cc \
@@ -11507,7 +11538,8 @@ librbd_types_la_SOURCES = \
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_test_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_test_mock_la_SOURCES = \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockImageCtx.cc
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockImageCtx.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockJournal.cc
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_test_mock_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_SOURCES = \
@@ -11538,7 +11570,7 @@ librbd_types_la_SOURCES = \
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_CXXFLAGS = $(UNITTEST_CXXFLAGS) -DTEST_LIBRBD_INTERNALS
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_LDADD = \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test.la librbd_test_mock.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test.la libjournal_test_mock.la librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_api.la librbd_internal.la $(LIBRBD_TYPES) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_rbd_client.la libcls_lock_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libjournal.la libcls_journal_client.la \
@@ -11579,16 +11611,18 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_fixture.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_ImageReplayer.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_ImageSync.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_SyncPointCreateRequest.cc \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/mock/MockJournaler.cc
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_rbd_mirror_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_rbd_mirror_LDADD = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libjournal_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librados_test_stub.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_internal.la \
@@ -12289,9 +12323,11 @@ ceph_test_cfuse_cache_invalidate_SOURCES = test/test_cfuse_cache_invalidate.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/BootstrapRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CloseImageRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ImageCopyRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ObjectCopyRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCopyRequest.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCreateRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointCreateRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointPruneRequest.cc
 
@@ -14582,6 +14618,18 @@ journal/Utils.lo: journal/$(am__dirstamp) \
 
 libjournal.la: $(libjournal_la_OBJECTS) $(libjournal_la_DEPENDENCIES) $(EXTRA_libjournal_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(CXXLINK) $(am_libjournal_la_rpath) $(libjournal_la_OBJECTS) $(libjournal_la_LIBADD) $(LIBS)
+test/journal/mock/$(am__dirstamp):
+	@$(MKDIR_P) test/journal/mock
+	@: > test/journal/mock/$(am__dirstamp)
+test/journal/mock/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) test/journal/mock/$(DEPDIR)
+	@: > test/journal/mock/$(DEPDIR)/$(am__dirstamp)
+test/journal/mock/libjournal_test_mock_la-MockJournaler.lo:  \
+	test/journal/mock/$(am__dirstamp) \
+	test/journal/mock/$(DEPDIR)/$(am__dirstamp)
+
+libjournal_test_mock.la: $(libjournal_test_mock_la_OBJECTS) $(libjournal_test_mock_la_DEPENDENCIES) $(EXTRA_libjournal_test_mock_la_DEPENDENCIES) 
+	$(AM_V_CXXLD)$(libjournal_test_mock_la_LINK) $(am_libjournal_test_mock_la_rpath) $(libjournal_test_mock_la_OBJECTS) $(libjournal_test_mock_la_LIBADD) $(LIBS)
 json_spirit/$(am__dirstamp):
 	@$(MKDIR_P) json_spirit
 	@: > json_spirit/$(am__dirstamp)
@@ -15109,6 +15157,9 @@ tools/rbd_mirror/image_replayer/CloseImageRequest.lo:  \
 tools/rbd_mirror/image_replayer/OpenLocalImageRequest.lo:  \
 	tools/rbd_mirror/image_replayer/$(am__dirstamp) \
 	tools/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
+tools/rbd_mirror/image_replayer/ReplayStatusFormatter.lo:  \
+	tools/rbd_mirror/image_replayer/$(am__dirstamp) \
+	tools/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/image_sync/$(am__dirstamp):
 	@$(MKDIR_P) tools/rbd_mirror/image_sync
 	@: > tools/rbd_mirror/image_sync/$(am__dirstamp)
@@ -15122,6 +15173,9 @@ tools/rbd_mirror/image_sync/ObjectCopyRequest.lo:  \
 	tools/rbd_mirror/image_sync/$(am__dirstamp) \
 	tools/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/image_sync/SnapshotCopyRequest.lo:  \
+	tools/rbd_mirror/image_sync/$(am__dirstamp) \
+	tools/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
+tools/rbd_mirror/image_sync/SnapshotCreateRequest.lo:  \
 	tools/rbd_mirror/image_sync/$(am__dirstamp) \
 	tools/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/image_sync/SyncPointCreateRequest.lo:  \
@@ -15240,6 +15294,9 @@ test/librbd/mock/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) test/librbd/mock/$(DEPDIR)
 	@: > test/librbd/mock/$(DEPDIR)/$(am__dirstamp)
 test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo:  \
+	test/librbd/mock/$(am__dirstamp) \
+	test/librbd/mock/$(DEPDIR)/$(am__dirstamp)
+test/librbd/mock/librbd_test_mock_la-MockJournal.lo:  \
 	test/librbd/mock/$(am__dirstamp) \
 	test/librbd/mock/$(DEPDIR)/$(am__dirstamp)
 
@@ -18222,6 +18279,15 @@ test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.$(OBJEXT):  \
 test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.$(OBJEXT):  \
 	test/rbd_mirror/$(am__dirstamp) \
 	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
+test/rbd_mirror/image_replayer/$(am__dirstamp):
+	@$(MKDIR_P) test/rbd_mirror/image_replayer
+	@: > test/rbd_mirror/image_replayer/$(am__dirstamp)
+test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) test/rbd_mirror/image_replayer/$(DEPDIR)
+	@: > test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
+test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.$(OBJEXT):  \
+	test/rbd_mirror/image_replayer/$(am__dirstamp) \
+	test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/image_sync/$(am__dirstamp):
 	@$(MKDIR_P) test/rbd_mirror/image_sync
 	@: > test/rbd_mirror/image_sync/$(am__dirstamp)
@@ -18237,21 +18303,15 @@ test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ObjectCopyRequest.$(OBJ
 test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCopyRequest.$(OBJEXT):  \
 	test/rbd_mirror/image_sync/$(am__dirstamp) \
 	test/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
+test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.$(OBJEXT):  \
+	test/rbd_mirror/image_sync/$(am__dirstamp) \
+	test/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.$(OBJEXT):  \
 	test/rbd_mirror/image_sync/$(am__dirstamp) \
 	test/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointPruneRequest.$(OBJEXT):  \
 	test/rbd_mirror/image_sync/$(am__dirstamp) \
 	test/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
-test/rbd_mirror/mock/$(am__dirstamp):
-	@$(MKDIR_P) test/rbd_mirror/mock
-	@: > test/rbd_mirror/mock/$(am__dirstamp)
-test/rbd_mirror/mock/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) test/rbd_mirror/mock/$(DEPDIR)
-	@: > test/rbd_mirror/mock/$(DEPDIR)/$(am__dirstamp)
-test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.$(OBJEXT):  \
-	test/rbd_mirror/mock/$(am__dirstamp) \
-	test/rbd_mirror/mock/$(DEPDIR)/$(am__dirstamp)
 
 unittest_rbd_mirror$(EXEEXT): $(unittest_rbd_mirror_OBJECTS) $(unittest_rbd_mirror_DEPENDENCIES) $(EXTRA_unittest_rbd_mirror_DEPENDENCIES) 
 	@rm -f unittest_rbd_mirror$(EXEEXT)
@@ -18859,6 +18919,8 @@ mostlyclean-compile:
 	-rm -f test/filestore/*.$(OBJEXT)
 	-rm -f test/fs/*.$(OBJEXT)
 	-rm -f test/journal/*.$(OBJEXT)
+	-rm -f test/journal/mock/*.$(OBJEXT)
+	-rm -f test/journal/mock/*.lo
 	-rm -f test/libcephfs/*.$(OBJEXT)
 	-rm -f test/librados/*.$(OBJEXT)
 	-rm -f test/librados/*.lo
@@ -18886,8 +18948,8 @@ mostlyclean-compile:
 	-rm -f test/osdc/*.$(OBJEXT)
 	-rm -f test/rbd_mirror/*.$(OBJEXT)
 	-rm -f test/rbd_mirror/*.lo
+	-rm -f test/rbd_mirror/image_replayer/*.$(OBJEXT)
 	-rm -f test/rbd_mirror/image_sync/*.$(OBJEXT)
-	-rm -f test/rbd_mirror/mock/*.$(OBJEXT)
 	-rm -f test/rgw/*.$(OBJEXT)
 	-rm -f test/system/*.$(OBJEXT)
 	-rm -f test/system/*.lo
@@ -20053,6 +20115,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/journal/$(DEPDIR)/unittest_journal-test_ObjectPlayer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/journal/$(DEPDIR)/unittest_journal-test_ObjectRecorder.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/journal/$(DEPDIR)/unittest_journal-test_main.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/journal/mock/$(DEPDIR)/libjournal_test_mock_la-MockJournaler.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/libcephfs/$(DEPDIR)/ceph_test_libcephfs-access.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/libcephfs/$(DEPDIR)/ceph_test_libcephfs-acl.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/libcephfs/$(DEPDIR)/ceph_test_libcephfs-caps.Po@am__quote@
@@ -20116,6 +20179,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/journal/$(DEPDIR)/librbd_test_la-test_Replay.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/journal/$(DEPDIR)/unittest_librbd-test_mock_Replay.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockImageCtx.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockJournal.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/object_map/$(DEPDIR)/unittest_librbd-test_mock_InvalidateRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/object_map/$(DEPDIR)/unittest_librbd-test_mock_LockRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/object_map/$(DEPDIR)/unittest_librbd-test_mock_RefreshRequest.Po@am__quote@
@@ -20189,12 +20253,13 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageSync.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_fixture.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ObjectCopyRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCopyRequest.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SyncPointPruneRequest.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/mock/$(DEPDIR)/unittest_rbd_mirror-MockJournaler.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rgw/$(DEPDIR)/ceph_test_rgw_manifest-test_rgw_manifest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rgw/$(DEPDIR)/ceph_test_rgw_obj-test_rgw_obj.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rgw/$(DEPDIR)/ceph_test_rgw_period_history-test_rgw_period_history.Po@am__quote@
@@ -20292,9 +20357,11 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/BootstrapRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/CloseImageRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/OpenLocalImageRequest.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/ReplayStatusFormatter.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_sync/$(DEPDIR)/ImageCopyRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_sync/$(DEPDIR)/ObjectCopyRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_sync/$(DEPDIR)/SnapshotCopyRequest.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_sync/$(DEPDIR)/SnapshotCreateRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_sync/$(DEPDIR)/SyncPointCreateRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_sync/$(DEPDIR)/SyncPointPruneRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_nbd/$(DEPDIR)/rbd_nbd-rbd-nbd.Po@am__quote@
@@ -23948,6 +24015,13 @@ erasure-code/isa/libisa_la-xor_op.lo: erasure-code/isa/xor_op.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(libisa_la_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libisa_la_CXXFLAGS) $(CXXFLAGS) -c -o erasure-code/isa/libisa_la-xor_op.lo `test -f 'erasure-code/isa/xor_op.cc' || echo '$(srcdir)/'`erasure-code/isa/xor_op.cc
 
+test/journal/mock/libjournal_test_mock_la-MockJournaler.lo: test/journal/mock/MockJournaler.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libjournal_test_mock_la_CXXFLAGS) $(CXXFLAGS) -MT test/journal/mock/libjournal_test_mock_la-MockJournaler.lo -MD -MP -MF test/journal/mock/$(DEPDIR)/libjournal_test_mock_la-MockJournaler.Tpo -c -o test/journal/mock/libjournal_test_mock_la-MockJournaler.lo `test -f 'test/journal/mock/MockJournaler.cc' || echo '$(srcdir)/'`test/journal/mock/MockJournaler.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/journal/mock/$(DEPDIR)/libjournal_test_mock_la-MockJournaler.Tpo test/journal/mock/$(DEPDIR)/libjournal_test_mock_la-MockJournaler.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/journal/mock/MockJournaler.cc' object='test/journal/mock/libjournal_test_mock_la-MockJournaler.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libjournal_test_mock_la_CXXFLAGS) $(CXXFLAGS) -c -o test/journal/mock/libjournal_test_mock_la-MockJournaler.lo `test -f 'test/journal/mock/MockJournaler.cc' || echo '$(srcdir)/'`test/journal/mock/MockJournaler.cc
+
 osd/libosd_types_la-PGLog.lo: osd/PGLog.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_types_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_types_la-PGLog.lo -MD -MP -MF osd/$(DEPDIR)/libosd_types_la-PGLog.Tpo -c -o osd/libosd_types_la-PGLog.lo `test -f 'osd/PGLog.cc' || echo '$(srcdir)/'`osd/PGLog.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_types_la-PGLog.Tpo osd/$(DEPDIR)/libosd_types_la-PGLog.Plo
@@ -24143,6 +24217,13 @@ test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo: test/librbd/mock/MockImage
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/librbd/mock/MockImageCtx.cc' object='test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_mock_la_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo `test -f 'test/librbd/mock/MockImageCtx.cc' || echo '$(srcdir)/'`test/librbd/mock/MockImageCtx.cc
+
+test/librbd/mock/librbd_test_mock_la-MockJournal.lo: test/librbd/mock/MockJournal.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_mock_la_CXXFLAGS) $(CXXFLAGS) -MT test/librbd/mock/librbd_test_mock_la-MockJournal.lo -MD -MP -MF test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockJournal.Tpo -c -o test/librbd/mock/librbd_test_mock_la-MockJournal.lo `test -f 'test/librbd/mock/MockJournal.cc' || echo '$(srcdir)/'`test/librbd/mock/MockJournal.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockJournal.Tpo test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockJournal.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/librbd/mock/MockJournal.cc' object='test/librbd/mock/librbd_test_mock_la-MockJournal.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_mock_la_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/mock/librbd_test_mock_la-MockJournal.lo `test -f 'test/librbd/mock/MockJournal.cc' || echo '$(srcdir)/'`test/librbd/mock/MockJournal.cc
 
 rgw/librgw_la-rgw_acl.lo: rgw/rgw_acl.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librgw_la_CXXFLAGS) $(CXXFLAGS) -MT rgw/librgw_la-rgw_acl.lo -MD -MP -MF rgw/$(DEPDIR)/librgw_la-rgw_acl.Tpo -c -o rgw/librgw_la-rgw_acl.lo `test -f 'rgw/rgw_acl.cc' || echo '$(srcdir)/'`rgw/rgw_acl.cc
@@ -29681,6 +29762,20 @@ test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.obj: test/rbd_mirror/tes
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.obj `if test -f 'test/rbd_mirror/test_mock_ImageSync.cc'; then $(CYGPATH_W) 'test/rbd_mirror/test_mock_ImageSync.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/test_mock_ImageSync.cc'; fi`
 
+test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.o: test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.o -MD -MP -MF test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Tpo -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.o `test -f 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Tpo test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc' object='test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.o `test -f 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+
+test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.obj: test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.obj -MD -MP -MF test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Tpo -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.obj `if test -f 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Tpo test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc' object='test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.obj `if test -f 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; fi`
+
 test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.o: test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.o -MD -MP -MF test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Tpo -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.o `test -f 'test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Tpo test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Po
@@ -29723,6 +29818,20 @@ test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCopyRequest.obj
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCopyRequest.obj `if test -f 'test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc'; fi`
 
+test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.o: test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.o -MD -MP -MF test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.Tpo -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.o `test -f 'test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.Tpo test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc' object='test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.o `test -f 'test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc
+
+test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.obj: test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.obj -MD -MP -MF test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.Tpo -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.obj `if test -f 'test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.Tpo test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc' object='test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCreateRequest.obj `if test -f 'test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_sync/test_mock_SnapshotCreateRequest.cc'; fi`
+
 test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.o: test/rbd_mirror/image_sync/test_mock_SyncPointCreateRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.o -MD -MP -MF test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.Tpo -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.o `test -f 'test/rbd_mirror/image_sync/test_mock_SyncPointCreateRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_sync/test_mock_SyncPointCreateRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.Tpo test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SyncPointCreateRequest.Po
@@ -29750,20 +29859,6 @@ test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointPruneRequest.o
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc' object='test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointPruneRequest.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SyncPointPruneRequest.obj `if test -f 'test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc'; fi`
-
-test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.o: test/rbd_mirror/mock/MockJournaler.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.o -MD -MP -MF test/rbd_mirror/mock/$(DEPDIR)/unittest_rbd_mirror-MockJournaler.Tpo -c -o test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.o `test -f 'test/rbd_mirror/mock/MockJournaler.cc' || echo '$(srcdir)/'`test/rbd_mirror/mock/MockJournaler.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/mock/$(DEPDIR)/unittest_rbd_mirror-MockJournaler.Tpo test/rbd_mirror/mock/$(DEPDIR)/unittest_rbd_mirror-MockJournaler.Po
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/mock/MockJournaler.cc' object='test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.o `test -f 'test/rbd_mirror/mock/MockJournaler.cc' || echo '$(srcdir)/'`test/rbd_mirror/mock/MockJournaler.cc
-
-test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.obj: test/rbd_mirror/mock/MockJournaler.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.obj -MD -MP -MF test/rbd_mirror/mock/$(DEPDIR)/unittest_rbd_mirror-MockJournaler.Tpo -c -o test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.obj `if test -f 'test/rbd_mirror/mock/MockJournaler.cc'; then $(CYGPATH_W) 'test/rbd_mirror/mock/MockJournaler.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/mock/MockJournaler.cc'; fi`
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/mock/$(DEPDIR)/unittest_rbd_mirror-MockJournaler.Tpo test/rbd_mirror/mock/$(DEPDIR)/unittest_rbd_mirror-MockJournaler.Po
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/mock/MockJournaler.cc' object='test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.obj `if test -f 'test/rbd_mirror/mock/MockJournaler.cc'; then $(CYGPATH_W) 'test/rbd_mirror/mock/MockJournaler.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/mock/MockJournaler.cc'; fi`
 
 test/unittest_rbd_replay-test_rbd_replay.o: test/test_rbd_replay.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_replay_CXXFLAGS) $(CXXFLAGS) -MT test/unittest_rbd_replay-test_rbd_replay.o -MD -MP -MF test/$(DEPDIR)/unittest_rbd_replay-test_rbd_replay.Tpo -c -o test/unittest_rbd_replay-test_rbd_replay.o `test -f 'test/test_rbd_replay.cc' || echo '$(srcdir)/'`test/test_rbd_replay.cc
@@ -30418,6 +30513,7 @@ clean-libtool:
 	-rm -rf rgw/.libs rgw/_libs
 	-rm -rf test/compressor/.libs test/compressor/_libs
 	-rm -rf test/erasure-code/.libs test/erasure-code/_libs
+	-rm -rf test/journal/mock/.libs test/journal/mock/_libs
 	-rm -rf test/librados/.libs test/librados/_libs
 	-rm -rf test/librados_test_stub/.libs test/librados_test_stub/_libs
 	-rm -rf test/libradosstriper/.libs test/libradosstriper/_libs
@@ -32160,6 +32256,8 @@ distclean-generic:
 	-rm -f test/fs/$(am__dirstamp)
 	-rm -f test/journal/$(DEPDIR)/$(am__dirstamp)
 	-rm -f test/journal/$(am__dirstamp)
+	-rm -f test/journal/mock/$(DEPDIR)/$(am__dirstamp)
+	-rm -f test/journal/mock/$(am__dirstamp)
 	-rm -f test/libcephfs/$(DEPDIR)/$(am__dirstamp)
 	-rm -f test/libcephfs/$(am__dirstamp)
 	-rm -f test/librados/$(DEPDIR)/$(am__dirstamp)
@@ -32200,10 +32298,10 @@ distclean-generic:
 	-rm -f test/osdc/$(am__dirstamp)
 	-rm -f test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 	-rm -f test/rbd_mirror/$(am__dirstamp)
+	-rm -f test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
+	-rm -f test/rbd_mirror/image_replayer/$(am__dirstamp)
 	-rm -f test/rbd_mirror/image_sync/$(DEPDIR)/$(am__dirstamp)
 	-rm -f test/rbd_mirror/image_sync/$(am__dirstamp)
-	-rm -f test/rbd_mirror/mock/$(DEPDIR)/$(am__dirstamp)
-	-rm -f test/rbd_mirror/mock/$(am__dirstamp)
 	-rm -f test/rgw/$(DEPDIR)/$(am__dirstamp)
 	-rm -f test/rgw/$(am__dirstamp)
 	-rm -f test/system/$(DEPDIR)/$(am__dirstamp)
@@ -32246,7 +32344,7 @@ clean-am: clean-binPROGRAMS clean-checkPROGRAMS \
 	clean-sbinPROGRAMS clean-su_sbinPROGRAMS mostlyclean-am
 
 distclean: distclean-recursive
-	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/mirroring_watcher/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/mock/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rbd_mirror/mock/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/mirroring_watcher/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/journal/mock/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/mock/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_replayer/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-hdr distclean-tags
@@ -32304,7 +32402,7 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-recursive
-	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/mirroring_watcher/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/mock/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rbd_mirror/mock/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/mirroring_watcher/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/journal/mock/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/mock/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_replayer/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
