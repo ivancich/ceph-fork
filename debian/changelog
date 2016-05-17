@@ -1,3 +1,11 @@
+ceph (10.2.1-3redhat1) stable; urgency=medium
+
+  * udev: remove 60-ceph-partuuid-workaround-rules
+    (bf6bcaead158c1a64bd190e595249be623b29197 upstream) (related to
+    rhbz#1335619, rhbz#1333398)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 17 May 2016 10:26:48 -0600
+
 ceph (10.2.1-2redhat1) stable; urgency=medium
 
   * New upstream release (rhbz#1333950, rhbz#1333754, rhbz#1333599,

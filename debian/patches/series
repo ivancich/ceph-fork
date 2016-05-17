@@ -1,1 +1,3 @@
 0001-Revert-Merge-pull-request-7820-from-yuyuyu101-remove.patch
+0002-test-ec-build-the-libs-only-when-make-check.patch
+0003-udev-remove-60-ceph-partuuid-workaround-rules.patch

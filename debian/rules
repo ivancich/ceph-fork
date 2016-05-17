@@ -4,7 +4,7 @@ export DH_VERBOSE=1
 export DESTDIR=$(CURDIR)/debian/tmp
 
 # Custom "ceph --version" information:
-export COMMIT=c91370146bec52062ba0f9c5b8a8a24fcc178cb5
+export COMMIT=f6e1bde2840e1da621601bad87e15fd3f654c01e
 export DEB_VERSION := $(shell dpkg-parsechangelog | egrep '^Version:' | cut -f 2 -d ' ')
 
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
@@ -91,7 +91,6 @@ install: build
 	$(MAKE) DESTDIR=$(DESTDIR) install
 	sed -i "/dependency_libs/ s/'.*'/''/" `find . -name '*.la'`
 	install -D -m 644 udev/50-rbd.rules $(DESTDIR)/lib/udev/rules.d/50-rbd.rules
-	install -D -m 644 udev/60-ceph-partuuid-workaround.rules $(DESTDIR)/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
 	install -D -m 644 udev/95-ceph-osd.rules $(DESTDIR)/lib/udev/rules.d/95-ceph-osd.rules
 	install -D -m 644 src/etc-rbdmap $(DESTDIR)/etc/ceph/rbdmap
 	install -D -m 755 src/init-rbdmap $(DESTDIR)/etc/init.d/rbdmap
