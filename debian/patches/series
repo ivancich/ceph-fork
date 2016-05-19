@@ -1,3 +1,5 @@
 0001-Revert-Merge-pull-request-7820-from-yuyuyu101-remove.patch
 0002-test-ec-build-the-libs-only-when-make-check.patch
 0003-udev-remove-60-ceph-partuuid-workaround-rules.patch
+0004-global-don-t-link-lttng-into-libglobal.patch
+0005-radosgw-admin-fix-period-push-handling-of-url.patch
