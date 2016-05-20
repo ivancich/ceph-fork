@@ -1,3 +1,9 @@
+ceph (10.2.1-5redhat1) stable; urgency=medium
+
+  * rbd-mirror: fix potential crash during status update (rhbz#1336755)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 20 May 2016 09:13:10 -0600
+
 ceph (10.2.1-4redhat1) stable; urgency=medium
 
   * global: don't link lttng into libglobal (rhbz#1336877)
