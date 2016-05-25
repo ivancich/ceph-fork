@@ -1,0 +1,39 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 16 May 2016 11:03:45 -0400
+Subject: rgw: add_zone only clears master_zone if --master=false
+
+Fixes: http://tracker.ceph.com/issues/15901
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 40c4d150757cba4b05938c6c760ab9f0296c2ff6)
+Resolves: rhbz#1336644
+---
+ src/rgw/rgw_rados.cc | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 8a3420c..f66a943 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -238,13 +238,15 @@ int RGWZoneGroup::equals(const string& other_zonegroup) const
+ 
+ int RGWZoneGroup::add_zone(const RGWZoneParams& zone_params, bool *is_master, bool *read_only, const list<string>& endpoints)
+ {
+-  if (is_master && *is_master) {
+-    if (!master_zone.empty() && master_zone != zone_params.get_id()) {
+-      ldout(cct, 0) << "NOTICE: overriding master zone: " << master_zone  << dendl;
++  if (is_master) {
++    if (*is_master) {
++      if (!master_zone.empty() && master_zone != zone_params.get_id()) {
++        ldout(cct, 0) << "NOTICE: overriding master zone: " << master_zone << dendl;
++      }
++      master_zone = zone_params.get_id();
++    } else if (master_zone == zone_params.get_id()) {
++      master_zone.clear();
+     }
+-    master_zone = zone_params.get_id();
+-  } else if (master_zone == zone_params.get_id()) {
+-    master_zone ="";
+   }
+ 
+   RGWZone& zone = zones[zone_params.get_id()];

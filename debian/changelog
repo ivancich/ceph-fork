@@ -1,3 +1,9 @@
+ceph (10.2.1-6redhat1) stable; urgency=medium
+
+  * rgw: add_zone only clears master_zone if --master=false (rhbz#1336644)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 25 May 2016 14:14:02 -0600
+
 ceph (10.2.1-5redhat1) stable; urgency=medium
 
   * rbd-mirror: fix potential crash during status update (rhbz#1336755)
