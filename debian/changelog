@@ -1,3 +1,10 @@
+ceph (10.2.1-8redhat1) stable; urgency=medium
+
+  * rgw: properly handle initial slashes in SLO's segment path.
+    (rhbz#1339525)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 27 May 2016 17:15:58 -0600
+
 ceph (10.2.1-7redhat1) stable; urgency=medium
 
   * drop radosgw dependency on python-flask (rhbz#1339873)

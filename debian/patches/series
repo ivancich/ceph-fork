@@ -24,3 +24,4 @@
 0024-rbd-mirror-ensure-proper-handling-of-status-updates-.patch
 0025-rbd-mirror-additional-debug-messages-during-image-re.patch
 0026-rgw-add_zone-only-clears-master_zone-if-master-false.patch
+0027-rgw-properly-handle-initial-slashes-in-SLO-s-segment.patch
