@@ -1,0 +1,58 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 26 May 2016 12:01:15 -0400
+Subject: cls_rbd: asynchronous helper method to set parent
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit fcfdebb471650a1730306f6a309f1775ba7a5eee)
+(cherry picked from commit 8405c2c377c7f9e755a349bfc90494f7ee7cc477)
+
+Resolves: rhbz#1340484
+---
+ src/cls/rbd/cls_rbd_client.cc | 19 +++++++++++++------
+ src/cls/rbd/cls_rbd_client.h  |  2 ++
+ 2 files changed, 15 insertions(+), 6 deletions(-)
+
+diff --git a/src/cls/rbd/cls_rbd_client.cc b/src/cls/rbd/cls_rbd_client.cc
+index b20c57d..6ff2451 100644
+--- a/src/cls/rbd/cls_rbd_client.cc
++++ b/src/cls/rbd/cls_rbd_client.cc
+@@ -275,13 +275,20 @@ namespace librbd {
+     int set_parent(librados::IoCtx *ioctx, const std::string &oid,
+ 		   parent_spec pspec, uint64_t parent_overlap)
+     {
+-      bufferlist inbl, outbl;
+-      ::encode(pspec.pool_id, inbl);
+-      ::encode(pspec.image_id, inbl);
+-      ::encode(pspec.snap_id, inbl);
+-      ::encode(parent_overlap, inbl);
++      librados::ObjectWriteOperation op;
++      set_parent(&op, pspec, parent_overlap);
++      return ioctx->operate(oid, &op);
++    }
++
++    void set_parent(librados::ObjectWriteOperation *op,
++                    parent_spec pspec, uint64_t parent_overlap) {
++      bufferlist in_bl;
++      ::encode(pspec.pool_id, in_bl);
++      ::encode(pspec.image_id, in_bl);
++      ::encode(pspec.snap_id, in_bl);
++      ::encode(parent_overlap, in_bl);
+ 
+-      return ioctx->exec(oid, "rbd", "set_parent", inbl, outbl);
++      op->exec("rbd", "set_parent", in_bl);
+     }
+ 
+     void get_flags_start(librados::ObjectReadOperation *op,
+diff --git a/src/cls/rbd/cls_rbd_client.h b/src/cls/rbd/cls_rbd_client.h
+index c3a33ad..1ccbf76 100644
+--- a/src/cls/rbd/cls_rbd_client.h
++++ b/src/cls/rbd/cls_rbd_client.h
+@@ -66,6 +66,8 @@ namespace librbd {
+ 		   uint64_t *parent_overlap);
+     int set_parent(librados::IoCtx *ioctx, const std::string &oid,
+ 		   parent_spec pspec, uint64_t parent_overlap);
++    void set_parent(librados::ObjectWriteOperation *op,
++                    parent_spec pspec, uint64_t parent_overlap);
+     void get_flags_start(librados::ObjectReadOperation *op,
+                          const std::vector<snapid_t> &snap_ids);
+     int get_flags_finish(bufferlist::iterator *it, uint64_t *flags,

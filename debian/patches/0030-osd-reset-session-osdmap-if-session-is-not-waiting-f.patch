@@ -1,0 +1,73 @@
+From: Kefu Chai <kchai@redhat.com>
+Date: Thu, 12 May 2016 20:28:11 +0800
+Subject: osd: reset session->osdmap if session is not waiting for a map
+ anymore
+
+we should release the osdmap reference once we are done with it,
+otherwise we might need to wait very long to update that reference with
+a newer osdmap ref. this appears to be an OSDMap leak: it is held by an
+quiet OSD::Session forever.
+
+the osdmap is not reset in OSD::session_notify_pg_create(), because its
+only caller is wake_pg_waiters(), which will call
+dispatch_session_waiting() later. and dispatch_session_waiting() will
+check the session->osdmap, and will also reset the osdmap if
+session->waiting_for_pg.empty().
+
+Fixes: http://tracker.ceph.com/issues/13990
+Signed-off-by: Kefu Chai <kchai@redhat.com>
+(cherry picked from commit 82b0af7cedc3071cd83ee53479f834c23c62b7d0)
+(cherry picked from commit e97cc2d1e9bcee0a43f54ed592d3078182571874)
+
+Resolves: rhbz#1339061
+---
+ src/osd/OSD.cc | 2 ++
+ src/osd/OSD.h  | 8 ++++++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index be52df9..6d01fe8 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -5782,6 +5782,7 @@ void OSD::dispatch_session_waiting(Session *session, OSDMapRef osdmap)
+   } else {
+     register_session_waiting_on_map(session);
+   }
++  session->maybe_reset_osdmap();
+ }
+ 
+ 
+@@ -5860,6 +5861,7 @@ void OSD::session_notify_pg_cleared(
+   assert(session->session_dispatch_lock.is_locked());
+   update_waiting_for_pg(session, osdmap);
+   session->waiting_for_pg.erase(pgid);
++  session->maybe_reset_osdmap();
+   clear_session_waiting_on_pg(session, pgid);
+ }
+ 
+diff --git a/src/osd/OSD.h b/src/osd/OSD.h
+index 904288e..79a0d17 100644
+--- a/src/osd/OSD.h
++++ b/src/osd/OSD.h
+@@ -1349,8 +1349,11 @@ public:
+       session_dispatch_lock("Session::session_dispatch_lock"), 
+       last_sent_epoch(0), received_map_epoch(0)
+     {}
+-
+-
++    void maybe_reset_osdmap() {
++      if (waiting_for_pg.empty()) {
++	osdmap.reset();
++      }
++    }
+   };
+   void update_waiting_for_pg(Session *session, OSDMapRef osdmap);
+   void session_notify_pg_create(Session *session, OSDMapRef osdmap, spg_t pgid);
+@@ -1449,6 +1452,7 @@ public:
+      */
+     session->waiting_on_map.clear();
+     session->waiting_for_pg.clear();
++    session->osdmap.reset();
+   }
+   void register_session_waiting_on_pg(Session *session, spg_t pgid) {
+     Mutex::Locker l(session_waiting_lock);

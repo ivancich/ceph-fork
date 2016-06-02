@@ -1,0 +1,91 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 19 May 2016 14:13:46 -0400
+Subject: ObjectCacher: pass new journal tid when overwriting extent
+
+librbd needs to ensure the new journal event has been safely
+committed to disk before it can mark an overwritten journal
+event as committed.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 0051316effe0b25804378975b117691d7ad08a3b)
+(cherry picked from commit 070dc7c98daaacaa05f72f50561d47ce459984da)
+
+Resolves: rhbz#1340503
+---
+ src/librbd/LibrbdWriteback.cc | 7 ++++---
+ src/librbd/LibrbdWriteback.h  | 3 ++-
+ src/osdc/ObjectCacher.cc      | 2 +-
+ src/osdc/WritebackHandler.h   | 3 ++-
+ 4 files changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/src/librbd/LibrbdWriteback.cc b/src/librbd/LibrbdWriteback.cc
+index 231c9b1..eaa0a82 100644
+--- a/src/librbd/LibrbdWriteback.cc
++++ b/src/librbd/LibrbdWriteback.cc
+@@ -262,21 +262,22 @@ namespace librbd {
+ 
+   void LibrbdWriteback::overwrite_extent(const object_t& oid, uint64_t off,
+ 					 uint64_t len,
+-					 ceph_tid_t journal_tid) {
++					 ceph_tid_t original_journal_tid,
++                                         ceph_tid_t new_journal_tid) {
+     typedef std::vector<std::pair<uint64_t,uint64_t> > Extents;
+ 
+     assert(m_ictx->owner_lock.is_locked());
+     uint64_t object_no = oid_to_object_no(oid.name, m_ictx->object_prefix);
+ 
+     // all IO operations are flushed prior to closing the journal
+-    assert(journal_tid != 0 && m_ictx->journal != NULL);
++    assert(original_journal_tid != 0 && m_ictx->journal != NULL);
+ 
+     Extents file_extents;
+     Striper::extent_to_file(m_ictx->cct, &m_ictx->layout, object_no, off,
+ 			    len, file_extents);
+     for (Extents::iterator it = file_extents.begin();
+ 	 it != file_extents.end(); ++it) {
+-      m_ictx->journal->commit_io_event_extent(journal_tid, it->first,
++      m_ictx->journal->commit_io_event_extent(original_journal_tid, it->first,
+ 					      it->second, 0);
+     }
+   }
+diff --git a/src/librbd/LibrbdWriteback.h b/src/librbd/LibrbdWriteback.h
+index 018b043..ef5fa75 100644
+--- a/src/librbd/LibrbdWriteback.h
++++ b/src/librbd/LibrbdWriteback.h
+@@ -42,7 +42,8 @@ namespace librbd {
+     using WritebackHandler::write;
+ 
+     virtual void overwrite_extent(const object_t& oid, uint64_t off,
+-				  uint64_t len, ceph_tid_t journal_tid);
++				  uint64_t len, ceph_tid_t original_journal_tid,
++                                  ceph_tid_t new_journal_tid);
+ 
+     virtual void get_client_lock();
+     virtual void put_client_lock();
+diff --git a/src/osdc/ObjectCacher.cc b/src/osdc/ObjectCacher.cc
+index f7ae589..800b055 100644
+--- a/src/osdc/ObjectCacher.cc
++++ b/src/osdc/ObjectCacher.cc
+@@ -481,7 +481,7 @@ void ObjectCacher::Object::replace_journal_tid(BufferHead *bh,
+   if (bh_tid != 0 && bh_tid != tid) {
+     // inform journal that it should not expect a writeback from this extent
+     oc->writeback_handler.overwrite_extent(get_oid(), bh->start(),
+-					   bh->length(), bh_tid);
++					   bh->length(), bh_tid, tid);
+   }
+   bh->set_journal_tid(tid);
+ }
+diff --git a/src/osdc/WritebackHandler.h b/src/osdc/WritebackHandler.h
+index f0efd20..842ae54 100644
+--- a/src/osdc/WritebackHandler.h
++++ b/src/osdc/WritebackHandler.h
+@@ -37,7 +37,8 @@ class WritebackHandler {
+                            ceph_tid_t journal_tid, Context *oncommit) = 0;
+ 
+   virtual void overwrite_extent(const object_t& oid, uint64_t off, uint64_t len,
+-                                ceph_tid_t journal_tid) {}
++                                ceph_tid_t original_journal_tid,
++                                ceph_tid_t new_journal_tid) {}
+ 
+   virtual bool can_scattered_write() { return false; }
+   virtual ceph_tid_t write(const object_t& oid, const object_locator_t& oloc,

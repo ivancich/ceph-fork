@@ -1,0 +1,981 @@
+From: Ricardo Dias <rdias@suse.com>
+Date: Wed, 13 Apr 2016 15:17:40 +0100
+Subject: rbd-mirror: Added implementation of image-deleter thread
+
+image-deleter thread will handle the deletion of local images that have
+been disabled for mirroring by the primary site.
+
+Signed-off-by: Ricardo Dias <rdias@suse.com>
+(cherry picked from commit 6cc6e663ed2ec336a9475d93ab2cb605644e6ee0)
+(cherry picked from commit 0780230b4af7e4ca923dab5f77735d0a11409202)
+
+Resolves: rhbz#1340482
+---
+ src/librbd/Journal.cc                |  32 ++-
+ src/librbd/Journal.h                 |   4 +
+ src/librbd/internal.cc               |  67 +++--
+ src/librbd/internal.h                |   4 +-
+ src/tools/Makefile-client.am         |   2 +
+ src/tools/rbd_mirror/ImageDeleter.cc | 531 +++++++++++++++++++++++++++++++++++
+ src/tools/rbd_mirror/ImageDeleter.h  | 148 ++++++++++
+ 7 files changed, 759 insertions(+), 29 deletions(-)
+ create mode 100644 src/tools/rbd_mirror/ImageDeleter.cc
+ create mode 100644 src/tools/rbd_mirror/ImageDeleter.h
+
+diff --git a/src/librbd/Journal.cc b/src/librbd/Journal.cc
+index 92b360d..618ad0e 100644
+--- a/src/librbd/Journal.cc
++++ b/src/librbd/Journal.cc
+@@ -160,8 +160,8 @@ public:
+   }
+ };
+ 
+-template <typename I, typename J>
+-int open_journaler(I *image_ctx, J *journaler, bool *initialized,
++template <typename J>
++int open_journaler(CephContext *cct, J *journaler, bool *initialized,
+                    cls::journal::Client *client,
+                    journal::ImageClientMeta *client_meta,
+                    journal::TagData *tag_data) {
+@@ -197,7 +197,7 @@ int open_journaler(I *image_ctx, J *journaler, bool *initialized,
+   Mutex lock("lock");
+   uint64_t tag_tid;
+   C_DecodeTags *tags_ctx = new C_DecodeTags(
+-    image_ctx->cct, &lock, &tag_tid, tag_data, &get_tags_ctx);
++      cct, &lock, &tag_tid, tag_data, &get_tags_ctx);
+   journaler->get_tags(client_meta->tag_class, &tags_ctx->tags, tags_ctx);
+ 
+   r = get_tags_ctx.wait();
+@@ -480,8 +480,14 @@ int Journal<I>::reset(librados::IoCtx &io_ctx, const std::string &image_id) {
+ 
+ template <typename I>
+ int Journal<I>::is_tag_owner(I *image_ctx, bool *is_tag_owner) {
++  return Journal<>::is_tag_owner(image_ctx->md_ctx, image_ctx->id, is_tag_owner);
++}
++
++template <typename I>
++int Journal<I>::is_tag_owner(IoCtx& io_ctx, std::string& image_id,
++                             bool *is_tag_owner) {
+   std::string mirror_uuid;
+-  int r = get_tag_owner(image_ctx, &mirror_uuid);
++  int r = get_tag_owner(io_ctx, image_id, &mirror_uuid);
+   if (r < 0) {
+     return r;
+   }
+@@ -492,17 +498,23 @@ int Journal<I>::is_tag_owner(I *image_ctx, bool *is_tag_owner) {
+ 
+ template <typename I>
+ int Journal<I>::get_tag_owner(I *image_ctx, std::string *mirror_uuid) {
+-  CephContext *cct = image_ctx->cct;
++  return get_tag_owner(image_ctx->md_ctx, image_ctx->id, mirror_uuid);
++}
++
++template <typename I>
++int Journal<I>::get_tag_owner(IoCtx& io_ctx, std::string& image_id,
++                              std::string *mirror_uuid) {
++  CephContext *cct = (CephContext *)io_ctx.cct();
+   ldout(cct, 20) << __func__ << dendl;
+ 
+-  Journaler journaler(image_ctx->md_ctx, image_ctx->id, IMAGE_CLIENT_ID,
+-                      image_ctx->cct->_conf->rbd_journal_commit_age);
++  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID,
++                      cct->_conf->rbd_journal_commit_age);
+ 
+   bool initialized;
+   cls::journal::Client client;
+   journal::ImageClientMeta client_meta;
+   journal::TagData tag_data;
+-  int r = open_journaler(image_ctx, &journaler, &initialized, &client,
++  int r = open_journaler(cct, &journaler, &initialized, &client,
+                          &client_meta, &tag_data);
+   if (r >= 0) {
+     *mirror_uuid = tag_data.mirror_uuid;
+@@ -526,7 +538,7 @@ int Journal<I>::request_resync(I *image_ctx) {
+   cls::journal::Client client;
+   journal::ImageClientMeta client_meta;
+   journal::TagData tag_data;
+-  int r = open_journaler(image_ctx, &journaler, &initialized, &client,
++  int r = open_journaler(image_ctx->cct, &journaler, &initialized, &client,
+                          &client_meta, &tag_data);
+   BOOST_SCOPE_EXIT_ALL(&journaler, &initialized) {
+     if (initialized) {
+@@ -567,7 +579,7 @@ int Journal<I>::promote(I *image_ctx) {
+   cls::journal::Client client;
+   journal::ImageClientMeta client_meta;
+   journal::TagData tag_data;
+-  int r = open_journaler(image_ctx, &journaler, &initialized, &client,
++  int r = open_journaler(image_ctx->cct, &journaler, &initialized, &client,
+                          &client_meta, &tag_data);
+   BOOST_SCOPE_EXIT_ALL(&journaler, &initialized) {
+     if (initialized) {
+diff --git a/src/librbd/Journal.h b/src/librbd/Journal.h
+index e738d02..1840fb1 100644
+--- a/src/librbd/Journal.h
++++ b/src/librbd/Journal.h
+@@ -101,7 +101,11 @@ public:
+   static int reset(librados::IoCtx &io_ctx, const std::string &image_id);
+ 
+   static int is_tag_owner(ImageCtxT *image_ctx, bool *is_tag_owner);
++  static int is_tag_owner(librados::IoCtx& io_ctx, std::string& image_id,
++                          bool *is_tag_owner);
+   static int get_tag_owner(ImageCtxT *image_ctx, std::string *mirror_uuid);
++  static int get_tag_owner(librados::IoCtx& io_ctx, std::string& image_id,
++                           std::string *mirror_uuid);
+   static int request_resync(ImageCtxT *image_ctx);
+   static int promote(ImageCtxT *image_ctx);
+ 
+diff --git a/src/librbd/internal.cc b/src/librbd/internal.cc
+index 92fab7f..c30cee6 100644
+--- a/src/librbd/internal.cc
++++ b/src/librbd/internal.cc
+@@ -289,7 +289,8 @@ int mirror_image_enable_internal(ImageCtx *ictx) {
+   return 0;
+ }
+ 
+-int mirror_image_disable_internal(ImageCtx *ictx, bool force) {
++int mirror_image_disable_internal(ImageCtx *ictx, bool force,
++                                  bool remove=true) {
+   CephContext *cct = ictx->cct;
+ 
+   cls::rbd::MirrorImage mirror_image_internal;
+@@ -397,17 +398,19 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force) {
+   }
+ 
+ remove_mirroring_image:
+-  r = cls_client::mirror_image_remove(&ictx->md_ctx, ictx->id);
+-  if (r < 0) {
+-    lderr(cct) << "failed to remove image from mirroring directory: "
+-      << cpp_strerror(r) << dendl;
+-    return r;
+-  }
++  if (remove) {
++    r = cls_client::mirror_image_remove(&ictx->md_ctx, ictx->id);
++    if (r < 0) {
++      lderr(cct) << "failed to remove image from mirroring directory: "
++                 << cpp_strerror(r) << dendl;
++      return r;
++    }
+ 
+-  ldout(cct, 20) << "removed image state from rbd_mirroring object" << dendl;
++    ldout(cct, 20) << "removed image state from rbd_mirroring object" << dendl;
+ 
+-  if (is_primary) {
+-    // TODO: send notification to mirroring object about update
++    if (is_primary) {
++      // TODO: send notification to mirroring object about update
++    }
+   }
+ 
+   return 0;
+@@ -1971,7 +1974,8 @@ remove_mirroring_image:
+     return 0;
+   }
+ 
+-  int remove(IoCtx& io_ctx, const char *imgname, ProgressContext& prog_ctx)
++  int remove(IoCtx& io_ctx, const char *imgname, ProgressContext& prog_ctx,
++             bool force)
+   {
+     CephContext *cct((CephContext *)io_ctx.cct());
+     ldout(cct, 20) << "remove " << &io_ctx << " " << imgname << dendl;
+@@ -1992,12 +1996,31 @@ remove_mirroring_image:
+ 
+       ictx->owner_lock.get_read();
+       if (ictx->exclusive_lock != nullptr) {
+-        r = ictx->operations->prepare_image_update();
+-        if (r < 0 || !ictx->exclusive_lock->is_lock_owner()) {
+-	  lderr(cct) << "cannot obtain exclusive lock - not removing" << dendl;
+-	  ictx->owner_lock.put_read();
+-	  ictx->state->close();
+-          return -EBUSY;
++        if (force) {
++          // releasing read lock to avoid a deadlock when upgrading to
++          // write lock in the shut_down process
++          ictx->owner_lock.put_read();
++          if (ictx->exclusive_lock != nullptr) {
++            C_SaferCond ctx;
++            ictx->exclusive_lock->shut_down(&ctx);
++            r = ctx.wait();
++            if (r < 0) {
++              lderr(cct) << "error shutting down exclusive lock"
++                         << cpp_strerror(r) << dendl;
++              ictx->state->close();
++              return r;
++            }
++            assert (ictx->exclusive_lock == nullptr);
++            ictx->owner_lock.get_read();
++          }
++        } else {
++          r = ictx->operations->prepare_image_update();
++          if (r < 0 || !ictx->exclusive_lock->is_lock_owner()) {
++	    lderr(cct) << "cannot obtain exclusive lock - not removing" << dendl;
++	    ictx->owner_lock.put_read();
++	    ictx->state->close();
++            return -EBUSY;
++          }
+         }
+       }
+ 
+@@ -2040,7 +2063,7 @@ remove_mirroring_image:
+       }
+ 
+       if (!old_format) {
+-        r = mirror_image_disable_internal(ictx, false);
++        r = mirror_image_disable_internal(ictx, force, !force);
+         if (r < 0 && r != -EOPNOTSUPP) {
+           lderr(cct) << "error disabling image mirroring: " << cpp_strerror(r)
+                      << dendl;
+@@ -2108,6 +2131,14 @@ remove_mirroring_image:
+         }
+ 	return r;
+       }
++
++      ldout(cct, 2) << "removing image from rbd_mirroring object..." << dendl;
++      r = cls_client::mirror_image_remove(&io_ctx, id);
++      if (r < 0 && r != -ENOENT) {
++        lderr(cct) << "failed to remove image from mirroring directory: "
++                   << cpp_strerror(r) << dendl;
++        return r;
++      }
+     }
+ 
+     ldout(cct, 2) << "done." << dendl;
+diff --git a/src/librbd/internal.h b/src/librbd/internal.h
+index dcb0350..e33532f 100644
+--- a/src/librbd/internal.h
++++ b/src/librbd/internal.h
+@@ -13,6 +13,7 @@
+ #include "include/buffer_fwd.h"
+ #include "include/rbd/librbd.hpp"
+ #include "include/rbd_types.h"
++#include "librbd/parent_types.h"
+ 
+ enum {
+   l_librbd_first = 26000,
+@@ -88,6 +89,7 @@ namespace librbd {
+   bool image_options_is_empty(rbd_image_options_t opts);
+ 
+   int snap_set(ImageCtx *ictx, const char *snap_name);
++
+   int list(librados::IoCtx& io_ctx, std::vector<std::string>& names);
+   int list_children(ImageCtx *ictx,
+ 		    std::set<std::pair<std::string, std::string> > & names);
+@@ -125,7 +127,7 @@ namespace librbd {
+   int is_exclusive_lock_owner(ImageCtx *ictx, bool *is_owner);
+ 
+   int remove(librados::IoCtx& io_ctx, const char *imgname,
+-	     ProgressContext& prog_ctx);
++	     ProgressContext& prog_ctx, bool force=false);
+   int snap_list(ImageCtx *ictx, std::vector<snap_info_t>& snaps);
+   int snap_exists(ImageCtx *ictx, const char *snap_name, bool *exists);
+   int snap_is_protected(ImageCtx *ictx, const char *snap_name,
+diff --git a/src/tools/Makefile-client.am b/src/tools/Makefile-client.am
+index 7b80aac..8e4eecf 100644
+--- a/src/tools/Makefile-client.am
++++ b/src/tools/Makefile-client.am
+@@ -95,6 +95,7 @@ librbd_mirror_internal_la_SOURCES = \
+ 	tools/rbd_mirror/Mirror.cc \
+ 	tools/rbd_mirror/PoolWatcher.cc \
+ 	tools/rbd_mirror/Replayer.cc \
++        tools/rbd_mirror/ImageDeleter.cc \
+ 	tools/rbd_mirror/Threads.cc \
+ 	tools/rbd_mirror/types.cc \
+ 	tools/rbd_mirror/image_replayer/BootstrapRequest.cc \
+@@ -116,6 +117,7 @@ noinst_HEADERS += \
+ 	tools/rbd_mirror/PoolWatcher.h \
+ 	tools/rbd_mirror/ProgressContext.h \
+ 	tools/rbd_mirror/Replayer.h \
++        tools/rbd_mirror/ImageDeleter.h \
+ 	tools/rbd_mirror/Threads.h \
+ 	tools/rbd_mirror/types.h \
+ 	tools/rbd_mirror/image_replayer/BootstrapRequest.h \
+diff --git a/src/tools/rbd_mirror/ImageDeleter.cc b/src/tools/rbd_mirror/ImageDeleter.cc
+new file mode 100644
+index 0000000..1a153ea
+--- /dev/null
++++ b/src/tools/rbd_mirror/ImageDeleter.cc
+@@ -0,0 +1,531 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++/*
++ * Ceph - scalable distributed file system
++ *
++ * Copyright (C) 2016 SUSE LINUX GmbH
++ *
++ * This is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License version 2.1, as published by the Free Software
++ * Foundation.  See file COPYING.
++ *
++ */
++#include <boost/bind.hpp>
++#include <map>
++#include <set>
++#include <sstream>
++
++#include "include/rados/librados.hpp"
++#include "common/Formatter.h"
++#include "common/admin_socket.h"
++#include "common/debug.h"
++#include "common/errno.h"
++#include "librbd/internal.h"
++#include "librbd/ImageCtx.h"
++#include "librbd/ImageState.h"
++#include "librbd/Journal.h"
++#include "librbd/Operations.h"
++#include "cls/rbd/cls_rbd_client.h"
++#include "cls/rbd/cls_rbd_types.h"
++#include "librbd/Utils.h"
++#include "ImageDeleter.h"
++
++#define dout_subsys ceph_subsys_rbd_mirror
++#undef dout_prefix
++#define dout_prefix *_dout << "rbd-mirror: ImageDeleter::" << __func__ << ": "
++
++using std::string;
++using std::map;
++using std::stringstream;
++
++using librados::IoCtx;
++using namespace librbd;
++
++namespace rbd {
++namespace mirror {
++
++namespace {
++
++class ImageDeleterAdminSocketCommand {
++public:
++  virtual ~ImageDeleterAdminSocketCommand() {}
++  virtual bool call(Formatter *f, stringstream *ss) = 0;
++};
++
++class StatusCommand : public ImageDeleterAdminSocketCommand {
++public:
++  explicit StatusCommand(ImageDeleter *image_del) : image_del(image_del) {}
++
++  bool call(Formatter *f, stringstream *ss) {
++    image_del->print_status(f, ss);
++    return true;
++  }
++
++private:
++  ImageDeleter *image_del;
++};
++
++} // anonymous namespace
++
++class ImageDeleterAdminSocketHook : public AdminSocketHook {
++public:
++  ImageDeleterAdminSocketHook(CephContext *cct, ImageDeleter *image_del) :
++    admin_socket(cct->get_admin_socket()) {
++
++    std::string command;
++    int r;
++
++    command = "rbd mirror deletion status";
++    r = admin_socket->register_command(command, command, this,
++				       "get status for image deleter");
++    if (r == 0) {
++      commands[command] = new StatusCommand(image_del);
++    }
++
++  }
++
++  ~ImageDeleterAdminSocketHook() {
++    for (Commands::const_iterator i = commands.begin(); i != commands.end();
++	 ++i) {
++      (void)admin_socket->unregister_command(i->first);
++      delete i->second;
++    }
++  }
++
++  bool call(std::string command, cmdmap_t& cmdmap, std::string format,
++	    bufferlist& out) {
++    Commands::const_iterator i = commands.find(command);
++    assert(i != commands.end());
++    Formatter *f = Formatter::create(format);
++    stringstream ss;
++    bool r = i->second->call(f, &ss);
++    delete f;
++    out.append(ss);
++    return r;
++  }
++
++private:
++  typedef std::map<std::string, ImageDeleterAdminSocketCommand*> Commands;
++  AdminSocket *admin_socket;
++  Commands commands;
++};
++
++ImageDeleter::ImageDeleter(RadosRef local_cluster, SafeTimer *timer,
++                           Mutex *timer_lock)
++  : m_local(local_cluster),
++    m_running(1),
++    m_delete_lock("rbd::mirror::ImageDeleter::Delete"),
++    m_image_deleter_thread(this),
++    m_failed_timer(timer),
++    m_failed_timer_lock(timer_lock),
++    m_asok_hook(new ImageDeleterAdminSocketHook((CephContext *)local_cluster->cct(),
++                this))
++{
++  m_image_deleter_thread.create("image_deleter");
++}
++
++ImageDeleter::~ImageDeleter() {
++  dout(20) << "enter" << dendl;
++
++  m_running.set(0);
++  {
++    Mutex::Locker l (m_delete_lock);
++    m_delete_queue_cond.Signal();
++  }
++  if (m_image_deleter_thread.is_started()) {
++    m_image_deleter_thread.join();
++  }
++
++  delete m_asok_hook;
++  dout(20) << "return" << dendl;
++}
++
++void ImageDeleter::run() {
++  dout(20) << "enter" << dendl;
++  while(m_running.read()) {
++    m_delete_lock.Lock();
++    while (m_delete_queue.empty()) {
++      dout(20) << "waiting for delete requests" << dendl;
++      m_delete_queue_cond.Wait(m_delete_lock);
++
++      if (!m_running.read()) {
++        m_delete_lock.Unlock();
++        dout(20) << "return" << dendl;
++        return;
++      }
++    }
++
++    curr_deletion = std::move(m_delete_queue.back());
++    m_delete_queue.pop_back();
++    m_delete_lock.Unlock();
++
++    bool move_to_next = process_image_delete();
++    if (!move_to_next) {
++      if (!m_running.read()) {
++       dout(20) << "return" << dendl;
++       return;
++      }
++
++      Mutex::Locker l(m_delete_lock);
++      if (m_delete_queue.size() == 1) {
++        m_delete_queue_cond.Wait(m_delete_lock);
++      }
++    }
++  }
++}
++
++void ImageDeleter::schedule_image_delete(uint64_t local_pool_id,
++                                         const std::string& local_image_id,
++                                         const std::string& local_image_name,
++                                         const std::string& global_image_id) {
++  dout(20) << "enter" << dendl;
++
++  Mutex::Locker l(m_delete_lock);
++
++  auto del_info = find_delete_info(local_image_name);
++  if (del_info != nullptr) {
++    dout(20) << "image " << local_image_name << " was already scheduled for "
++             << "deletion" << dendl;
++    return;
++  }
++
++  m_delete_queue.push_front(unique_ptr<DeleteInfo>(
++        new DeleteInfo(local_pool_id, local_image_id, local_image_name,
++                       global_image_id)));
++  m_delete_queue_cond.Signal();
++}
++
++void ImageDeleter::wait_for_scheduled_deletion(const std::string& image_name,
++                                               Context *ctx,
++                                               bool notify_on_failed_retry) {
++  {
++    Mutex::Locker l(m_delete_lock);
++
++    auto del_info = find_delete_info(image_name);
++    if (del_info) {
++      (*del_info)->on_delete = ctx;
++      (*del_info)->notify_on_failed_retry = notify_on_failed_retry;
++      return;
++    }
++  }
++
++  // image not scheduled for deletion
++  ctx->complete(0);
++}
++
++bool ImageDeleter::process_image_delete() {
++
++  stringstream ss;
++  curr_deletion->to_string(ss);
++  std::string del_info_str = ss.str();
++  dout(10) << "start processing delete request: " << del_info_str << dendl;
++  int r;
++  cls::rbd::MirrorImage mirror_image;
++
++  // remote image was disabled, now we need to delete local image
++  IoCtx ioctx;
++  r = m_local->ioctx_create2(curr_deletion->local_pool_id, ioctx);
++  if (r < 0) {
++    derr << "error accessing local pool: " << cpp_strerror(r) << dendl;
++    enqueue_failed_delete(r);
++    return true;
++  }
++
++  dout(20) << "connected to local pool: " << ioctx.get_pool_name() << dendl;
++
++  bool is_primary = false;
++  r = Journal<>::is_tag_owner(ioctx, curr_deletion->local_image_id, &is_primary);
++  if (r < 0 && r != -ENOENT) {
++    derr << "error retrieving image primary info: " << cpp_strerror(r)
++         << dendl;
++    enqueue_failed_delete(r);
++    return true;
++  }
++  if (is_primary) {
++    dout(10) << "local image is the primary image, aborting deletion..."
++             << dendl;
++    m_delete_lock.Lock();
++    DeleteInfo *del_info = curr_deletion.release();
++    m_delete_lock.Unlock();
++    del_info->notify(-EISPRM);
++    return true;
++  }
++
++  dout(20) << "local image is not the primary" << dendl;
++
++  bool has_snapshots;
++  r = image_has_snapshots_and_children(&ioctx, curr_deletion->local_image_id,
++                                       &has_snapshots);
++  if (r < 0) {
++    enqueue_failed_delete(r);
++    return true;
++  }
++
++  mirror_image.global_image_id = curr_deletion->global_image_id;
++  mirror_image.state = cls::rbd::MIRROR_IMAGE_STATE_DISABLING;
++  r = cls_client::mirror_image_set(&ioctx, curr_deletion->local_image_id,
++                                           mirror_image);
++  if (r == -EEXIST || r == -EINVAL) {
++    derr << "cannot disable mirroring for image id" << curr_deletion->local_image_id
++         << ": global_image_id has changed/reused, aborting deletion: "
++         << cpp_strerror(r) << dendl;
++    m_delete_lock.Lock();
++    DeleteInfo *del_info = curr_deletion.release();
++    m_delete_lock.Unlock();
++    del_info->notify(r);
++    return true;
++  } else if (r < 0) {
++    derr << "cannot disable mirroring for image id "
++         << curr_deletion->local_image_id << ": " << cpp_strerror(r) << dendl;
++    enqueue_failed_delete(r);
++    return true;
++  }
++
++  dout(20) << "set local image mirroring to disable" << dendl;
++
++  if (has_snapshots) {
++    dout(20) << "local image has snapshots" << dendl;
++
++    ImageCtx *imgctx = new ImageCtx("", curr_deletion->local_image_id, nullptr,
++                                    ioctx, false);
++    r = imgctx->state->open();
++    if (r < 0) {
++      derr << "error opening image id " << curr_deletion->local_image_id
++           << cpp_strerror(r) << dendl;
++      enqueue_failed_delete(r);
++      delete imgctx;
++      return true;
++    }
++
++    // We are disabling Journaling so that we can delete image snapshots
++    // of a non-primary image. Otherwise, we would fail to acquire the
++    // exclusive lock.
++    imgctx->features ^= RBD_FEATURE_JOURNALING;
++
++    std::vector<librbd::snap_info_t> snaps;
++    r = librbd::snap_list(imgctx, snaps);
++    if (r < 0) {
++      derr << "error listing snapshot of image " << imgctx->name
++           << cpp_strerror(r) << dendl;
++      imgctx->state->close();
++      enqueue_failed_delete(r);
++      return true;
++    }
++
++    for (const auto& snap : snaps) {
++      dout(20) << "processing deletion of snapshot " << imgctx->name << "@"
++               << snap.name << dendl;
++
++      bool is_protected;
++      r = librbd::snap_is_protected(imgctx, snap.name.c_str(), &is_protected);
++      if (r < 0) {
++        derr << "error checking snapshot protection of snapshot "
++             << imgctx->name << "@" << snap.name << ": " << cpp_strerror(r)
++             << dendl;
++        imgctx->state->close();
++        enqueue_failed_delete(r);
++        return true;
++      }
++      if (is_protected) {
++        dout(20) << "snapshot " << imgctx->name << "@" << snap.name
++                 << " is protected, issuing unprotect command" << dendl;
++
++        r = imgctx->operations->snap_unprotect(snap.name.c_str());
++        if (r == -EBUSY) {
++          // there are still clones of snapshots of this image, therefore send
++          // the delete request to the end of the queue
++          dout(10) << "local image id " << curr_deletion->local_image_id << " has "
++                   << "snapshots with cloned children, postponing deletion..."
++                   << dendl;
++          imgctx->state->close();
++          Mutex::Locker l(m_delete_lock);
++          curr_deletion->notify(r);
++          m_delete_queue.push_front(std::move(curr_deletion));
++          return false;
++        } else if (r < 0) {
++          derr << "error unprotecting snapshot " << imgctx->name << "@"
++               << snap.name << ": " << cpp_strerror(r) << dendl;
++          imgctx->state->close();
++          enqueue_failed_delete(r);
++          return true;
++        }
++
++        r = imgctx->state->refresh();
++        if (r < 0) {
++          derr << "error refreshing image " << imgctx->name << ": "
++               << cpp_strerror(r) << dendl;
++          imgctx->state->close();
++          enqueue_failed_delete(r);
++          return true;
++        }
++        imgctx->features ^= RBD_FEATURE_JOURNALING;
++      }
++
++      r = imgctx->operations->snap_remove(snap.name.c_str());
++      if (r < 0) {
++        derr << "error removing snapshot " << imgctx->name << "@"
++             << snap.name << ": " << cpp_strerror(r) << dendl;
++        imgctx->state->close();
++        enqueue_failed_delete(r);
++        return true;
++      }
++
++      dout(10) << "snapshot " << imgctx->name << "@" << snap.name
++               << " was deleted" << dendl;
++    }
++
++    imgctx->state->close();
++  }
++
++  librbd::NoOpProgressContext ctx;
++  r = librbd::remove(ioctx, curr_deletion->local_image_name.c_str(), ctx, true);
++  if (r < 0 && r != -ENOENT) {
++    derr << "error removing image " << curr_deletion->local_image_name
++         << " from local pool: " << cpp_strerror(r) << dendl;
++    enqueue_failed_delete(r);
++    return true;
++  }
++
++  // image was already deleted from rbd_directory, now we will make sure
++  // that will be also removed from rbd_mirroring
++  if (r == -ENOENT) {
++    dout(20) << "local image does not exist, removing image from rbd_mirroring"
++             << dendl;
++  }
++
++  r = cls_client::mirror_image_remove(&ioctx, curr_deletion->local_image_id);
++  if (r < 0 && r != -ENOENT) {
++    derr << "error removing image from mirroring directory: "
++         << cpp_strerror(r) << dendl;
++    enqueue_failed_delete(r);
++    return true;
++  }
++
++  dout(10) << "Successfully deleted image: " << curr_deletion->local_image_name
++           << dendl;
++
++  m_delete_lock.Lock();
++  DeleteInfo *del_info = curr_deletion.release();
++  m_delete_lock.Unlock();
++  del_info->notify(0);
++
++  return true;
++}
++
++int ImageDeleter::image_has_snapshots_and_children(IoCtx *ioctx,
++                                                   string& image_id,
++                                                   bool *has_snapshots) {
++
++  string header_oid = librbd::util::header_name(image_id);
++  ::SnapContext snapc;
++  int r = cls_client::get_snapcontext(ioctx, header_oid, &snapc);
++  if (r < 0 && r != -ENOENT) {
++    derr << "error retrieving snapshot context for image id " << image_id
++         << ": " << cpp_strerror(r) << dendl;
++    return r;
++  }
++
++  *has_snapshots = !snapc.snaps.empty();
++
++  return 0;
++}
++
++void ImageDeleter::enqueue_failed_delete(int error_code) {
++  dout(20) << "enter" << dendl;
++
++  m_delete_lock.Lock();
++  if (curr_deletion->notify_on_failed_retry) {
++    curr_deletion->notify(error_code);
++  }
++  curr_deletion->error_code = error_code;
++  bool was_empty = m_failed_queue.empty();
++  m_failed_queue.push_front(std::move(curr_deletion));
++  m_delete_lock.Unlock();
++  if (was_empty) {
++    FunctionContext *ctx = new FunctionContext(
++      boost::bind(&ImageDeleter::retry_failed_deletions, this));
++    Mutex::Locker l(*m_failed_timer_lock);
++    m_failed_timer->add_event_after(m_failed_interval, ctx);
++  }
++}
++
++void ImageDeleter::retry_failed_deletions() {
++  dout(20) << "enter" << dendl;
++
++  Mutex::Locker l(m_delete_lock);
++
++  bool empty = m_failed_queue.empty();
++  while (!m_failed_queue.empty()) {
++    m_delete_queue.push_back(std::move(m_failed_queue.back()));
++    m_delete_queue.back()->retries++;
++    m_failed_queue.pop_back();
++  }
++  if (!empty) {
++    m_delete_queue_cond.Signal();
++  }
++}
++
++void ImageDeleter::print_status(Formatter *f, stringstream *ss) {
++  dout(20) << "enter" << dendl;
++
++  if (f) {
++    f->open_object_section("image_deleter_status");
++    f->open_array_section("delete_images_queue");
++  }
++
++  Mutex::Locker l(m_delete_lock);
++  for (const auto& image : m_delete_queue) {
++    image->print_status(f, ss);
++  }
++
++  if (f) {
++    f->close_section();
++    f->open_array_section("failed_deletes_queue");
++  }
++
++  for (const auto& image : m_failed_queue) {
++    image->print_status(f, ss, true);
++  }
++
++  if (f) {
++    f->close_section();
++    f->close_section();
++    f->flush(*ss);
++  }
++}
++
++void ImageDeleter::DeleteInfo::notify(int r) {
++  if (on_delete) {
++    dout(20) << "executing image deletion handler r=" << r << dendl;
++    on_delete->complete(r);
++    on_delete = nullptr;
++  }
++}
++
++void ImageDeleter::DeleteInfo::to_string(stringstream& ss) {
++  ss << "[" << "local_pool_id=" << local_pool_id << ", ";
++  ss << "local_image_id=" << local_image_id << ", ";
++  ss << "global_image_id=" << global_image_id << "]";
++}
++
++void ImageDeleter::DeleteInfo::print_status(Formatter *f, stringstream *ss,
++                                            bool print_failure_info) {
++  if (f) {
++    f->open_object_section("delete_info");
++    f->dump_int("local_pool_id", local_pool_id);
++    f->dump_string("local_image_id", local_image_id);
++    f->dump_string("global_image_id", global_image_id);
++    if (print_failure_info) {
++      f->dump_string("error_code", cpp_strerror(error_code));
++      f->dump_int("retries", retries);
++    }
++    f->close_section();
++    f->flush(*ss);
++  } else {
++    this->to_string(*ss);
++  }
++}
++
++} // namespace mirror
++} // namespace rbd
+diff --git a/src/tools/rbd_mirror/ImageDeleter.h b/src/tools/rbd_mirror/ImageDeleter.h
+new file mode 100644
+index 0000000..1e248b1
+--- /dev/null
++++ b/src/tools/rbd_mirror/ImageDeleter.h
+@@ -0,0 +1,148 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++/*
++ * Ceph - scalable distributed file system
++ *
++ * Copyright (C) 2016 SUSE LINUX GmbH
++ *
++ * This is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License version 2.1, as published by the Free Software
++ * Foundation.  See file COPYING.
++ *
++ */
++
++#ifndef CEPH_RBD_MIRROR_IMAGEDELETER_H
++#define CEPH_RBD_MIRROR_IMAGEDELETER_H
++
++#include <deque>
++#include "include/atomic.h"
++#include "common/Mutex.h"
++#include "common/Cond.h"
++#include "common/Thread.h"
++#include "common/Timer.h"
++#include "types.h"
++
++namespace rbd {
++namespace mirror {
++
++class ImageDeleterAdminSocketHook;
++
++/**
++ * Manage deletion of non-primary images.
++ */
++class ImageDeleter {
++public:
++  static const int EISPRM = 1000;
++
++  ImageDeleter(RadosRef local_cluster, SafeTimer *timer, Mutex *timer_lock);
++  ~ImageDeleter();
++  ImageDeleter(const ImageDeleter&) = delete;
++  ImageDeleter& operator=(const ImageDeleter&) = delete;
++
++  void schedule_image_delete(uint64_t local_pool_id,
++                             const std::string& local_image_id,
++                             const std::string& local_image_name,
++                             const std::string& global_image_id);
++  void wait_for_scheduled_deletion(const std::string& image_name,
++                                   Context *ctx,
++                                   bool notify_on_failed_retry=true);
++
++  void print_status(Formatter *f, std::stringstream *ss);
++
++private:
++
++  class ImageDeleterThread : public Thread {
++    ImageDeleter *m_image_deleter;
++  public:
++    ImageDeleterThread(ImageDeleter *image_deleter) :
++      m_image_deleter(image_deleter) {}
++    void *entry() {
++      m_image_deleter->run();
++      return 0;
++    }
++  };
++
++  struct DeleteInfo {
++    uint64_t local_pool_id;
++    std::string local_image_id;
++    std::string local_image_name;
++    std::string global_image_id;
++    int error_code;
++    int retries;
++    bool notify_on_failed_retry;
++    Context *on_delete;
++
++    DeleteInfo(uint64_t local_pool_id, const std::string& local_image_id,
++               const std::string& local_image_name,
++               const std::string& global_image_id) :
++      local_pool_id(local_pool_id), local_image_id(local_image_id),
++      local_image_name(local_image_name), global_image_id(global_image_id),
++      error_code(0), retries(0), notify_on_failed_retry(true),
++      on_delete(nullptr) {
++    }
++
++    bool match(const std::string& image_name) {
++      return local_image_name == image_name;
++    }
++    void notify(int r);
++    void to_string(std::stringstream& ss);
++    void print_status(Formatter *f, std::stringstream *ss,
++                      bool print_failure_info=false);
++  };
++
++  RadosRef m_local;
++  atomic_t m_running;
++
++  std::deque<std::unique_ptr<DeleteInfo> > m_delete_queue;
++  Mutex m_delete_lock;
++  Cond m_delete_queue_cond;
++
++  unique_ptr<DeleteInfo> curr_deletion;
++
++  ImageDeleterThread m_image_deleter_thread;
++
++  std::deque<std::unique_ptr<DeleteInfo>> m_failed_queue;
++  // TODO: make interval value configurable
++  double m_failed_interval = 30;
++  SafeTimer *m_failed_timer;
++  Mutex *m_failed_timer_lock;
++
++  ImageDeleterAdminSocketHook *m_asok_hook;
++
++  void run();
++  bool process_image_delete();
++  int image_has_snapshots_and_children(librados::IoCtx *ioctx,
++                                       std::string& image_id,
++                                       bool *has_snapshots);
++  void enqueue_failed_delete(int error_code);
++  void retry_failed_deletions();
++
++  unique_ptr<DeleteInfo> const* find_delete_info(
++                                             const std::string& image_name) {
++    assert(m_delete_lock.is_locked());
++
++    if (curr_deletion && curr_deletion->match(image_name)) {
++      return &curr_deletion;
++    }
++
++    for (const auto& del_info : m_delete_queue) {
++      if (del_info->match(image_name)) {
++        return &del_info;
++      }
++    }
++
++    for (const auto& del_info : m_failed_queue) {
++      if (del_info->match(image_name)) {
++        return &del_info;
++      }
++    }
++
++    return nullptr;
++  }
++};
++
++} // namespace mirror
++} // namespace rbd
++
++#endif // CEPH_RBD_MIRROR_IMAGEDELETER_H

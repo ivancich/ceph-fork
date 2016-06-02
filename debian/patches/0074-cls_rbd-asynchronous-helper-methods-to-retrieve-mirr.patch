@@ -1,0 +1,77 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 25 May 2016 17:13:59 -0400
+Subject: cls_rbd: asynchronous helper methods to retrieve mirror image
+ metadata
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 5a26080447cfa4b7bfdacdc13242569258a64076)
+(cherry picked from commit 9081c58a31aa8fa6f966f3b682b9870e2b6f8297)
+
+Resolves: rhbz#1340484
+---
+ src/cls/rbd/cls_rbd_client.cc | 30 +++++++++++++++++++++++-------
+ src/cls/rbd/cls_rbd_client.h  |  4 ++++
+ 2 files changed, 27 insertions(+), 7 deletions(-)
+
+diff --git a/src/cls/rbd/cls_rbd_client.cc b/src/cls/rbd/cls_rbd_client.cc
+index e7bd1cf..b20c57d 100644
+--- a/src/cls/rbd/cls_rbd_client.cc
++++ b/src/cls/rbd/cls_rbd_client.cc
+@@ -1205,19 +1205,35 @@ namespace librbd {
+ 
+     int mirror_image_get(librados::IoCtx *ioctx, const std::string &image_id,
+ 			 cls::rbd::MirrorImage *mirror_image) {
+-      bufferlist in_bl;
++      librados::ObjectReadOperation op;
++      mirror_image_get_start(&op, image_id);
++
+       bufferlist out_bl;
+-      ::encode(image_id, in_bl);
++      int r = ioctx->operate(RBD_MIRRORING, &op, &out_bl);
++      if (r < 0) {
++	return r;
++      }
+ 
+-      int r = ioctx->exec(RBD_MIRRORING, "rbd", "mirror_image_get", in_bl,
+-			  out_bl);
++      bufferlist::iterator iter = out_bl.begin();
++      r = mirror_image_get_finish(&iter, mirror_image);
+       if (r < 0) {
+-        return r;
++	return r;
+       }
++      return 0;
++    }
++
++    void mirror_image_get_start(librados::ObjectReadOperation *op,
++                                const std::string &image_id) {
++      bufferlist in_bl;
++      ::encode(image_id, in_bl);
+ 
++      op->exec("rbd", "mirror_image_get", in_bl);
++    }
++
++    int mirror_image_get_finish(bufferlist::iterator *iter,
++			        cls::rbd::MirrorImage *mirror_image) {
+       try {
+-        bufferlist::iterator bl_it = out_bl.begin();
+-        ::decode(*mirror_image, bl_it);
++        ::decode(*mirror_image, *iter);
+       } catch (const buffer::error &err) {
+         return -EBADMSG;
+       }
+diff --git a/src/cls/rbd/cls_rbd_client.h b/src/cls/rbd/cls_rbd_client.h
+index c23e143..c3a33ad 100644
+--- a/src/cls/rbd/cls_rbd_client.h
++++ b/src/cls/rbd/cls_rbd_client.h
+@@ -243,6 +243,10 @@ namespace librbd {
+                                   std::string *image_id);
+     int mirror_image_get(librados::IoCtx *ioctx, const std::string &image_id,
+ 			 cls::rbd::MirrorImage *mirror_image);
++    void mirror_image_get_start(librados::ObjectReadOperation *op,
++                                const std::string &image_id);
++    int mirror_image_get_finish(bufferlist::iterator *iter,
++			        cls::rbd::MirrorImage *mirror_image);
+     int mirror_image_set(librados::IoCtx *ioctx, const std::string &image_id,
+ 			 const cls::rbd::MirrorImage &mirror_image);
+     int mirror_image_remove(librados::IoCtx *ioctx,

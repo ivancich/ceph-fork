@@ -1,0 +1,166 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 26 May 2016 13:29:49 -0400
+Subject: rbd-mirror: normalize debug log message prefix
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit d52843190d84d533ab50a1702cf4a829b71ad68b)
+(cherry picked from commit 91f8373613a38d48d71f2762e75e21ec817305be)
+
+Resolves: rhbz#1340476
+---
+ src/tools/rbd_mirror/ClusterWatcher.cc |  3 ++-
+ src/tools/rbd_mirror/ImageDeleter.cc   |  3 ++-
+ src/tools/rbd_mirror/ImageReplayer.cc  |  7 ++++---
+ src/tools/rbd_mirror/ImageReplayer.h   | 34 +++++++++++++++++++++-------------
+ src/tools/rbd_mirror/Mirror.cc         |  3 ++-
+ src/tools/rbd_mirror/PoolWatcher.cc    |  3 ++-
+ src/tools/rbd_mirror/Replayer.cc       |  3 ++-
+ 7 files changed, 35 insertions(+), 21 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/ClusterWatcher.cc b/src/tools/rbd_mirror/ClusterWatcher.cc
+index 0452539..7c4b6dd 100644
+--- a/src/tools/rbd_mirror/ClusterWatcher.cc
++++ b/src/tools/rbd_mirror/ClusterWatcher.cc
+@@ -10,7 +10,8 @@
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+-#define dout_prefix *_dout << "rbd-mirror: ClusterWatcher::" << __func__ << ": "
++#define dout_prefix *_dout << "rbd::mirror::ClusterWatcher:" << this << " " \
++                           << __func__ << ": "
+ 
+ using std::list;
+ using std::map;
+diff --git a/src/tools/rbd_mirror/ImageDeleter.cc b/src/tools/rbd_mirror/ImageDeleter.cc
+index 6590ae5..8e65223 100644
+--- a/src/tools/rbd_mirror/ImageDeleter.cc
++++ b/src/tools/rbd_mirror/ImageDeleter.cc
+@@ -33,7 +33,8 @@
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+-#define dout_prefix *_dout << "rbd-mirror: ImageDeleter::" << __func__ << ": "
++#define dout_prefix *_dout << "rbd::mirror::ImageDeleter: " << this << " " \
++                           << __func__ << ": "
+ 
+ using std::string;
+ using std::map;
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 4e88fb2..5db2f43 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -26,7 +26,8 @@
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+-#define dout_prefix *_dout << "rbd-mirror: " << *this << "::" << __func__ << ": "
++#define dout_prefix *_dout << "rbd::mirror::" << *this << " " \
++                           << __func__ << ": "
+ 
+ using std::map;
+ using std::string;
+@@ -1251,8 +1252,8 @@ std::string ImageReplayer<I>::to_string(const State state) {
+ template <typename I>
+ std::ostream &operator<<(std::ostream &os, const ImageReplayer<I> &replayer)
+ {
+-  os << "ImageReplayer[" << replayer.get_remote_pool_id() << "/"
+-     << replayer.get_remote_image_id() << "]";
++  os << "ImageReplayer: " << &replayer << " [" << replayer.get_local_pool_id()
++     << "/" << replayer.get_global_image_id() << "]";
+   return os;
+ }
+ 
+diff --git a/src/tools/rbd_mirror/ImageReplayer.h b/src/tools/rbd_mirror/ImageReplayer.h
+index 82c9c19..b6bf4a2 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.h
++++ b/src/tools/rbd_mirror/ImageReplayer.h
+@@ -88,10 +88,27 @@ public:
+ 
+   std::string get_name() { Mutex::Locker l(m_lock); return m_name; };
+   void set_state_description(int r, const std::string &desc);
+-  inline uint64_t get_local_pool_id() { return m_local_pool_id; }
+-  inline const std::string get_local_image_id() { return m_local_image_id; }
+-  inline const std::string get_global_image_id() { return m_global_image_id; }
+-  inline const std::string get_local_image_name() { return m_local_image_name; }
++
++  inline int64_t get_local_pool_id() const {
++    return m_local_pool_id;
++  }
++  inline int64_t get_remote_pool_id() const {
++    return m_remote_pool_id;
++  }
++  inline const std::string& get_global_image_id() const {
++    return m_global_image_id;
++  }
++  inline const std::string& get_remote_image_id() const {
++    return m_remote_image_id;
++  }
++  inline std::string get_local_image_id() {
++    Mutex::Locker locker(m_lock);
++    return m_local_image_id;
++  }
++  inline std::string get_local_image_name() {
++    Mutex::Locker locker(m_lock);
++    return m_local_image_name;
++  }
+ 
+   void start(Context *on_finish = nullptr,
+ 	     const BootstrapParams *bootstrap_params = nullptr,
+@@ -105,15 +122,6 @@ public:
+   virtual void handle_replay_ready();
+   virtual void handle_replay_complete(int r, const std::string &error_desc);
+ 
+-  inline const std::string get_global_image_id() const {
+-    return m_global_image_id;
+-  }
+-  inline int64_t get_remote_pool_id() const {
+-    return m_remote_pool_id;
+-  }
+-  inline const std::string get_remote_image_id() const {
+-    return m_remote_image_id;
+-  }
+ protected:
+   /**
+    * @verbatim
+diff --git a/src/tools/rbd_mirror/Mirror.cc b/src/tools/rbd_mirror/Mirror.cc
+index 3177bb7..73e9801 100644
+--- a/src/tools/rbd_mirror/Mirror.cc
++++ b/src/tools/rbd_mirror/Mirror.cc
+@@ -12,7 +12,8 @@
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+-#define dout_prefix *_dout << "rbd-mirror: Mirror::" << __func__ << ": "
++#define dout_prefix *_dout << "rbd::mirror::Mirror: " << this << " " \
++                           << __func__ << ": "
+ 
+ using std::chrono::seconds;
+ using std::list;
+diff --git a/src/tools/rbd_mirror/PoolWatcher.cc b/src/tools/rbd_mirror/PoolWatcher.cc
+index a525b00..21ccc2d 100644
+--- a/src/tools/rbd_mirror/PoolWatcher.cc
++++ b/src/tools/rbd_mirror/PoolWatcher.cc
+@@ -14,7 +14,8 @@
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+-#define dout_prefix *_dout << "rbd-mirror: PoolWatcher::" << __func__ << ": "
++#define dout_prefix *_dout << "rbd::mirror::PoolWatcher: " << this << " " \
++                           << __func__ << ": "
+ 
+ using std::list;
+ using std::string;
+diff --git a/src/tools/rbd_mirror/Replayer.cc b/src/tools/rbd_mirror/Replayer.cc
+index ffa3e06..8dd3a0d 100644
+--- a/src/tools/rbd_mirror/Replayer.cc
++++ b/src/tools/rbd_mirror/Replayer.cc
+@@ -19,7 +19,8 @@
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+-#define dout_prefix *_dout << "rbd-mirror: Replayer::" << __func__ << ": "
++#define dout_prefix *_dout << "rbd::mirror::Replayer: " \
++                           << this << " " << __func__ << ": "
+ 
+ using std::chrono::seconds;
+ using std::map;

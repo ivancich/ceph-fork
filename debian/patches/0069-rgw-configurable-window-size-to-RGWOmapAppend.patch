@@ -1,0 +1,104 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Fri, 13 May 2016 11:20:49 -0700
+Subject: rgw: configurable window size to RGWOmapAppend
+
+We want to be able to disable buffering for certain operations.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 94ff675e2e7763650d14f62aaf1ff9ddb05cc380)
+
+Resolves: rhbz#1327142
+---
+ src/rgw/rgw_cr_rados.cc | 12 ++++++------
+ src/rgw/rgw_cr_rados.h  | 14 +++++++++++++-
+ 2 files changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/src/rgw/rgw_cr_rados.cc b/src/rgw/rgw_cr_rados.cc
+index 1f926fa..acc4653 100644
+--- a/src/rgw/rgw_cr_rados.cc
++++ b/src/rgw/rgw_cr_rados.cc
+@@ -141,9 +141,10 @@ RGWAsyncPutSystemObjAttrs::RGWAsyncPutSystemObjAttrs(RGWCoroutine *caller, RGWAi
+ }
+ 
+ 
+-RGWOmapAppend::RGWOmapAppend(RGWAsyncRadosProcessor *_async_rados, RGWRados *_store, rgw_bucket& _pool, const string& _oid)
++RGWOmapAppend::RGWOmapAppend(RGWAsyncRadosProcessor *_async_rados, RGWRados *_store, rgw_bucket& _pool, const string& _oid,
++                             uint64_t _window_size)
+                       : RGWConsumerCR<string>(_store->ctx()), async_rados(_async_rados),
+-                        store(_store), pool(_pool), oid(_oid), going_down(false), num_pending_entries(0), total_entries(0)
++                        store(_store), pool(_pool), oid(_oid), going_down(false), num_pending_entries(0), window_size(_window_size), total_entries(0)
+ {
+ }
+ 
+@@ -399,7 +400,6 @@ int RGWSimpleRadosUnlockCR::request_complete()
+ }
+ 
+ 
+-#define OMAP_APPEND_MAX_ENTRIES 100
+ int RGWOmapAppend::operate() {
+   reenter(this) {
+     for (;;) {
+@@ -414,11 +414,11 @@ int RGWOmapAppend::operate() {
+         while (consume(&entry)) {
+           set_status() << "adding entry: " << entry;
+           entries[entry] = bufferlist();
+-          if (entries.size() >= OMAP_APPEND_MAX_ENTRIES) {
++          if (entries.size() >= window_size) {
+             break;
+           }
+         }
+-        if (entries.size() >= OMAP_APPEND_MAX_ENTRIES || going_down) {
++        if (entries.size() >= window_size || going_down) {
+           set_status() << "flushing to omap";
+           call(new RGWRadosSetOmapKeysCR(store, pool, oid, entries));
+           entries.clear();
+@@ -446,7 +446,7 @@ bool RGWOmapAppend::append(const string& s) {
+   }
+   ++total_entries;
+   pending_entries.push_back(s);
+-  if (++num_pending_entries >= OMAP_APPEND_MAX_ENTRIES) {
++  if (++num_pending_entries >= (int)window_size) {
+     flush_pending();
+   }
+   return true;
+diff --git a/src/rgw/rgw_cr_rados.h b/src/rgw/rgw_cr_rados.h
+index 8d28b08..70d9b7b 100644
+--- a/src/rgw/rgw_cr_rados.h
++++ b/src/rgw/rgw_cr_rados.h
+@@ -510,6 +510,8 @@ public:
+   int request_complete();
+ };
+ 
++#define OMAP_APPEND_MAX_ENTRIES_DEFAULT 100
++
+ class RGWOmapAppend : public RGWConsumerCR<string> {
+   RGWAsyncRadosProcessor *async_rados;
+   RGWRados *store;
+@@ -524,9 +526,11 @@ class RGWOmapAppend : public RGWConsumerCR<string> {
+ 
+   map<string, bufferlist> entries;
+ 
++  uint64_t window_size;
+   uint64_t total_entries;
+ public:
+-  RGWOmapAppend(RGWAsyncRadosProcessor *_async_rados, RGWRados *_store, rgw_bucket& _pool, const string& _oid);
++  RGWOmapAppend(RGWAsyncRadosProcessor *_async_rados, RGWRados *_store, rgw_bucket& _pool, const string& _oid,
++                uint64_t _window_size = OMAP_APPEND_MAX_ENTRIES_DEFAULT);
+   int operate();
+   void flush_pending();
+   bool append(const string& s);
+@@ -535,6 +539,14 @@ public:
+   uint64_t get_total_entries() {
+     return total_entries;
+   }
++
++  const rgw_bucket& get_pool() {
++    return pool;
++  }
++
++  const string& get_oid() {
++    return oid;
++  }
+ };
+ 
+ class RGWAsyncWait : public RGWAsyncRadosRequest {

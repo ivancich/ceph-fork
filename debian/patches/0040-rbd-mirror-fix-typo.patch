@@ -1,0 +1,53 @@
+From: runsisi <runsisi@zte.com.cn>
+Date: Wed, 11 May 2016 20:52:38 +0800
+Subject: rbd-mirror: fix typo
+
+Signed-off-by: runsisi <runsisi@zte.com.cn>
+(cherry picked from commit 25bfd4c786d0701fe6ae06e3d120098bd82f8aa0)
+(cherry picked from commit 4e7233ad43d368a5f6e812870cec77545e034186)
+
+Resolves: rhbz#1340482
+---
+ src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+index 6f7210e..9e10add 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+@@ -149,7 +149,7 @@ void BootstrapRequest<I>::handle_get_local_image_id(int r) {
+   if (r == -ENOENT) {
+     dout(10) << ": image not registered locally" << dendl;
+   } else if (r < 0) {
+-    derr << ": failed to retreive local image id: " << cpp_strerror(r) << dendl;
++    derr << ": failed to retrieve local image id: " << cpp_strerror(r) << dendl;
+     finish(r);
+     return;
+   }
+@@ -174,7 +174,7 @@ void BootstrapRequest<I>::handle_get_remote_tag_class(int r) {
+   dout(20) << ": r=" << r << dendl;
+ 
+   if (r < 0) {
+-    derr << ": failed to retreive remote client: " << cpp_strerror(r) << dendl;
++    derr << ": failed to retrieve remote client: " << cpp_strerror(r) << dendl;
+     finish(r);
+     return;
+   }
+@@ -223,7 +223,7 @@ void BootstrapRequest<I>::handle_get_client(int r) {
+   if (r == -ENOENT) {
+     dout(10) << ": client not registered" << dendl;
+   } else if (r < 0) {
+-    derr << ": failed to retreive client: " << cpp_strerror(r) << dendl;
++    derr << ": failed to retrieve client: " << cpp_strerror(r) << dendl;
+     finish(r);
+     return;
+   } else if (decode_client_meta()) {
+@@ -486,7 +486,7 @@ void BootstrapRequest<I>::handle_get_remote_tags(int r) {
+   dout(20) << ": r=" << r << dendl;
+ 
+   if (r < 0) {
+-    derr << ": failed to retreive remote tags: " << cpp_strerror(r) << dendl;
++    derr << ": failed to retrieve remote tags: " << cpp_strerror(r) << dendl;
+     m_ret_val = r;
+     close_local_image();
+     return;

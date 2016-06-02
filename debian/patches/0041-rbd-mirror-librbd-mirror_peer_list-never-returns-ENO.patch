@@ -1,0 +1,28 @@
+From: runsisi <runsisi@zte.com.cn>
+Date: Wed, 11 May 2016 20:42:37 +0800
+Subject: rbd-mirror: librbd::mirror_peer_list never returns -ENOENT
+
+no need to check -ENOENT specially
+
+Signed-off-by: runsisi <runsisi@zte.com.cn>
+(cherry picked from commit 81ff42253369a9f57118bd26b29115c86a1748c5)
+(cherry picked from commit 38514adc847a227dbd28318650931a8c2a7df7db)
+
+Resolves: rhbz#1340482
+---
+ src/tools/rbd_mirror/ClusterWatcher.cc | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/ClusterWatcher.cc b/src/tools/rbd_mirror/ClusterWatcher.cc
+index 7a1e14a..0452539 100644
+--- a/src/tools/rbd_mirror/ClusterWatcher.cc
++++ b/src/tools/rbd_mirror/ClusterWatcher.cc
+@@ -108,8 +108,6 @@ void ClusterWatcher::read_configs(map<peer_t, set<int64_t> > *peer_configs,
+ 
+     vector<librbd::mirror_peer_t> configs;
+     r = librbd::mirror_peer_list(ioctx, &configs);
+-    if (r == -ENOENT)
+-      continue; // raced with disabling mirroring
+     if (r < 0) {
+       derr << "error reading mirroring config for pool " << pool_name
+ 	   << cpp_strerror(r) << dendl;

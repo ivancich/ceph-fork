@@ -1,3 +1,12 @@
+ceph (10.2.1-9redhat1) stable; urgency=medium
+
+  * Fixes bz#'s: (rhbz#1327142, rhbz#1336755, rhbz#1340476, rhbz#1340489, 
+    rhbz#1340482, rhbz#1334636, rhbz#1340071, rhbz#1339061, rhbz#1340503, 
+    rhbz#1336755, rhbz#1340476, rhbz#1340489, rhbz#1340482, rhbz#1334636, 
+    rhbz#1340071, rhbz#1339061, rhbz#1340503, rhbz#1336756)
+
+ -- Ali Maredia <amaredia@redhat.com>  Thu, 02 Jun 2016 17:12:47 -0400
+
 ceph (10.2.1-8redhat1) stable; urgency=medium
 
   * rgw: properly handle initial slashes in SLO's segment path.

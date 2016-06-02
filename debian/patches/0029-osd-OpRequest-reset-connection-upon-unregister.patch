@@ -1,0 +1,30 @@
+From: Kefu Chai <kchai@redhat.com>
+Date: Fri, 13 May 2016 11:26:31 +0800
+Subject: osd/OpRequest: reset connection upon unregister
+
+this helps to free the resources referenced by the connection, among
+other things, in the case of MOSDOp, the OSD::Session and OSDMap. this
+helps to free the resource earlier and trim the osdmaps in time.
+
+Fixes: http://tracker.ceph.com/issues/13990
+Signed-off-by: Kefu Chai <kchai@redhat.com>
+(cherry picked from commit 87850e96ea6fa45a8368bacabee50f9e95b40ae9)
+(cherry picked from commit 8bbb5add6208a552979270baf4623430cf45e1b3)
+
+Resolves: rhbz#1339061
+---
+ src/osd/OpRequest.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/osd/OpRequest.cc b/src/osd/OpRequest.cc
+index 8805d1a..9bad447 100644
+--- a/src/osd/OpRequest.cc
++++ b/src/osd/OpRequest.cc
+@@ -82,6 +82,7 @@ void OpRequest::_unregistered() {
+   request->clear_data();
+   request->clear_payload();
+   request->release_message_throttle();
++  request->set_connection(nullptr);
+ }
+ 
+ bool OpRequest::check_rmw(int flag) {

@@ -1,0 +1,32 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 19 May 2016 15:52:16 -0400
+Subject: journal: replay position might change after pruning stale tags
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 0f5f1c375d8ef7b301cfd20b6848bdc81a761746)
+(cherry picked from commit e5ebb51f22c43d49d716129ffcb5f87390b7acab)
+
+Resolves: rhbz#1340503
+---
+ src/journal/JournalPlayer.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/journal/JournalPlayer.cc b/src/journal/JournalPlayer.cc
+index 426624c..03b70e7 100644
+--- a/src/journal/JournalPlayer.cc
++++ b/src/journal/JournalPlayer.cc
+@@ -351,13 +351,13 @@ int JournalPlayer::process_playback(uint64_t object_number) {
+   ldout(m_cct, 10) << __func__ << ": object_num=" << object_number << dendl;
+   assert(m_lock.is_locked());
+ 
+-  ObjectPlayerPtr object_player = get_object_player();
+   if (verify_playback_ready()) {
+     notify_entries_available();
+   } else if (is_object_set_ready()) {
+     if (m_watch_enabled) {
+       schedule_watch();
+     } else {
++      ObjectPlayerPtr object_player = get_object_player();
+       uint8_t splay_width = m_journal_metadata->get_splay_width();
+       uint64_t active_set = m_journal_metadata->get_active_set();
+       uint64_t object_set = object_player->get_object_number() / splay_width;

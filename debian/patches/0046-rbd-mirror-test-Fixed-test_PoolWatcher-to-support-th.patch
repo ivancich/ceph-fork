@@ -1,0 +1,36 @@
+From: Ricardo Dias <rdias@suse.com>
+Date: Mon, 18 Apr 2016 12:22:19 +0100
+Subject: rbd-mirror: test: Fixed test_PoolWatcher to support the new changes
+ in PoolWatcher class
+
+Signed-off-by: Ricardo Dias <rdias@suse.com>
+(cherry picked from commit e3677f115e1f369a49227fba51a1d34505d487ac)
+(cherry picked from commit 78b13a504c32685090bb5b6512be9c050df2d8b6)
+
+Resolves: rhbz#1340482
+---
+ src/test/rbd_mirror/test_PoolWatcher.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/test/rbd_mirror/test_PoolWatcher.cc b/src/test/rbd_mirror/test_PoolWatcher.cc
+index 5d131d3..fd739f5 100644
+--- a/src/test/rbd_mirror/test_PoolWatcher.cc
++++ b/src/test/rbd_mirror/test_PoolWatcher.cc
+@@ -149,7 +149,7 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
+       image.close();
+ 
+       m_mirrored_images[ioctx.get_id()].insert(PoolWatcher::ImageIds(
+-        get_image_id(&ioctx, name), mirror_image_info.global_id));
++        get_image_id(&ioctx, name), name, mirror_image_info.global_id));
+     }
+     if (image_name != nullptr)
+       *image_name = name;
+@@ -194,7 +194,7 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
+       image.close();
+ 
+       m_mirrored_images[cioctx.get_id()].insert(PoolWatcher::ImageIds(
+-        get_image_id(&cioctx, name), mirror_image_info.global_id));
++        get_image_id(&cioctx, name), name, mirror_image_info.global_id));
+     }
+     if (image_name != nullptr)
+       *image_name = name;

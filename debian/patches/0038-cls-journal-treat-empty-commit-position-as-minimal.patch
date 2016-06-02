@@ -1,0 +1,46 @@
+From: Mykola Golub <mgolub@mirantis.com>
+Date: Wed, 25 May 2016 14:51:43 +0300
+Subject: cls::journal: treat empty commit position as minimal
+
+Signed-off-by: Mykola Golub <mgolub@mirantis.com>
+(cherry picked from commit 16846e8085b0c594f065322a768e6dfcbd5d2444)
+(cherry picked from commit f92c2a5604d4a8e83504b7283114d3d59bc45f38)
+
+Resolves: rhbz#1340482
+---
+ src/cls/journal/cls_journal.cc | 22 ++++++++++++----------
+ 1 file changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/src/cls/journal/cls_journal.cc b/src/cls/journal/cls_journal.cc
+index 2d36296..2682926 100644
+--- a/src/cls/journal/cls_journal.cc
++++ b/src/cls/journal/cls_journal.cc
+@@ -279,16 +279,18 @@ int find_min_commit_position(cls_method_context_t hctx,
+     for(std::set<cls::journal::Client>::iterator it = batch.begin();
+         it != batch.end(); ++it) {
+       cls::journal::ObjectSetPosition object_set_position = (*it).commit_position;
+-      if (!object_set_position.object_positions.empty()) {
+-        cls::journal::ObjectPosition first = object_set_position.object_positions.front();
+-
+-        // least tag_tid (or least entry_tid for matching tag_tid)
+-        if (!valid || (tag_tid > first.tag_tid) || ((tag_tid == first.tag_tid) && (entry_tid > first.entry_tid))) {
+-          tag_tid = first.tag_tid;
+-          entry_tid = first.entry_tid;
+-          *minset = cls::journal::ObjectSetPosition(object_set_position);
+-          valid = true;
+-        }
++      if (object_set_position.object_positions.empty()) {
++	*minset = cls::journal::ObjectSetPosition();
++	break;
++      }
++      cls::journal::ObjectPosition first = object_set_position.object_positions.front();
++
++      // least tag_tid (or least entry_tid for matching tag_tid)
++      if (!valid || (tag_tid > first.tag_tid) || ((tag_tid == first.tag_tid) && (entry_tid > first.entry_tid))) {
++	tag_tid = first.tag_tid;
++	entry_tid = first.entry_tid;
++	*minset = cls::journal::ObjectSetPosition(object_set_position);
++	valid = true;
+       }
+     }
+ 
