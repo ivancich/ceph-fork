@@ -25,11 +25,11 @@ Resolves: rhbz#1340484
  create mode 100644 src/tools/rbd_mirror/image_replayer/CreateImageRequest.h
  create mode 100644 src/tools/rbd_mirror/image_replayer/Utils.h
 
-Index: ceph/src/test/Makefile-client.am
-===================================================================
---- ceph.orig/src/test/Makefile-client.am	2016-06-02 21:26:57.112758208 -0400
-+++ ceph/src/test/Makefile-client.am	2016-06-02 21:26:57.104758208 -0400
-@@ -477,6 +477,7 @@
+diff --git a/src/test/Makefile-client.am b/src/test/Makefile-client.am
+index ede73b0..153f58d 100644
+--- a/src/test/Makefile-client.am
++++ b/src/test/Makefile-client.am
+@@ -477,6 +477,7 @@ unittest_rbd_mirror_SOURCES = \
  	test/rbd_mirror/test_mock_ImageReplayer.cc \
  	test/rbd_mirror/test_mock_ImageSync.cc \
  	test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc \
@@ -37,11 +37,11 @@ Index: ceph/src/test/Makefile-client.am
  	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
  	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
  	test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc \
-Index: ceph/src/test/librbd/mock/MockImageState.h
-===================================================================
---- ceph.orig/src/test/librbd/mock/MockImageState.h	2016-06-02 21:26:57.112758208 -0400
-+++ ceph/src/test/librbd/mock/MockImageState.h	2016-06-02 21:26:57.104758208 -0400
-@@ -18,6 +18,8 @@
+diff --git a/src/test/librbd/mock/MockImageState.h b/src/test/librbd/mock/MockImageState.h
+index 8d2ad11..bf341f5 100644
+--- a/src/test/librbd/mock/MockImageState.h
++++ b/src/test/librbd/mock/MockImageState.h
+@@ -18,6 +18,8 @@ struct MockImageState {
  
    MOCK_METHOD0(close, int());
    MOCK_METHOD1(close, void(Context*));
@@ -50,10 +50,10 @@ Index: ceph/src/test/librbd/mock/MockImageState.h
  };
  
  } // namespace librbd
-Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
-===================================================================
---- ceph.orig/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc	2016-06-02 21:26:57.112758208 -0400
-+++ ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc	2016-06-02 21:26:57.108758208 -0400
+diff --git a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+index a361627..5712e60 100644
+--- a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
++++ b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
 @@ -6,16 +6,25 @@
  #include "tools/rbd_mirror/ImageSync.h"
  #include "tools/rbd_mirror/image_replayer/BootstrapRequest.h"
@@ -81,7 +81,7 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
    typedef ::journal::MockJournaler Journaler;
  };
  
-@@ -28,12 +37,12 @@
+@@ -28,12 +37,12 @@ namespace mirror {
  class ProgressContext;
  
  template<>
@@ -97,7 +97,7 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
                             SafeTimer *timer, Mutex *timer_lock,
                             const std::string &mirror_uuid,
                             ::journal::MockJournaler *journaler,
-@@ -52,16 +61,16 @@
+@@ -52,16 +61,16 @@ struct ImageSync<librbd::MockImageCtx> {
    MOCK_METHOD0(start, void());
  };
  
@@ -117,7 +117,7 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
                                     ContextWQ *work_queue, bool destroy_only,
                                     Context *on_finish) {
      assert(s_instance != nullptr);
-@@ -78,12 +87,37 @@
+@@ -78,12 +87,37 @@ struct CloseImageRequest<librbd::MockImageCtx> {
  };
  
  template<>
@@ -157,7 +157,7 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
                                    const std::string &local_image_id,
                                    bool read_only, ContextWQ *work_queue,
                                    Context *on_finish) {
-@@ -101,12 +135,12 @@
+@@ -101,12 +135,12 @@ struct OpenImageRequest<librbd::MockImageCtx> {
  };
  
  template<>
@@ -172,7 +172,7 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
                                         const std::string &local_image_name,
                                         const std::string &local_image_id,
                                         ContextWQ *work_queue,
-@@ -124,9 +158,14 @@
+@@ -124,9 +158,14 @@ struct OpenLocalImageRequest<librbd::MockImageCtx> {
    MOCK_METHOD0(send, void());
  };
  
@@ -190,7 +190,7 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
  
  } // namespace image_replayer
  } // namespace mirror
-@@ -134,7 +173,7 @@
+@@ -134,7 +173,7 @@ OpenLocalImageRequest<librbd::MockImageCtx>* OpenLocalImageRequest<librbd::MockI
  
  // template definitions
  #include "tools/rbd_mirror/image_replayer/BootstrapRequest.cc"
@@ -199,7 +199,7 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
  
  namespace rbd {
  namespace mirror {
-@@ -142,7 +181,7 @@
+@@ -142,7 +181,7 @@ namespace image_replayer {
  
  class TestMockImageReplayerBootstrapRequest : public TestMockFixture {
  public:
@@ -208,10 +208,11 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
  
  };
  
-Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ ceph/src/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc	2016-06-02 21:26:57.108758208 -0400
+diff --git a/src/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc b/src/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
+new file mode 100644
+index 0000000..8191652
+--- /dev/null
++++ b/src/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
 @@ -0,0 +1,692 @@
 +// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 +// vim: ts=8 sw=2 smarttab
@@ -905,10 +906,10 @@ Index: ceph/src/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
 +} // namespace image_replayer
 +} // namespace mirror
 +} // namespace rbd
-Index: ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc
-===================================================================
---- ceph.orig/src/test/rbd_mirror/test_mock_ImageReplayer.cc	2016-06-02 21:26:57.112758208 -0400
-+++ ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc	2016-06-02 21:26:57.108758208 -0400
+diff --git a/src/test/rbd_mirror/test_mock_ImageReplayer.cc b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
+index 4ec594f..85c8f7a 100644
+--- a/src/test/rbd_mirror/test_mock_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
 @@ -12,28 +12,32 @@
  
  namespace librbd {
@@ -949,7 +950,7 @@ Index: ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc
    typedef ::journal::MockJournalerProxy Journaler;
    typedef ::journal::MockReplayEntryProxy ReplayEntry;
  };
-@@ -48,13 +52,13 @@
+@@ -48,13 +52,13 @@ namespace mirror {
  namespace image_replayer {
  
  template<>
@@ -965,7 +966,7 @@ Index: ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc
                                    const std::string &local_image_name,
                                    const std::string &remote_image_id,
                                    const std::string &global_image_id,
-@@ -80,11 +84,11 @@
+@@ -80,11 +84,11 @@ struct BootstrapRequest<librbd::MockImageReplayerImageCtx> {
  };
  
  template<>
@@ -979,7 +980,7 @@ Index: ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc
                                     ContextWQ *work_queue, bool destroy_only,
                                     Context *on_finish) {
      assert(s_instance != nullptr);
-@@ -101,7 +105,7 @@
+@@ -101,7 +105,7 @@ struct CloseImageRequest<librbd::MockImageReplayerImageCtx> {
  };
  
  template<>
@@ -988,7 +989,7 @@ Index: ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc
    static ReplayStatusFormatter* s_instance;
  
    static ReplayStatusFormatter* create(::journal::MockJournalerProxy *journaler,
-@@ -118,9 +122,9 @@
+@@ -118,9 +122,9 @@ struct ReplayStatusFormatter<librbd::MockImageReplayerImageCtx> {
    MOCK_METHOD2(get_or_send_update, bool(std::string *description, Context *on_finish));
  };
  
@@ -1001,7 +1002,7 @@ Index: ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc
  
  } // namespace image_replayer
  } // namespace mirror
-@@ -128,14 +132,14 @@
+@@ -128,14 +132,14 @@ ReplayStatusFormatter<librbd::MockImageReplayerImageCtx>* ReplayStatusFormatter<
  
  // template definitions
  #include "tools/rbd_mirror/ImageReplayer.cc"
@@ -1018,11 +1019,11 @@ Index: ceph/src/test/rbd_mirror/test_mock_ImageReplayer.cc
  
    virtual void SetUp() {
      TestMockFixture::SetUp();
-Index: ceph/src/tools/Makefile-client.am
-===================================================================
---- ceph.orig/src/tools/Makefile-client.am	2016-06-02 21:26:57.112758208 -0400
-+++ ceph/src/tools/Makefile-client.am	2016-06-02 21:26:57.108758208 -0400
-@@ -100,6 +100,7 @@
+diff --git a/src/tools/Makefile-client.am b/src/tools/Makefile-client.am
+index d92aa3f..716ce4f 100644
+--- a/src/tools/Makefile-client.am
++++ b/src/tools/Makefile-client.am
+@@ -100,6 +100,7 @@ librbd_mirror_internal_la_SOURCES = \
  	tools/rbd_mirror/types.cc \
  	tools/rbd_mirror/image_replayer/BootstrapRequest.cc \
  	tools/rbd_mirror/image_replayer/CloseImageRequest.cc \
@@ -1030,7 +1031,7 @@ Index: ceph/src/tools/Makefile-client.am
  	tools/rbd_mirror/image_replayer/OpenImageRequest.cc \
  	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc \
  	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc \
-@@ -123,9 +124,11 @@
+@@ -123,9 +124,11 @@ noinst_HEADERS += \
  	tools/rbd_mirror/types.h \
  	tools/rbd_mirror/image_replayer/BootstrapRequest.h \
  	tools/rbd_mirror/image_replayer/CloseImageRequest.h \
@@ -1042,10 +1043,10 @@ Index: ceph/src/tools/Makefile-client.am
  	tools/rbd_mirror/image_sync/ImageCopyRequest.h \
  	tools/rbd_mirror/image_sync/ObjectCopyRequest.h \
  	tools/rbd_mirror/image_sync/SnapshotCopyRequest.h \
-Index: ceph/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
-===================================================================
---- ceph.orig/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc	2016-06-02 21:26:57.112758208 -0400
-+++ ceph/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc	2016-06-02 21:26:57.108758208 -0400
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+index 357795a..e241aee 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
 @@ -3,6 +3,7 @@
  
  #include "BootstrapRequest.h"
@@ -1054,7 +1055,7 @@ Index: ceph/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
  #include "OpenImageRequest.h"
  #include "OpenLocalImageRequest.h"
  #include "common/debug.h"
-@@ -32,58 +33,6 @@
+@@ -32,58 +33,6 @@ namespace image_replayer {
  using librbd::util::create_context_callback;
  using librbd::util::create_rados_ack_callback;
  
@@ -1113,7 +1114,7 @@ Index: ceph/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
  template <typename I>
  BootstrapRequest<I>::BootstrapRequest(librados::IoCtx &local_io_ctx,
                                        librados::IoCtx &remote_io_ctx,
-@@ -394,15 +343,13 @@
+@@ -394,15 +343,13 @@ void BootstrapRequest<I>::create_local_image() {
  
    update_progress("CREATE_LOCAL_IMAGE");
  
@@ -1133,10 +1134,11 @@ Index: ceph/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
  }
  
  template <typename I>
-Index: ceph/src/tools/rbd_mirror/image_replayer/CreateImageRequest.cc
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ ceph/src/tools/rbd_mirror/image_replayer/CreateImageRequest.cc	2016-06-02 21:26:57.108758208 -0400
+diff --git a/src/tools/rbd_mirror/image_replayer/CreateImageRequest.cc b/src/tools/rbd_mirror/image_replayer/CreateImageRequest.cc
+new file mode 100644
+index 0000000..5611ca2
+--- /dev/null
++++ b/src/tools/rbd_mirror/image_replayer/CreateImageRequest.cc
 @@ -0,0 +1,437 @@
 +// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 +// vim: ts=8 sw=2 smarttab
@@ -1575,10 +1577,11 @@ Index: ceph/src/tools/rbd_mirror/image_replayer/CreateImageRequest.cc
 +} // namespace rbd
 +
 +template class rbd::mirror::image_replayer::CreateImageRequest<librbd::ImageCtx>;
-Index: ceph/src/tools/rbd_mirror/image_replayer/CreateImageRequest.h
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ ceph/src/tools/rbd_mirror/image_replayer/CreateImageRequest.h	2016-06-02 21:26:57.108758208 -0400
+diff --git a/src/tools/rbd_mirror/image_replayer/CreateImageRequest.h b/src/tools/rbd_mirror/image_replayer/CreateImageRequest.h
+new file mode 100644
+index 0000000..0e5d483
+--- /dev/null
++++ b/src/tools/rbd_mirror/image_replayer/CreateImageRequest.h
 @@ -0,0 +1,144 @@
 +// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 +// vim: ts=8 sw=2 smarttab
@@ -1724,10 +1727,11 @@ Index: ceph/src/tools/rbd_mirror/image_replayer/CreateImageRequest.h
 +extern template class rbd::mirror::image_replayer::CreateImageRequest<librbd::ImageCtx>;
 +
 +#endif // RBD_MIRROR_IMAGE_REPLAYER_CREATE_IMAGE_REQUEST_H
-Index: ceph/src/tools/rbd_mirror/image_replayer/Utils.h
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ ceph/src/tools/rbd_mirror/image_replayer/Utils.h	2016-06-02 21:26:57.108758208 -0400
+diff --git a/src/tools/rbd_mirror/image_replayer/Utils.h b/src/tools/rbd_mirror/image_replayer/Utils.h
+new file mode 100644
+index 0000000..2fea40e
+--- /dev/null
++++ b/src/tools/rbd_mirror/image_replayer/Utils.h
 @@ -0,0 +1,49 @@
 +// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 +// vim: ts=8 sw=2 smarttab

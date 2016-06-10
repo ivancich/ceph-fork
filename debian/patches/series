@@ -76,3 +76,12 @@
 0076-rbd-mirror-add-support-for-cloning-images-from-mirro.patch
 0077-cls_rbd-asynchronous-helper-method-to-set-parent.patch
 0078-rbd-mirror-copy-snapshot-parent-image-settings.patch
+0079-rgw-ldap-fix-ldap-bindpw-parsing.patch
+0080-Revert-rados-Added-striper-option-to-the-command-lin.patch
+0081-libradosstriper-remove-the-rest-of-the-libradosstrip.patch
+0082-rpm-remove-dependency-on-fcgi-in-configure.ac.patch
+0083-rpm-fixes-in-configure.ac.patch
+0084-rpm-more-fixes-in-configure.ac.patch
+0085-Revert-rpm-more-fixes-in-configure.ac.patch
+0086-Revert-rpm-fixes-in-configure.ac.patch
+0087-Revert-rpm-remove-dependency-on-fcgi-in-configure.ac.patch

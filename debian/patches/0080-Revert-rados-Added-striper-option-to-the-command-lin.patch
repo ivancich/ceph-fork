@@ -1,0 +1,456 @@
+From: Samuel Just <sjust@redhat.com>
+Date: Thu, 2 Jun 2016 12:07:05 -0700
+Subject: Revert "rados: Added --striper option to the command line"
+
+This reverts commit 49ab5bb3c436fbe069327859c76b351c4fe06043.
+
+Conflicts:
+	src/test/Makefile.am
+	src/test/libradosstriper/rados-striper.sh
+	src/tools/rados/rados.cc
+
+Resolves: rhbz#1339870
+Signed-off-by: Samuel Just <sjust@redhat.com>
+---
+ doc/man/8/rados.rst                       |   5 --
+ src/test/Makefile.am                      |   1 -
+ src/test/libradosstriper/rados-striper.sh |  95 ----------------------
+ src/tools/Makefile-client.am              |   2 +-
+ src/tools/rados/rados.cc                  | 131 +++++-------------------------
+ 5 files changed, 22 insertions(+), 212 deletions(-)
+ delete mode 100755 src/test/libradosstriper/rados-striper.sh
+
+diff --git a/doc/man/8/rados.rst b/doc/man/8/rados.rst
+index 2243a5e..b40236f 100644
+--- a/doc/man/8/rados.rst
++++ b/doc/man/8/rados.rst
+@@ -57,11 +57,6 @@ Options
+ 
+   Set the block size for put/get ops and for write benchmarking.
+ 
+-.. option:: --striper
+-
+-   Uses the striping API of rados rather than the default one.
+-   Available for stat, get, put, truncate, rm, ls and all xattr related operation
+-
+ 
+ Global commands
+ ===============
+diff --git a/src/test/Makefile.am b/src/test/Makefile.am
+index 536edbf..a9ee734 100644
+--- a/src/test/Makefile.am
++++ b/src/test/Makefile.am
+@@ -91,7 +91,6 @@ check_SCRIPTS += \
+ 	test/osd/osd-copy-from.sh \
+ 	test/osd/osd-markdown.sh \
+ 	test/mon/mon-handle-forward.sh \
+-	test/libradosstriper/rados-striper.sh \
+ 	test/test_objectstore_memstore.sh \
+         test/test_pidfile.sh
+ 
+diff --git a/src/test/libradosstriper/rados-striper.sh b/src/test/libradosstriper/rados-striper.sh
+deleted file mode 100755
+index a2de948..0000000
+--- a/src/test/libradosstriper/rados-striper.sh
++++ /dev/null
+@@ -1,95 +0,0 @@
+-#!/bin/bash
+-#
+-# Copyright (C) 2014 Red Hat <contact@redhat.com>
+-#
+-# Author: Sebastien Ponce <sebastien.ponce@cern.ch>
+-#
+-# This program is free software; you can redistribute it and/or modify
+-# it under the terms of the GNU Library Public License as published by
+-# the Free Software Foundation; either version 2, or (at your option)
+-# any later version.
+-#
+-# This program is distributed in the hope that it will be useful,
+-# but WITHOUT ANY WARRANTY; without even the implied warranty of
+-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-# GNU Library Public License for more details.
+-#
+-source $CEPH_ROOT/qa/workunits/ceph-helpers.sh
+-
+-function run() {
+-    local dir=$1
+-    shift
+-
+-    export CEPH_MON="127.0.0.1:7116" # git grep '\<7116\>' : there must be only one
+-    export CEPH_ARGS
+-    CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
+-    CEPH_ARGS+="--mon-host=$CEPH_MON "
+-
+-    # setup
+-    setup $dir || return 1
+-
+-    # create a cluster with one monitor and three osds
+-    run_mon $dir a || return 1
+-    run_osd $dir 0 || return 1
+-    run_osd $dir 1 || return 1
+-    run_osd $dir 2 || return 1
+-
+-    # create toyfile
+-    dd if=/dev/urandom of=$dir/toyfile bs=1234 count=1
+-    
+-    # put a striped object
+-    rados --pool rbd --striper put toyfile $dir/toyfile || return 1
+-    
+-    # stat it, with and without striping
+-    rados --pool rbd --striper stat toyfile | cut -d ',' -f 2 > $dir/stripedStat || return 1
+-    rados --pool rbd stat toyfile.0000000000000000 | cut -d ',' -f 2 > $dir/stat || return 1
+-    echo ' size 1234' > $dir/refstat
+-    diff -w $dir/stripedStat $dir/refstat || return 1
+-    diff -w $dir/stat $dir/refstat || return 1
+-    rados --pool rbd stat toyfile >& $dir/staterror
+-    grep -q 'No such file or directory' $dir/staterror ||  return 1
+-    
+-    # get the file back with and without striping
+-    rados --pool rbd --striper get toyfile $dir/stripedGroup || return 1
+-    diff -w $dir/toyfile $dir/stripedGroup || return 1
+-    rados --pool rbd get toyfile.0000000000000000 $dir/nonSTripedGroup || return 1
+-    diff -w $dir/toyfile $dir/nonSTripedGroup || return 1
+-    
+-    # test truncate
+-    rados --pool rbd --striper truncate toyfile 12
+-    rados --pool rbd --striper stat toyfile | cut -d ',' -f 2 > $dir/stripedStat || return 1
+-    rados --pool rbd stat toyfile.0000000000000000 | cut -d ',' -f 2 > $dir/stat || return 1
+-    echo ' size 12' > $dir/reftrunc
+-    diff -w $dir/stripedStat $dir/reftrunc || return 1
+-    diff -w $dir/stat $dir/reftrunc || return 1
+-    
+-    # test xattrs
+-    rados --pool rbd --striper setxattr toyfile somexattr somevalue || return 1
+-    rados --pool rbd --striper getxattr toyfile somexattr > $dir/xattrvalue || return 1 
+-    rados --pool rbd getxattr toyfile.0000000000000000 somexattr > $dir/xattrvalue2 || return 1 
+-    echo 'somevalue' > $dir/refvalue
+-    diff -w $dir/xattrvalue $dir/refvalue || return 1
+-    diff -w $dir/xattrvalue2 $dir/refvalue || return 1
+-    rados --pool rbd --striper listxattr toyfile > $dir/xattrlist || return 1
+-    echo 'somexattr' > $dir/reflist
+-    diff -w $dir/xattrlist $dir/reflist || return 1
+-    rados --pool rbd listxattr toyfile.0000000000000000 | grep -v striper > $dir/xattrlist2 || return 1
+-    diff -w $dir/xattrlist2 $dir/reflist || return 1    
+-    rados --pool rbd --striper rmxattr toyfile somexattr || return 1
+-    rados --pool rbd --striper getxattr toyfile somexattr >& $dir/rmxattrerror
+-    grep -q 'No data available' $dir/rmxattrerror || return 1
+-    rados --pool rbd getxattr toyfile.0000000000000000 somexattr >& $dir/rmxattrerror2
+-    grep -q 'No data available' $dir/rmxattrerror2 || return 1
+-    
+-    # test rm
+-    rados --pool rbd --striper rm toyfile || return 1
+-    rados --pool rbd --striper stat toyfile >& $dir/staterror2
+-    grep -q 'No such file or directory' $dir/staterror2 || return 1
+-    rados --pool rbd stat toyfile.0000000000000000 >& $dir/staterror3
+-    grep -q 'No such file or directory' $dir/staterror3 || return 1
+-
+-    # cleanup
+-    teardown $dir || return 1
+-}
+-
+-main rados-striper "$@"
+diff --git a/src/tools/Makefile-client.am b/src/tools/Makefile-client.am
+index 716ce4f..7499d38 100644
+--- a/src/tools/Makefile-client.am
++++ b/src/tools/Makefile-client.am
+@@ -18,7 +18,7 @@ rados_SOURCES = \
+ 	tools/rados/RadosImport.cc \
+ 	tools/rados/PoolDump.cc
+ rados_SOURCES += common/obj_bencher.cc # needs cleanup so it can go in libcommon.la
+-rados_LDADD = libcls_lock_client.la $(LIBRADOS) $(LIBRADOSSTRIPER) $(CEPH_GLOBAL)
++rados_LDADD = libcls_lock_client.la $(LIBRADOS) $(CEPH_GLOBAL)
+ bin_PROGRAMS += rados
+ 
+ if WITH_RBD
+diff --git a/src/tools/rados/rados.cc b/src/tools/rados/rados.cc
+index d3b37ab..b1b3ae5 100644
+--- a/src/tools/rados/rados.cc
++++ b/src/tools/rados/rados.cc
+@@ -16,8 +16,6 @@
+ 
+ #include "include/rados/librados.hpp"
+ #include "include/rados/rados_types.hpp"
+-#include "include/radosstriper/libradosstriper.hpp"
+-using namespace libradosstriper;
+ 
+ #include "common/config.h"
+ #include "common/ceph_argparse.h"
+@@ -188,10 +186,6 @@ void usage(ostream& out)
+ "        Use with cp to specify the locator of the new object\n"
+ "   --target-nspace\n"
+ "        Use with cp to specify the namespace of the new object\n"
+-"   --striper\n"
+-"        Use radostriper interface rather than pure rados\n"
+-"        Available for stat, get, put, truncate, rm, ls and \n"
+-"        all xattr related operations\n"
+ "\n"
+ "BENCH OPTIONS:\n"
+ "   -t N\n"
+@@ -268,9 +262,7 @@ static int dump_data(std::string const &filename, bufferlist const &data)
+ }
+ 
+ 
+-static int do_get(IoCtx& io_ctx, RadosStriper& striper,
+-		  const char *objname, const char *outfile, unsigned op_size,
+-		  bool use_striper)
++static int do_get(IoCtx& io_ctx, const char *objname, const char *outfile, unsigned op_size)
+ {
+   string oid(objname);
+ 
+@@ -290,11 +282,7 @@ static int do_get(IoCtx& io_ctx, RadosStriper& striper,
+   int ret;
+   while (true) {
+     bufferlist outdata;
+-    if (use_striper) {
+-      ret = striper.read(oid, &outdata, op_size, offset);
+-    } else {
+-      ret = io_ctx.read(oid, outdata, op_size, offset);
+-    }
++    ret = io_ctx.read(oid, outdata, op_size, offset);
+     if (ret <= 0) {
+       goto out;
+     }
+@@ -388,9 +376,7 @@ static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_p
+   return 0;
+ }
+ 
+-static int do_put(IoCtx& io_ctx, RadosStriper& striper,
+-		  const char *objname, const char *infile, int op_size,
+-		  bool use_striper)
++static int do_put(IoCtx& io_ctx, const char *objname, const char *infile, int op_size)
+ {
+   string oid(objname);
+   bufferlist indata;
+@@ -418,29 +404,17 @@ static int do_put(IoCtx& io_ctx, RadosStriper& striper,
+     }
+     if (count == 0) {
+       if (!offset) { // in case we have to create an empty object
+-	if (use_striper) {
+-	  ret = striper.write_full(oid, indata); // indata is empty
+-	} else {
+-	  ret = io_ctx.write_full(oid, indata); // indata is empty
+-	}
++	ret = io_ctx.write_full(oid, indata); // indata is empty
+ 	if (ret < 0) {
+ 	  goto out;
+ 	}
+       }
+       continue;
+     }
+-    indata.append(buffer::ptr(buffer::create_static(count, buf)));
+-    if (use_striper) {
+-      if (offset == 0)
+-	ret = striper.write_full(oid, indata);
+-      else
+-	ret = striper.write(oid, indata, count, offset);
+-    } else {
+-      if (offset == 0)
+-	ret = io_ctx.write_full(oid, indata);
+-      else
+-	ret = io_ctx.write(oid, indata, count, offset);
+-    }
++    if (offset == 0)
++      ret = io_ctx.write_full(oid, indata);
++    else
++      ret = io_ctx.write(oid, indata, count, offset);
+     indata.clear();
+ 
+     if (ret < 0) {
+@@ -1446,7 +1420,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+   int bench_write_dest = 0;
+   bool cleanup = true;
+   bool no_verify = false;
+-  bool use_striper = false;
+   const char *snapname = NULL;
+   snap_t snapid = CEPH_NOSNAP;
+   std::map<std::string, std::string>::const_iterator i;
+@@ -1474,7 +1447,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+ 
+   Rados rados;
+   IoCtx io_ctx;
+-  RadosStriper striper;
+ 
+   i = opts.find("create");
+   if (i != opts.end()) {
+@@ -1719,17 +1691,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+           cerr << "INFO: op_size has been rounded to " << op_size << std::endl;
+       }
+     }
+-
+-    // create striper interface
+-    if (opts.find("striper") != opts.end()) {
+-      ret = RadosStriper::striper_create(io_ctx, &striper);
+-      if (0 != ret) {
+-	cerr << "error opening pool " << pool_name << " with striper interface: "
+-	     << cpp_strerror(ret) << std::endl;
+-	goto out;
+-      }
+-      use_striper = true;
+-    }
+   }
+ 
+   // snapname?
+@@ -1895,34 +1856,18 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+ 	librados::NObjectIterator i = io_ctx.nobjects_begin();
+ 	librados::NObjectIterator i_end = io_ctx.nobjects_end();
+ 	for (; i != i_end; ++i) {
+-	  if (use_striper) {
+-	    // in case of --striper option, we only list striped
+-	    // objects, so we only display the first object of
+-	    // each, without its suffix '.000...000'
+-	    size_t l = i->get_oid().length();
+-	    if (l <= 17 ||
+-		(0 != i->get_oid().compare(l-17, 17,".0000000000000000"))) continue;
+-	  }
+ 	  if (!formatter) {
+ 	    // Only include namespace in output when wildcard specified
+ 	    if (wildcard)
+ 	      *outstream << i->get_nspace() << "\t";
+-	    if (use_striper) {
+-	      *outstream << i->get_oid().substr(0, i->get_oid().length()-17);
+-	    } else {
+-	      *outstream << i->get_oid();
+-	    }
++	    *outstream << i->get_oid();
+ 	    if (i->get_locator().size())
+ 	      *outstream << "\t" << i->get_locator();
+ 	    *outstream << std::endl;
+ 	  } else {
+ 	    formatter->open_object_section("object");
+ 	    formatter->dump_string("namespace", i->get_nspace());
+-	    if (use_striper) {
+-	      formatter->dump_string("name", i->get_oid().substr(0, i->get_oid().length()-17));
+-	    } else {
+-	      formatter->dump_string("name", i->get_oid());
+-	    }
++	    formatter->dump_string("name", i->get_oid());
+ 	    if (i->get_locator().size())
+ 	      formatter->dump_string("locator", i->get_locator());
+ 	    formatter->close_section(); //object
+@@ -1984,11 +1929,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+     string oid(nargs[1]);
+     uint64_t size;
+     time_t mtime;
+-    if (use_striper) {
+-      ret = striper.stat(oid, &size, &mtime);
+-    } else {
+-      ret = io_ctx.stat(oid, &size, &mtime);
+-    }
++    ret = io_ctx.stat(oid, &size, &mtime);
+     if (ret < 0) {
+       cerr << " error stat-ing " << pool_name << "/" << oid << ": "
+            << cpp_strerror(ret) << std::endl;
+@@ -2002,7 +1943,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+   else if (strcmp(nargs[0], "get") == 0) {
+     if (!pool_name || nargs.size() < 3)
+       usage_exit();
+-    ret = do_get(io_ctx, striper, nargs[1], nargs[2], op_size, use_striper);
++    ret = do_get(io_ctx, nargs[1], nargs[2], op_size);
+     if (ret < 0) {
+       cerr << "error getting " << pool_name << "/" << nargs[1] << ": " << cpp_strerror(ret) << std::endl;
+       goto out;
+@@ -2011,7 +1952,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+   else if (strcmp(nargs[0], "put") == 0) {
+     if (!pool_name || nargs.size() < 3)
+       usage_exit();
+-    ret = do_put(io_ctx, striper, nargs[1], nargs[2], op_size, use_striper);
++    ret = do_put(io_ctx, nargs[1], nargs[2], op_size);
+     if (ret < 0) {
+       cerr << "error putting " << pool_name << "/" << nargs[1] << ": " << cpp_strerror(ret) << std::endl;
+       goto out;
+@@ -2033,11 +1974,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+       cerr << "error, cannot truncate to negative value" << std::endl;
+       usage_exit();
+     }
+-    if (use_striper) {
+-      ret = striper.trunc(oid, size);
+-    } else {
+-      ret = io_ctx.trunc(oid, size);
+-    }
++    ret = io_ctx.trunc(oid, size);
+     if (ret < 0) {
+       cerr << "error truncating oid "
+ 	   << oid << " to " << size << ": "
+@@ -2064,11 +2001,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+       } while (ret > 0);
+     }
+ 
+-    if (use_striper) {
+-      ret = striper.setxattr(oid, attr_name.c_str(), bl);
+-    } else {
+-      ret = io_ctx.setxattr(oid, attr_name.c_str(), bl);
+-    }
++    ret = io_ctx.setxattr(oid, attr_name.c_str(), bl);
+     if (ret < 0) {
+       cerr << "error setting xattr " << pool_name << "/" << oid << "/" << attr_name << ": " << cpp_strerror(ret) << std::endl;
+       goto out;
+@@ -2084,11 +2017,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+     string attr_name(nargs[2]);
+ 
+     bufferlist bl;
+-    if (use_striper) {
+-      ret = striper.getxattr(oid, attr_name.c_str(), bl);
+-    } else {
+-      ret = io_ctx.getxattr(oid, attr_name.c_str(), bl);
+-    }
++    ret = io_ctx.getxattr(oid, attr_name.c_str(), bl);
+     if (ret < 0) {
+       cerr << "error getting xattr " << pool_name << "/" << oid << "/" << attr_name << ": " << cpp_strerror(ret) << std::endl;
+       goto out;
+@@ -2104,11 +2033,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+     string oid(nargs[1]);
+     string attr_name(nargs[2]);
+ 
+-    if (use_striper) {
+-      ret = striper.rmxattr(oid, attr_name.c_str());
+-    } else {
+-      ret = io_ctx.rmxattr(oid, attr_name.c_str());
+-    }
++    ret = io_ctx.rmxattr(oid, attr_name.c_str());
+     if (ret < 0) {
+       cerr << "error removing xattr " << pool_name << "/" << oid << "/" << attr_name << ": " << cpp_strerror(ret) << std::endl;
+       goto out;
+@@ -2120,11 +2045,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+     string oid(nargs[1]);
+     map<std::string, bufferlist> attrset;
+     bufferlist bl;
+-    if (use_striper) {
+-      ret = striper.getxattrs(oid, attrset);
+-    } else {
+-      ret = io_ctx.getxattrs(oid, attrset);
+-    }
++    ret = io_ctx.getxattrs(oid, attrset);
+     if (ret < 0) {
+       cerr << "error getting xattr set " << pool_name << "/" << oid << ": " << cpp_strerror(ret) << std::endl;
+       goto out;
+@@ -2403,18 +2324,10 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+     ++iter;
+     for (; iter != nargs.end(); ++iter) {
+       const string & oid = *iter;
+-      if (use_striper) {
+-	if (forcefull) {
+-	  ret = striper.remove(oid, CEPH_OSD_FLAG_FULL_FORCE);
+-	} else {
+-	  ret = striper.remove(oid);
+-	}
++      if (forcefull) {
++	ret = io_ctx.remove(oid, CEPH_OSD_FLAG_FULL_FORCE);
+       } else {
+-	if (forcefull) {
+-	  ret = io_ctx.remove(oid, CEPH_OSD_FLAG_FULL_FORCE);
+-	} else {
+-	  ret = io_ctx.remove(oid);
+-	}
++	ret = io_ctx.remove(oid);
+       }
+       if (ret < 0) {
+         string name = (nspace.size() ? nspace + "/" : "" ) + oid;
+@@ -3243,8 +3156,6 @@ int main(int argc, const char **argv)
+       opts["target_locator"] = val;
+     } else if (ceph_argparse_witharg(args, i, &val, "--target-nspace" , (char *)NULL)) {
+       opts["target_nspace"] = val;
+-    } else if (ceph_argparse_flag(args, i, "--striper" , (char *)NULL)) {
+-      opts["striper"] = "true";
+     } else if (ceph_argparse_witharg(args, i, &val, "-t", "--concurrent-ios", (char*)NULL)) {
+       opts["concurrent-ios"] = val;
+     } else if (ceph_argparse_witharg(args, i, &val, "--block-size", (char*)NULL)) {

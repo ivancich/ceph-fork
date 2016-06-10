@@ -1,0 +1,311 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Mon, 6 Jun 2016 16:19:17 -0400
+Subject: rgw ldap: fix ldap bindpw parsing
+
+Also add additional LDAP debugging output at 0, 10, and 15 to make
+troubleshooting easier.
+
+Fixes DN search issue using QE configuration of MS AD.
+
+(cherry picked from commit 72b2f3e8dcb879be3dac7ac03142fd4a13ff28ac)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+
+Resolves: rhbz#1342486
+---
+ src/rgw/librgw.cc         |  6 ++--
+ src/rgw/rgw_ldap.cc       | 35 +++++++++++++++++++++
+ src/rgw/rgw_ldap.h        | 54 +++++++++++++++++++++++++--------
+ src/rgw/rgw_rest_s3.cc    | 77 ++++++++++++++++++++++++++++++++++++-----------
+ 5 files changed, 142 insertions(+), 34 deletions(-)
+
+diff --git a/src/rgw/librgw.cc b/src/rgw/librgw.cc
+index 37414fc..c476129 100644
+--- a/src/rgw/librgw.cc
++++ b/src/rgw/librgw.cc
+@@ -52,6 +52,7 @@
+ #include <string.h>
+ #include <mutex>
+ 
++
+ #define dout_subsys ceph_subsys_rgw
+ 
+ bool global_stop = false;
+@@ -469,9 +470,10 @@ namespace rgw {
+     const string& ldap_searchdn = store->ctx()->_conf->rgw_ldap_searchdn;
+     const string& ldap_dnattr =
+       store->ctx()->_conf->rgw_ldap_dnattr;
++    std::string ldap_bindpw = parse_rgw_ldap_bindpw(store->ctx());
+ 
+-    ldh = new rgw::LDAPHelper(ldap_uri, ldap_binddn, ldap_searchdn,
+-			      ldap_dnattr);
++    ldh = new rgw::LDAPHelper(ldap_uri, ldap_binddn, ldap_bindpw.c_str(),
++			      ldap_searchdn, ldap_dnattr);
+     ldh->init();
+     ldh->bind();
+ 
+diff --git a/src/rgw/rgw_ldap.cc b/src/rgw/rgw_ldap.cc
+index ac420e3..6cca3b8 100644
+--- a/src/rgw/rgw_ldap.cc
++++ b/src/rgw/rgw_ldap.cc
+@@ -2,3 +2,38 @@
+ // vim: ts=8 sw=2 smarttab
+ 
+ #include "rgw_ldap.h"
++
++#include "common/ceph_context.h"
++#include "common/common_init.h"
++#include "common/dout.h"
++#include "common/safe_io.h"
++#include <boost/algorithm/string.hpp>
++
++#include "include/assert.h"
++
++#define dout_subsys ceph_subsys_rgw
++
++std::string parse_rgw_ldap_bindpw(CephContext* ctx)
++{
++  string ldap_bindpw;
++  string ldap_secret = ctx->_conf->rgw_ldap_secret;
++
++  if (ldap_secret.empty()) {
++    ldout(ctx, 10)
++      << __func__ << " LDAP auth no rgw_ldap_secret file found in conf"
++      << dendl;
++    } else {
++      char bindpw[1024];
++      memset(bindpw, 0, 1024);
++      int pwlen = safe_read_file("" /* base */, ldap_secret.c_str(),
++				 bindpw, 1023);
++    if (pwlen) {
++      ldap_bindpw = bindpw;
++      boost::algorithm::trim(ldap_bindpw);
++      if (ldap_bindpw.back() == '\n')
++	ldap_bindpw.pop_back();
++    }
++  }
++
++  return std::move(ldap_bindpw);
++}
+diff --git a/src/rgw/rgw_ldap.h b/src/rgw/rgw_ldap.h
+index 02eb61e..b29e33ad 100644
+--- a/src/rgw/rgw_ldap.h
++++ b/src/rgw/rgw_ldap.h
+@@ -23,27 +23,38 @@ namespace rgw {
+   {
+     std::string uri;
+     std::string binddn;
++    std::string bindpw;
+     std::string searchdn;
+     std::string dnattr;
+     LDAP *ldap;
++    bool msad = false; /* TODO: possible future specialization */
+ 
+   public:
+-    LDAPHelper(std::string _uri, std::string _binddn, std::string _searchdn,
+-	      std::string _dnattr)
+-      : uri(std::move(_uri)), binddn(std::move(_binddn)), searchdn(_searchdn),
+-	dnattr(_dnattr), ldap(nullptr) {
++    LDAPHelper(std::string _uri, std::string _binddn, std::string _bindpw,
++	       std::string _searchdn, std::string _dnattr)
++      : uri(std::move(_uri)), binddn(std::move(_binddn)),
++	bindpw(std::move(_bindpw)), searchdn(_searchdn), dnattr(_dnattr),
++	ldap(nullptr) {
+       // nothing
+     }
+ 
+     int init() {
+       int ret;
+       ret = ldap_initialize(&ldap, uri.c_str());
++      if (ret == LDAP_SUCCESS) {
++	unsigned long ldap_ver = LDAP_VERSION3;
++	ret = ldap_set_option(ldap, LDAP_OPT_PROTOCOL_VERSION,
++			      (void*) &ldap_ver);
++      }
++      if (ret == LDAP_SUCCESS) {
++	ret = ldap_set_option(ldap, LDAP_OPT_REFERRALS, LDAP_OPT_OFF); 
++      }
+       return (ret == LDAP_SUCCESS) ? ret : -EINVAL;
+     }
+ 
+     int bind() {
+       int ret;
+-      ret = ldap_simple_bind_s(ldap, nullptr, nullptr);
++      ret = ldap_simple_bind_s(ldap, binddn.c_str(), bindpw.c_str());
+       return (ret == LDAP_SUCCESS) ? ret : -EINVAL;
+     }
+ 
+@@ -60,11 +71,18 @@ namespace rgw {
+     int auth(const std::string uid, const std::string pwd) {
+       int ret;
+       std::string filter;
+-      filter = "(";
+-      filter += dnattr;
+-      filter += "=";
+-      filter += uid;
+-      filter += ")";
++      if (msad) {
++	filter = "(&(objectClass=user)(sAMAccountName=";
++	filter += uid;
++	filter += "))";
++      } else {
++	/* openldap */
++	filter = "(";
++	filter += dnattr;
++	filter += "=";
++	filter += uid;
++	filter += ")";
++      }
+       char *attrs[] = { const_cast<char*>(dnattr.c_str()), nullptr };
+       LDAPMessage *answer = nullptr, *entry = nullptr;
+       ret = ldap_search_s(ldap, searchdn.c_str(), LDAP_SCOPE_SUBTREE,
+@@ -95,8 +113,8 @@ namespace rgw {
+   class LDAPHelper
+   {
+   public:
+-    LDAPHelper(std::string _uri, std::string _binddn, std::string _searchdn,
+-	      std::string _dnattr)
++    LDAPHelper(std::string _uri, std::string _binddn, std::string _bindpw,
++	       std::string _searchdn, std::string _dnattr)
+       {}
+ 
+     int init() {
+@@ -117,7 +135,17 @@ namespace rgw {
+ 
+ 
+ #endif /* HAVE_OPENLDAP */
+-
++  
+ } /* namespace rgw */
+ 
++#include "common/ceph_context.h"
++#include "common/common_init.h"
++#include "common/dout.h"
++#include "common/safe_io.h"
++#include <boost/algorithm/string.hpp>
++
++#include "include/assert.h"
++
++std::string parse_rgw_ldap_bindpw(CephContext* ctx);
++
+ #endif /* RGW_LDAP_H */
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index dc4e970..1a3d2a0 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -8,6 +8,8 @@
+ #include "common/Formatter.h"
+ #include "common/utf8.h"
+ #include "common/ceph_json.h"
++#include "common/safe_io.h"
++#include <boost/algorithm/string.hpp>
+ 
+ #include "rgw_rest.h"
+ #include "rgw_rest_s3.h"
+@@ -1589,10 +1591,32 @@ int RGWPostObj_ObjStore_S3::get_policy()
+ 	  s->perm_mask = RGW_PERM_FULL_CONTROL;
+ 	}
+       } else if (store->ctx()->_conf->rgw_s3_auth_use_ldap &&
+-		store->ctx()->_conf->rgw_ldap_uri.empty()) {
++		 (! store->ctx()->_conf->rgw_ldap_uri.empty())) {
++
++	ldout(store->ctx(), 15)
++	  << __func__ << " LDAP auth uri="
++	  << store->ctx()->_conf->rgw_ldap_uri
++	  << dendl;
++
+ 	RGWToken token{from_base64(s3_access_key)};
++	if (! token.valid())
++	  return -EACCES;
++
+ 	rgw::LDAPHelper *ldh = RGW_Auth_S3::get_ldap_ctx(store);
+-	if ((! token.valid()) || ldh->auth(token.id, token.key) != 0)
++	if (unlikely(!ldh)) {
++	  ldout(store->ctx(), 0)
++	    << __func__ << " RGW_Auth_S3::get_ldap_ctx() failed"
++	    << dendl;
++	  return -EACCES;
++	}
++
++	ldout(store->ctx(), 10)
++	  << __func__ << " try LDAP auth uri="
++	  << store->ctx()->_conf->rgw_ldap_uri
++	  << " token.id=" << token.id
++	  << dendl;
++
++	if (ldh->auth(token.id, token.key) != 0)
+ 	  return -EACCES;
+ 
+ 	/* ok, succeeded */
+@@ -2911,9 +2935,10 @@ void RGW_Auth_S3::init_impl(RGWRados* store)
+   const string& ldap_searchdn = store->ctx()->_conf->rgw_ldap_searchdn;
+   const string& ldap_dnattr =
+     store->ctx()->_conf->rgw_ldap_dnattr;
++  std::string ldap_bindpw = parse_rgw_ldap_bindpw(store->ctx());
+ 
+-  ldh = new rgw::LDAPHelper(ldap_uri, ldap_binddn, ldap_searchdn,
+-			    ldap_dnattr);
++  ldh = new rgw::LDAPHelper(ldap_uri, ldap_binddn, ldap_bindpw,
++			    ldap_searchdn, ldap_dnattr);
+ 
+   ldh->init();
+   ldh->bind();
+@@ -3727,29 +3752,45 @@ int RGW_Auth_S3::authorize_v2(RGWRados *store, struct req_state *s)
+ 
+     RGW_Auth_S3::init(store);
+ 
++    ldout(store->ctx(), 15)
++      << __func__ << " LDAP auth uri="
++      << store->ctx()->_conf->rgw_ldap_uri
++      << dendl;
++
+     RGWToken token{from_base64(auth_id)};
+-    if ((! token.valid()) || ldh->auth(token.id, token.key) != 0)
++
++    if (! token.valid())
+       external_auth_result = -EACCES;
+     else {
+-      /* ok, succeeded */
+-      external_auth_result = 0;
++      ldout(store->ctx(), 10)
++	<< __func__ << " try LDAP auth uri="
++	<< store->ctx()->_conf->rgw_ldap_uri
++	<< " token.id=" << token.id
++	<< dendl;
++
++      if (ldh->auth(token.id, token.key) != 0)
++	external_auth_result = -EACCES;
++      else {
++	/* ok, succeeded */
++	external_auth_result = 0;
+ 
+-      /* create local account, if none exists */
+-      s->user->user_id = token.id;
+-      s->user->display_name = token.id; // cn?
+-      int ret = rgw_get_user_info_by_uid(store, s->user->user_id, *(s->user));
+-      if (ret < 0) {
+-	ret = rgw_store_user_info(store, *(s->user), nullptr, nullptr,
+-				  real_time(), true);
++	/* create local account, if none exists */
++	s->user->user_id = token.id;
++	s->user->display_name = token.id; // cn?
++	int ret = rgw_get_user_info_by_uid(store, s->user->user_id, *(s->user));
+ 	if (ret < 0) {
+-	  dout(10) << "NOTICE: failed to store new user's info: ret=" << ret
+-		   << dendl;
++	  ret = rgw_store_user_info(store, *(s->user), nullptr, nullptr,
++				    real_time(), true);
++	  if (ret < 0) {
++	    dout(10) << "NOTICE: failed to store new user's info: ret=" << ret
++		     << dendl;
++	  }
+ 	}
+-      }
+ 
+       /* set request perms */
+       s->perm_mask = RGW_PERM_FULL_CONTROL;
+-    } /* success */
++      } /* success */
++    } /* token */
+   } /* ldap */
+ 
+   /* keystone failed (or not enabled); check if we want to use rados backend */
