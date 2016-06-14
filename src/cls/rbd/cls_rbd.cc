@@ -3112,6 +3112,12 @@ int image_set(cls_method_context_t hctx, const string &image_id,
               cpp_strerror(r).c_str());
       return r;
     }
+
+    // make sure this was not a race for disabling
+    if (mirror_image.state == cls::rbd::MIRROR_IMAGE_STATE_DISABLING) {
+      CLS_ERR("image '%s' is already disabled", image_id.c_str());
+      return r;
+    }
   } else if (r < 0) {
     CLS_ERR("error reading mirrored image '%s': '%s'", image_id.c_str(),
 	    cpp_strerror(r).c_str());
@@ -3317,8 +3323,8 @@ int image_status_list(cls_method_context_t hctx,
       (*mirror_images)[image_id] = mirror_image;
 
       cls::rbd::MirrorImageStatus status;
-      r = image_status_get(hctx, mirror_image.global_image_id, &status);
-      if (r < 0) {
+      int r1 = image_status_get(hctx, mirror_image.global_image_id, &status);
+      if (r1 < 0) {
 	continue;
       }
 
@@ -3380,10 +3386,7 @@ int image_status_get_summary(cls_method_context_t hctx,
       }
 
       cls::rbd::MirrorImageStatus status;
-      r = image_status_get(hctx, mirror_image.global_image_id, &status);
-      if (r < 0) {
-	// Ignore.
-      }
+      image_status_get(hctx, mirror_image.global_image_id, &status);
 
       cls::rbd::MirrorImageStatusState state = status.up ? status.state :
 	cls::rbd::MIRROR_IMAGE_STATUS_STATE_UNKNOWN;

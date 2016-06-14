@@ -532,7 +532,7 @@ bool PG::MissingLoc::add_source_info(
 	       << dendl;
       continue;
     }
-    if (oinfo.last_backfill != hobject_t::get_max() &&
+    if (!oinfo.last_backfill.is_max() &&
 	oinfo.last_backfill_bitwise != sort_bitwise) {
       dout(10) << "search_for_missing " << soid << " " << need
 	       << " also missing on osd." << fromosd
@@ -1798,7 +1798,7 @@ void PG::activate(ObjectStore::Transaction& t,
       } else {
 	assert(peer_missing.count(*i));
 	missing_loc.add_active_missing(peer_missing[*i]);
-        if (!peer_missing[*i].have_missing() && peer_info[*i].last_backfill == hobject_t::get_max())
+        if (!peer_missing[*i].have_missing() && peer_info[*i].last_backfill.is_max())
           complete_shards.insert(*i);
       }
     }
@@ -2336,6 +2336,12 @@ void PG::split_into(pg_t child_pgid, PG *child, unsigned split_bits)
   // this comparison includes primary rank via pg_shard_t
   if (get_primary() != child->get_primary())
     child->info.history.same_primary_since = get_osdmap()->get_epoch();
+
+  child->info.stats.up = up;
+  child->info.stats.up_primary = up_primary;
+  child->info.stats.acting = acting;
+  child->info.stats.acting_primary = primary;
+  child->info.stats.mapping_epoch = get_osdmap()->get_epoch();
 
   // History
   child->past_intervals = past_intervals;
@@ -3893,8 +3899,10 @@ void PG::replica_scrub(
   // compensate for hobject_t's with wrong pool from sloppy hammer OSDs
   hobject_t start = msg->start;
   hobject_t end = msg->end;
-  start.pool = info.pgid.pool();
-  end.pool = info.pgid.pool();
+  if (!start.is_max())
+    start.pool = info.pgid.pool();
+  if (!end.is_max())
+    end.pool = info.pgid.pool();
 
   build_scrub_map_chunk(
     map, start, end, msg->deep, msg->seed,
@@ -4273,7 +4281,7 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 	  break;
 	}
 
-	if (cmp(scrubber.end, hobject_t::get_max(), get_sort_bitwise()) < 0) {
+	if (!(scrubber.end.is_max())) {
           scrubber.state = PG::Scrubber::NEW_CHUNK;
 	  requeue_scrub();
           done = true;

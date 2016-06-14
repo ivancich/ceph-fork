@@ -95,10 +95,13 @@ librbd_mirror_internal_la_SOURCES = \
 	tools/rbd_mirror/Mirror.cc \
 	tools/rbd_mirror/PoolWatcher.cc \
 	tools/rbd_mirror/Replayer.cc \
+        tools/rbd_mirror/ImageDeleter.cc \
 	tools/rbd_mirror/Threads.cc \
 	tools/rbd_mirror/types.cc \
 	tools/rbd_mirror/image_replayer/BootstrapRequest.cc \
 	tools/rbd_mirror/image_replayer/CloseImageRequest.cc \
+	tools/rbd_mirror/image_replayer/CreateImageRequest.cc \
+	tools/rbd_mirror/image_replayer/OpenImageRequest.cc \
 	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc \
 	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc \
 	tools/rbd_mirror/image_sync/ImageCopyRequest.cc \
@@ -109,6 +112,7 @@ librbd_mirror_internal_la_SOURCES = \
 	tools/rbd_mirror/image_sync/SyncPointPruneRequest.cc
 noinst_LTLIBRARIES += librbd_mirror_internal.la
 noinst_HEADERS += \
+	tools/rbd_mirror/BaseRequest.h \
 	tools/rbd_mirror/ClusterWatcher.h \
 	tools/rbd_mirror/ImageReplayer.h \
 	tools/rbd_mirror/ImageSync.h \
@@ -116,12 +120,16 @@ noinst_HEADERS += \
 	tools/rbd_mirror/PoolWatcher.h \
 	tools/rbd_mirror/ProgressContext.h \
 	tools/rbd_mirror/Replayer.h \
+        tools/rbd_mirror/ImageDeleter.h \
 	tools/rbd_mirror/Threads.h \
 	tools/rbd_mirror/types.h \
 	tools/rbd_mirror/image_replayer/BootstrapRequest.h \
 	tools/rbd_mirror/image_replayer/CloseImageRequest.h \
+	tools/rbd_mirror/image_replayer/CreateImageRequest.h \
+	tools/rbd_mirror/image_replayer/OpenImageRequest.h \
 	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.h \
 	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.h \
+	tools/rbd_mirror/image_replayer/Utils.h \
 	tools/rbd_mirror/image_sync/ImageCopyRequest.h \
 	tools/rbd_mirror/image_sync/ObjectCopyRequest.h \
 	tools/rbd_mirror/image_sync/SnapshotCopyRequest.h \

@@ -58,6 +58,13 @@ public:
   ImageCopyRequest() {
     s_instance = this;
   }
+
+  void put() {
+  }
+
+  void get() {
+  }
+
   MOCK_METHOD0(cancel, void());
   MOCK_METHOD0(send, void());
 };
@@ -73,6 +80,7 @@ public:
                                      SnapshotCopyRequest<librbd::ImageCtx>::SnapMap *snap_map,
                                      journal::MockJournaler *journaler,
                                      librbd::journal::MirrorPeerClientMeta *client_meta,
+                                     ContextWQ *work_queue,
                                      Context *on_finish) {
     assert(s_instance != nullptr);
     s_instance->on_finish = on_finish;
@@ -82,7 +90,15 @@ public:
   SnapshotCopyRequest() {
     s_instance = this;
   }
+
+  void put() {
+  }
+
+  void get() {
+  }
+
   MOCK_METHOD0(send, void());
+  MOCK_METHOD0(cancel, void());
 };
 
 template <>
@@ -143,6 +159,7 @@ using ::testing::InSequence;
 using ::testing::Invoke;
 using ::testing::Return;
 using ::testing::WithArg;
+using ::testing::InvokeWithoutArgs;
 
 class TestMockImageSync : public TestMockFixture {
 public:
@@ -238,7 +255,7 @@ public:
     return new MockImageSync(&mock_local_image_ctx, &mock_remote_image_ctx,
                              m_threads->timer, &m_threads->timer_lock,
                              "mirror-uuid", &mock_journaler, &m_client_meta,
-                             ctx);
+                             m_threads->work_queue, ctx);
   }
 
   librbd::ImageCtx *m_remote_image_ctx;
@@ -272,7 +289,7 @@ TEST_F(TestMockImageSync, SimpleSync) {
   MockImageSync *request = create_request(mock_remote_image_ctx,
                                           mock_local_image_ctx,
                                           mock_journaler, &ctx);
-  request->start();
+  request->send();
   ASSERT_EQ(0, ctx.wait());
 }
 
@@ -307,7 +324,7 @@ TEST_F(TestMockImageSync, RestartSync) {
   MockImageSync *request = create_request(mock_remote_image_ctx,
                                           mock_local_image_ctx,
                                           mock_journaler, &ctx);
-  request->start();
+  request->send();
   ASSERT_EQ(0, ctx.wait());
 }
 
@@ -336,13 +353,78 @@ TEST_F(TestMockImageSync, CancelImageCopy) {
   MockImageSync *request = create_request(mock_remote_image_ctx,
                                           mock_local_image_ctx,
                                           mock_journaler, &ctx);
-  request->start();
+  request->get();
+  request->send();
 
   // cancel the image copy once it starts
   ASSERT_EQ(0, image_copy_ctx.wait());
   request->cancel();
+  request->put();
   m_threads->work_queue->queue(mock_image_copy_request.on_finish, 0);
 
+  ASSERT_EQ(-ECANCELED, ctx.wait());
+}
+
+TEST_F(TestMockImageSync, CancelAfterCopySnapshots) {
+  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
+  librbd::MockImageCtx mock_local_image_ctx(*m_local_image_ctx);
+  journal::MockJournaler mock_journaler;
+  MockSnapshotCopyRequest mock_snapshot_copy_request;
+  MockSyncPointCreateRequest mock_sync_point_create_request;
+
+  librbd::MockObjectMap *mock_object_map = new librbd::MockObjectMap();
+  mock_local_image_ctx.object_map = mock_object_map;
+  expect_test_features(mock_local_image_ctx);
+
+  C_SaferCond ctx;
+  MockImageSync *request = create_request(mock_remote_image_ctx,
+                                          mock_local_image_ctx,
+                                          mock_journaler, &ctx);
+  InSequence seq;
+  expect_create_sync_point(mock_local_image_ctx, mock_sync_point_create_request, 0);
+  EXPECT_CALL(mock_snapshot_copy_request, send())
+    .WillOnce((DoAll(InvokeWithoutArgs([request]() {
+	      request->cancel();
+	    }),
+	  Invoke([this, &mock_snapshot_copy_request]() {
+	      m_threads->work_queue->queue(mock_snapshot_copy_request.on_finish, 0);
+	    }))));
+  EXPECT_CALL(mock_snapshot_copy_request, cancel());
+
+  request->send();
+  ASSERT_EQ(-ECANCELED, ctx.wait());
+}
+
+TEST_F(TestMockImageSync, CancelAfterCopyImage) {
+  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
+  librbd::MockImageCtx mock_local_image_ctx(*m_local_image_ctx);
+  journal::MockJournaler mock_journaler;
+  MockImageCopyRequest mock_image_copy_request;
+  MockSnapshotCopyRequest mock_snapshot_copy_request;
+  MockSyncPointCreateRequest mock_sync_point_create_request;
+  MockSyncPointPruneRequest mock_sync_point_prune_request;
+
+  librbd::MockObjectMap *mock_object_map = new librbd::MockObjectMap();
+  mock_local_image_ctx.object_map = mock_object_map;
+  expect_test_features(mock_local_image_ctx);
+
+  C_SaferCond ctx;
+  MockImageSync *request = create_request(mock_remote_image_ctx,
+                                          mock_local_image_ctx,
+                                          mock_journaler, &ctx);
+  InSequence seq;
+  expect_create_sync_point(mock_local_image_ctx, mock_sync_point_create_request, 0);
+  expect_copy_snapshots(mock_snapshot_copy_request, 0);
+  EXPECT_CALL(mock_image_copy_request, send())
+    .WillOnce((DoAll(InvokeWithoutArgs([request]() {
+	      request->cancel();
+	    }),
+	  Invoke([this, &mock_image_copy_request]() {
+	      m_threads->work_queue->queue(mock_image_copy_request.on_finish, 0);
+	    }))));
+  EXPECT_CALL(mock_image_copy_request, cancel());
+
+  request->send();
   ASSERT_EQ(-ECANCELED, ctx.wait());
 }
 

@@ -34,7 +34,10 @@ struct SnapshotCreateRequest<librbd::MockImageCtx> {
   static SnapshotCreateRequest* s_instance;
   static SnapshotCreateRequest* create(librbd::MockImageCtx* image_ctx,
                                        const std::string &snap_name,
-                                       uint64_t size, Context *on_finish) {
+                                       uint64_t size,
+                                       const librbd::parent_spec &parent_spec,
+                                       uint64_t parent_overlap,
+                                       Context *on_finish) {
     assert(s_instance != nullptr);
     s_instance->on_finish = on_finish;
     return s_instance;
@@ -157,7 +160,7 @@ public:
     return new MockSnapshotCopyRequest(&mock_local_image_ctx,
                                        &mock_remote_image_ctx, &m_snap_map,
                                        &mock_journaler, &m_client_meta,
-                                       on_finish);
+                                       m_threads->work_queue, on_finish);
   }
 
   int create_snap(librbd::ImageCtx *image_ctx, const std::string &snap_name,
@@ -231,6 +234,26 @@ TEST_F(TestMockImageSyncSnapshotCopyRequest, UpdateClientError) {
   ASSERT_EQ(-EINVAL, ctx.wait());
 }
 
+TEST_F(TestMockImageSyncSnapshotCopyRequest, UpdateClientCancel) {
+  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
+  librbd::MockImageCtx mock_local_image_ctx(*m_local_image_ctx);
+  journal::MockJournaler mock_journaler;
+
+  C_SaferCond ctx;
+  MockSnapshotCopyRequest *request = create_request(mock_remote_image_ctx,
+                                                    mock_local_image_ctx,
+                                                    mock_journaler, &ctx);
+  InSequence seq;
+  EXPECT_CALL(mock_journaler, update_client(_, _))
+    .WillOnce(DoAll(InvokeWithoutArgs([request]() {
+	    request->cancel();
+	  }),
+	WithArg<1>(CompleteContext(0))));
+
+  request->send();
+  ASSERT_EQ(-ECANCELED, ctx.wait());
+}
+
 TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapCreate) {
   ASSERT_EQ(0, create_snap(m_remote_image_ctx, "snap1"));
   ASSERT_EQ(0, create_snap(m_remote_image_ctx, "snap2"));
@@ -278,6 +301,31 @@ TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapCreateError) {
                                                     mock_journaler, &ctx);
   request->send();
   ASSERT_EQ(-EINVAL, ctx.wait());
+}
+
+TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapCreateCancel) {
+  ASSERT_EQ(0, create_snap(m_remote_image_ctx, "snap1"));
+
+  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
+  librbd::MockImageCtx mock_local_image_ctx(*m_local_image_ctx);
+  MockSnapshotCreateRequest mock_snapshot_create_request;
+  journal::MockJournaler mock_journaler;
+
+  C_SaferCond ctx;
+  MockSnapshotCopyRequest *request = create_request(mock_remote_image_ctx,
+                                                    mock_local_image_ctx,
+                                                    mock_journaler, &ctx);
+  InSequence seq;
+  EXPECT_CALL(mock_snapshot_create_request, send())
+    .WillOnce(DoAll(InvokeWithoutArgs([request]() {
+	    request->cancel();
+	  }),
+	Invoke([this, &mock_snapshot_create_request]() {
+	    m_threads->work_queue->queue(mock_snapshot_create_request.on_finish, 0);
+	  })));
+
+  request->send();
+  ASSERT_EQ(-ECANCELED, ctx.wait());
 }
 
 TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapRemoveAndCreate) {
@@ -383,6 +431,38 @@ TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapUnprotectError) {
                                                     mock_journaler, &ctx);
   request->send();
   ASSERT_EQ(-EBUSY, ctx.wait());
+}
+
+TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapUnprotectCancel) {
+  ASSERT_EQ(0, create_snap(m_remote_image_ctx, "snap1", true));
+  ASSERT_EQ(0, create_snap(m_local_image_ctx, "snap1", true));
+
+  uint64_t remote_snap_id1 = m_remote_image_ctx->snap_ids["snap1"];
+  uint64_t local_snap_id1 = m_local_image_ctx->snap_ids["snap1"];
+  m_client_meta.snap_seqs[remote_snap_id1] = local_snap_id1;
+
+  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
+  librbd::MockImageCtx mock_local_image_ctx(*m_local_image_ctx);
+  journal::MockJournaler mock_journaler;
+
+  C_SaferCond ctx;
+  MockSnapshotCopyRequest *request = create_request(mock_remote_image_ctx,
+                                                    mock_local_image_ctx,
+                                                    mock_journaler, &ctx);
+  InSequence seq;
+  expect_snap_is_unprotected(mock_local_image_ctx, local_snap_id1, false, 0);
+  expect_snap_is_unprotected(mock_remote_image_ctx, remote_snap_id1, true, 0);
+  EXPECT_CALL(*mock_local_image_ctx.operations,
+	      execute_snap_unprotect(StrEq("snap1"), _))
+    .WillOnce(DoAll(InvokeWithoutArgs([request]() {
+	    request->cancel();
+	  }),
+	WithArg<1>(Invoke([this](Context *ctx) {
+	    m_threads->work_queue->queue(ctx, 0);
+	    }))));
+
+  request->send();
+  ASSERT_EQ(-ECANCELED, ctx.wait());
 }
 
 TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapUnprotectRemove) {
@@ -498,6 +578,39 @@ TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapProtectError) {
                                                     mock_journaler, &ctx);
   request->send();
   ASSERT_EQ(-EINVAL, ctx.wait());
+}
+
+TEST_F(TestMockImageSyncSnapshotCopyRequest, SnapProtectCancel) {
+  ASSERT_EQ(0, create_snap(m_remote_image_ctx, "snap1", true));
+  ASSERT_EQ(0, create_snap(m_local_image_ctx, "snap1", true));
+
+  uint64_t remote_snap_id1 = m_remote_image_ctx->snap_ids["snap1"];
+  uint64_t local_snap_id1 = m_local_image_ctx->snap_ids["snap1"];
+  m_client_meta.snap_seqs[remote_snap_id1] = local_snap_id1;
+
+  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
+  librbd::MockImageCtx mock_local_image_ctx(*m_local_image_ctx);
+  journal::MockJournaler mock_journaler;
+
+  C_SaferCond ctx;
+  MockSnapshotCopyRequest *request = create_request(mock_remote_image_ctx,
+                                                    mock_local_image_ctx,
+                                                    mock_journaler, &ctx);
+  InSequence seq;
+  expect_snap_is_unprotected(mock_local_image_ctx, local_snap_id1, true, 0);
+  expect_snap_is_protected(mock_remote_image_ctx, remote_snap_id1, true, 0);
+  expect_snap_is_protected(mock_local_image_ctx, local_snap_id1, false, 0);
+  EXPECT_CALL(*mock_local_image_ctx.operations,
+	      execute_snap_protect(StrEq("snap1"), _))
+    .WillOnce(DoAll(InvokeWithoutArgs([request]() {
+	    request->cancel();
+	  }),
+	WithArg<1>(Invoke([this](Context *ctx) {
+	      m_threads->work_queue->queue(ctx, 0);
+	    }))));
+
+  request->send();
+  ASSERT_EQ(-ECANCELED, ctx.wait());
 }
 
 } // namespace image_sync
