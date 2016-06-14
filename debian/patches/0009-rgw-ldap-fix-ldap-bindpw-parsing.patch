@@ -11,12 +11,14 @@ Fixes DN search issue using QE configuration of MS AD.
 Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
 
 Resolves: rhbz#1342486
+
+Needed to remove the change to src/test/test_rgw_ldap.cc for downstream.
 ---
- src/rgw/librgw.cc         |  6 ++--
- src/rgw/rgw_ldap.cc       | 35 +++++++++++++++++++++
- src/rgw/rgw_ldap.h        | 54 +++++++++++++++++++++++++--------
- src/rgw/rgw_rest_s3.cc    | 77 ++++++++++++++++++++++++++++++++++++-----------
- 5 files changed, 142 insertions(+), 34 deletions(-)
+ src/rgw/librgw.cc      |  6 ++--
+ src/rgw/rgw_ldap.cc    | 35 +++++++++++++++++++++++
+ src/rgw/rgw_ldap.h     | 54 ++++++++++++++++++++++++++---------
+ src/rgw/rgw_rest_s3.cc | 77 ++++++++++++++++++++++++++++++++++++++------------
+ 4 files changed, 139 insertions(+), 33 deletions(-)
 
 diff --git a/src/rgw/librgw.cc b/src/rgw/librgw.cc
 index 37414fc..c476129 100644

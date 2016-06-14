@@ -1,10 +1,21 @@
-From 8fb8a2e9da46bb4261dc56ff34e4eba8195dfff7 Mon Sep 17 00:00:00 2001
 From: Samuel Just <sjust@redhat.com>
 Date: Thu, 2 Jun 2016 12:16:58 -0700
-Subject: [PATCH] libradosstriper: remove the rest of the libradosstriper code
+Subject: libradosstriper: remove the rest of the libradosstriper code
 
 Resolves: rhbz#1339870
 Signed-off-by: Samuel Just <sjust@redhat.com>
+
+Had to remove the following changes, since the upstream tarball does not
+contain these files:
+
+    debian/control
+    debian/libradosstriper-dev.install
+    debian/libradosstriper1.install
+    debian/rules
+    src/libradosstriper/CMakeLists.txt
+    src/CMakeLists.txt
+    src/test/CMakeLists.txt
+    src/test/libradosstriper/CMakeLists.txt
 ---
  ceph.spec.in                                  |   43 +-
  src/Makefile-env.am                           |    1 -
@@ -26,7 +37,7 @@ Signed-off-by: Samuel Just <sjust@redhat.com>
  src/test/libradosstriper/aio.cc               |  575 -------------
  src/test/libradosstriper/io.cc                |  406 ---------
  src/test/libradosstriper/striping.cc          |  319 -------
- 28 files changed, 2 insertions(+), 4728 deletions(-)
+ 20 files changed, 1 insertion(+), 4661 deletions(-)
  delete mode 100644 src/include/radosstriper/libradosstriper.h
  delete mode 100644 src/include/radosstriper/libradosstriper.hpp
  delete mode 100644 src/libradosstriper/Makefile.am
@@ -42,10 +53,10 @@ Signed-off-by: Samuel Just <sjust@redhat.com>
  delete mode 100644 src/test/libradosstriper/striping.cc
 
 diff --git a/ceph.spec.in b/ceph.spec.in
-index 6ec065e..6661c92 100644
+index 3cf6307..65eb364 100644
 --- a/ceph.spec.in
 +++ b/ceph.spec.in
-@@ -441,27 +441,6 @@ Obsoletes:	python-ceph < %{epoch}:%{version}-%{release}
+@@ -398,27 +398,6 @@ Obsoletes:	python-ceph < %{epoch}:%{version}-%{release}
  This package contains Python libraries for interacting with Cephs RADOS
  object store.
  
@@ -73,7 +84,7 @@ index 6ec065e..6661c92 100644
  %package -n librbd1
  Summary:	RADOS block device client library
  Group:		System Environment/Libraries
-@@ -627,7 +606,6 @@ Group:		Development/Libraries
+@@ -579,7 +558,6 @@ Group:		Development/Libraries
  License:	LGPL-2.0
  Obsoletes:	ceph-devel
  Requires:	librados2-devel = %{epoch}:%{version}-%{release}
@@ -81,7 +92,7 @@ index 6ec065e..6661c92 100644
  Requires:	librbd1-devel = %{epoch}:%{version}-%{release}
  Requires:	libcephfs1-devel = %{epoch}:%{version}-%{release}
  %if 0%{with cephfs_java}
-@@ -638,7 +616,7 @@ Provides:	ceph-devel
+@@ -590,7 +568,7 @@ Provides:	ceph-devel
  This is a compatibility package to accommodate ceph-devel split into
  librados2-devel, librbd1-devel and libcephfs1-devel. Packages still depending
  on ceph-devel should be fixed to depend on librados2-devel, librbd1-devel,
@@ -90,7 +101,7 @@ index 6ec065e..6661c92 100644
  
  %package -n python-ceph-compat
  Summary:	Compatibility package for Cephs python libraries
-@@ -1378,25 +1356,6 @@ fi
+@@ -1250,25 +1228,6 @@ fi
  %{python_sitearch}/rados-*.egg-info
  
  #################################################################################

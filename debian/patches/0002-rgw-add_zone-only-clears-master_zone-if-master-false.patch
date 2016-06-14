@@ -12,7 +12,7 @@ Resolves: rhbz#1336644
  1 file changed, 8 insertions(+), 6 deletions(-)
 
 diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
-index 8a3420c..f66a943 100644
+index e6cb001..87c83d6 100644
 --- a/src/rgw/rgw_rados.cc
 +++ b/src/rgw/rgw_rados.cc
 @@ -238,13 +238,15 @@ int RGWZoneGroup::equals(const string& other_zonegroup) const
