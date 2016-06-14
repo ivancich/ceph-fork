@@ -1,6 +1,199 @@
-3a66dd4 (HEAD, tag: v10.2.1) 10.2.1
+45107e2 (HEAD, tag: v10.2.2, origin/jewel) 10.2.2
+dd1ea65 librbd: remove should ignore mirror errors from older OSDs
+2656881 librbd: track in-flight flush events for journaling
+a85fbb4 librbd: do not shut down exclusive lock while acquiring
+a38caf9 rbd-mirror: FAILED assert(!m_status_watcher)
+739f343 qa/workunits: ensure replay has started before checking position
+0579a48 rbd-mirror: reset local image id when creating new image
+ec80987 rbd-mirror: handle an attempt to delete a non-mirrored image
+6c30300 cls_rbd: disallow setting an empty mirror image entry to disabling
+edef63d librbd: avoid holding owner_lock waiting for exclusive lock
+d61e3dd client: fix simultaneous readdirs race
+ba9fa11 client: move dir_{release,ordered}_count into class Inode
+f5db278 ceph_test_libcephfs: check order of entries in readdir result
+51a7506 mds: don't reset readdir offset if client supports hash order dentry
+3fe5a09 client: using hash value to compose dentry offset
+a65b3ef client: record 'offset' for each entry of dir_result_t::buffer
+8361b98 client: fix cached readdir after seekdir
+cf26125 mds: define end/complete in readdir reply as single u16 flags
+9ce73cd mds: sort dentries in CDir in hash order
+288160b client: save readdir result into dir_result_t directly
+75edb5b client: don't allocate dir_result_t::buffer dynamically
+98e36d1 client: simplify 'offset in frag'
+2eaaf2e client: move readahead ref get/put to obj constr
+1ec2ef8 client: use fh min readahead to enable readahead
+b0bccc3 client: update comment
+e410468 client: use layout.get_period() helper
+e5759fa librbd: recursive lock possible when disabling journaling
+bc658ed rbd-mirror: do not propagate deletions when pool unavailable
+dc38a26 rbd-mirror: image deleter properly handles multiple snapshots
+0a74552 rbd-mirror: propagate deletions even if image replayer is stopped
+da6d409 qa/workunits/rbd: improve deletion propagation test case
+cb50679 librbd: quickly check for duplicate snap name upon create
+43f3bbf rbd-mirror: stop external replayer before closing remote journaler
+f0bf15e librbd: stop journal recorder before starting external replay
+3a2cd16 rbd-mirror: refresh image after creating sync point snapshot
+6b77d22 rbd-mirror: consistently use dout/derr for debug logging
+03466f0 rbd-mirror: don't return split-brain error if we still in MIRROR_PEER_STATE_SYNCING
+dfefd34 rbd-mirror: refactor split-brain detection code
+c94e5b7 rbd-mirror: support bootstrap canceling
+c8a3e75 rbd-mirror: return ECANCELED when ImageReplayer start is canceled
+0014a9e librbd: flush journal commit positions before starting op
+3cec45a librbd: leaked AioCompletion if IO issued after image shut down
+ef12536 librbd: resize and snap create can hang on journal replay failure
+c8b4cab librbd: missing journal state for flushing/restarting replay
+bc7649b librbd: track IO in the order issued
+602ffd7 librbd: AioCompletion should retrieve CephContext from ImageCtx
+6e20662 librbd: only mark async completion as done after callback
+de29be7 librbd: Journal no longer requires AioCompletion for IO events
+65556aa librbd: bubble journal error up via existing AioObjectRequests
+bddf944 librbd: potential duplicate snap removal can result in crash
+4ce4130 ObjectCacher: do not merge uncommitted journal bhs
+6e64598 ObjectCacher: don't loop the extents of OSDRead in map_read
+c5f281d ObjectCacher: fix the bytes_written in writex
+1c00d81 osdc: don't loop the extents of OSDWrite in map_write
+b48cdb2 librbd: notify image feature update before releasing lock
+680efbd librbd: refresh image after acquiring exclusive lock
+bb279f1 librbd: refresh image if needed in mirror functions
+3b8cb63 cls_rbd: mirror image status summary should read full directory
+4a967eb Revert "osd/ReplicatedPG: for copy_get get omap, firstly check ob whether has omap."
+fd8f8af Revert "osd/ReplicatedPG: For omap read ops, it should check object wether has omap"
+d59ca31 Revert "osd/ReplicatedPG: When do omapclear, it should check object whether is omap."
+f4306de osdc/Objecter: upper bound watch_check result
+64f15b3 OSD: fix deadlock in OSD::_committed_osd_maps
+adfbe95 osd: handle boot racing with NOUP set
+e424482 TaskFinisher: use singleton SafeTimer and Finisher
+99ff1fc BackoffThrottle: wait() if past max
+5ce43eb BackoffThrottle: use wait_for instead of wait_until
+cec6870 test/rbd: fsx needs to shut down the journal
+09200d4 remove invalid objectmap flag when objectmap is disabled Fixes: http://tracker.ceph.com/issues/16076 Signed-off-by: xinxin shu <shuxinxin@chinac.com>
+6c0e202 rbd: check value of config override when setting image-meta
+e15bfff pybind/rbd: create/clone/copy: default to None for features param
+f9e32ac librbd: clone: default to parent features
+6af7b22 qa: dynamic_features.sh: return error only if it failed on alive QEMU
+73464af test: initial python APIs to support mirroring
+5c31266 rbd: initial python APIs to support mirroring
+3084cf3 rbd: close journal before removing
+a32820d src/: remove all direct comparisons to get_max()
+f869594 PG::replica_scrub: don't adjust pool on max object
+1737ff3 hobject: compensate for non-canonical hobject_t::get_max() encodings
+5d9ee88 pybind: configurable cephfs_vol_client prefix and ns_prefix.
+470605c ceph_volume_client: evict client also based on mount path
+726292e client: report root's quota in statfs
+46c2bd0 pybind: fix unicode handling in CephFSVolumeClient::purge
+b989084 ceph-disk: workaround gperftool hang
+69a9500 rpm: unconditionally set ceph user's primary group to ceph (SUSE)
+208659f qa/workunits/rbd: basic cloned image test
+af6be1b rbd-mirror: copy snapshot parent image settings
+8405c2c cls_rbd: asynchronous helper method to set parent
+26f4edc rbd-mirror: add support for cloning images from mirrored parent
+b8b01c5 librbd: extend internal API to clone from open parent image
+9081c58 cls_rbd: asynchronous helper methods to retrieve mirror image metadata
+2c2f4b2 rbd-mirror: helper state machine to open remote/read-only images
+0bcc295 rbd-mirror: cluster-level asok commands need to support multiple pools
+e4547c0 rbd-mirror: replayer should only handle a single pool
+6fc5328 rbd-mirror: group peers by local pools
+0745cc3 rbd-mirror: stop stale replayers before starting new replayers
+91f8373 rbd-mirror: normalize debug log message prefix
+5f0d89a qa/workunits/rbd: create secondary replicated pool
+61542c1 rbd-mirror: image replay now uses asynchronous journal shutdown
+bf4c458 librbd: integrate with async journaler shutdown API
+36cf42a journal: extend asynchronous shutdown to facade
+1b0422d journal: trimmer now has asynchronous shutdown
+f913946 journal: metadata init and shutdown now asynchronous
+1a9d60f journal: player shutdown is now handled asynchronously
+4af5bb1 test: use randomized write sizes for rbd-mirror stress test
+df2b8d9 journal: eliminate watch delay for object refetches
+c65614f journal: keep active tag to assist with pruning watched objects
+30c7f4d journal: update commit entry object number upon overflow
+fa08330 journal: cleanup watch refetch flag handling
+6375c78 rbd-mirror: test: added image-deleter test case when mirroring is disabled
+1ba6505 rbd-mirror: Unregister clients from non-primary images journal
+a53cf28 rbd-mirror: test: Added unit test for testing image-deleter thread
+78b13a5 rbd-mirror: test: Fixed test_PoolWatcher to support the new changes in PoolWatcher class
+fef7456 rbd-mirror: Replayer: bootstrap existing mirrored images
+97eb85f rbd-mirror: replayer: Added image-deleter thread to replayer
+24406c5 rbd-mirror: Added image-deleter thread to rbd-mirror
+0780230 rbd-mirror: Added implementation of image-deleter thread
+38514ad rbd-mirror: librbd::mirror_peer_list never returns -ENOENT
+4e7233a rbd-mirror: fix typo
+c3b1bf1 rbd-mirror: calculate behind_master only if mirror tag is not newer than master
+cb950fc test: workaround failure in journal.sh
+f92c2a5 cls::journal: treat empty commit position as minimal
+be9e85d tests: rm -fr /tmp/*virtualenv*
+8fbb555 cls_journal: Select min commit position for new clients
+576ff0c cls_journal: remove duplicated key generation
+fae360f rgw: fix manager selection when APIs customized
+8bbb5ad osd/OpRequest: reset connection upon unregister
+e97cc2d osd: reset session->osdmap if session is not waiting for a map anymore
+555cec9 ceph.in: fix exception when pool name has non-ascii characters
+305ebbc librbd: metadata retrieval added to open image state machine
+5c9ecea cls_rbd: async version of metadata_list helper method
+0c99028 rbd-mirror: disable librbd caching for replicated images
+188318b rpm: Restore /var/run/ceph context manually
+ab1f65d rpm: Mute semodule in postun script
+587fb3d install-deps.sh: systemd-rpm-macros must be installed on SUSE
+69470d4 rpm: Drop SELinux priority setting
+128dbc8 rpm: Fix SELinux relabel on fedora
+8182b9a Test-enable XIO messenger and IB/RDMA support
+50626ce rpm: do a full make check when --with-tests is given
+fb6858c rpm: drop sysvinit bits from relabel_files function
+db4f2d6 rpm: replace literal paths with RPM macros
+3abf895 rpm: drop udev/95-ceph-osd-alt.rules
+a7e01dd rpm: global replace $RPM_BUILD_ROOT with %{buildroot}
+d81cec9 rpm: put dependencies in alphabetical order
+e8338a5 rpm: drop sysvinit-specific dependencies
+b18d8ac rpm: move boost-random dependency to appropriate section
+94efaef rpm: move unified python-sphinx build dependency
+54dc8bf rpm: drop init-ceph.in-fedora.patch
+641e5bb rpm: drop dead conditionals
+4317a17 rpm: drop python-argparse dependency
+70466ff rpm: drop _with_systemd
+928a815 rpm: drop python_sitelib/sitearch conditional
+9f76b9f udev: remove 60-ceph-partuuid-workaround-rules
+1ad3901 rpm: refrain from installing systemd unit files twice
+9c81f25 test/ec: build the libs only when 'make check'
+663d7c2 mon/Monitor: use CEPH_MON_PORT for CRC output
+64b948c mon/Monitor: fix memory leak
+9c3c6d5 mon/Monitor: use VOID_TEMP_FAILURE_RETRY wrapper for fd close().
+544c538 mon/Monitor: add "host" to tracked_conf_key
+e5ebb51 journal: replay position might change after pruning stale tags
+9ecc3dc librbd: delay commit of overwritten journal event
+070dc7c ObjectCacher: pass new journal tid when overwriting extent
+0dfc787 qa/workunits/rbd: record rbd CLI debug messages during mirror stress
+ffd545b rgw: keep track of written_objs correctly
+8356021 Pipe: take a ref to existing while we are waiting
+e0dfc55 qa/workunits/rbd: fixed rbd_mirror teuthology runtime errors
+5f09b9a journal: reset watch step after pruning expired tag
+2ee1e0a rbd-mirror: additional debug messages during image replayer start/stop
+f9e6bd8 rbd-mirror: ensure proper handling of status updates during shutdown
+f789d83 rbd-mirror: track bootstrap state within image status
+e0b3879 rbd-mirror: combine ImageReplayer stopped and uninitialized states
+9c7977d rbd-mirror: lock ordering issue in status update callback
+66f7f2d rbd-mirror: don't unregister asok commands if image replayer start failed
+569f06f rbd-mirror: avoid potential deadlock
+0d19390 qa/workunits/rbd: rbd-mirror daemon stress test
+d020b6a journal: helper method to detect newer tags
+5651507 journal: skip partially complete tag entries during playback
+18f663d journal: close, advance, and open object set ordering
+27fba6a journal: new ObjectRecorder closed callback
+870c21c journal: do not flag append as full if already known to be full
+1cdebc7 journal: delay object overflow event until in-flight appends settled
+821d92a journal: ignore flush on closed/overflowed object
+3d860d5 journal: implicitly detach future's flush handler on append
+f98e128 journal: async callback for advancing the active object set
+86e51eb journal: re-fetch active object before advancing set during replay
+e885f1e radosgw-admin: fix 'period push' handling of --url
+37ecfa6 global: don't link lttng into libglobal
+16ba13c doc: update mirroring guide to include pool/image status commands
+818166e doc: fixup: "rbd-mirror daemon" instead of "rbd-daemon"
+7be281d debian/control: dh_systemd_start is in the dh-systemd package
+e463aa8 debian: install systemd target files
+3a66dd4 (tag: v10.2.1) 10.2.1
+72c9b6f osd: remove all stale osdmaps in handle_osd_map()
 a496b70 cmake: fix rbd compile errors
 9a46e13 cmake: add library cls_journal for target unittest_librbd
+6c2973c cls::rbd: mirror_image_status_list returned max 64 items
 48b732f tests: enable make check on ext4 (part 2)
 e1c67d4 qa/workunits/ceph-helpers.sh: make ceph-osd behave on ext4
 867f798 radosgw-admin: 'period commit' sends to new master zone by default
@@ -106,6 +299,7 @@ ae3ce5b messages: add MMDSBeacon::standby_replay
 c1279d8 mds: remove inc array from mdsmap
 9d5162f test/mds: add test for symbols in paths
 af3a4e4 mds: fix auth caps with hyphen in path
+3674341 osd/PG: update info.stats.* mappings on split
 075ee03 rgw_op: pass delete bucket op to master zone first
 1527b56 rgw: add errno entry for -ENOTEMPTY
 791eba8 fix deb package /etc/default/ceph location
@@ -136,6 +330,9 @@ af1c0bc rbd-mirror: interrupting image replay startup can cause crash
 6e5091e systemd: fix typo in preset file
 d302617 systemd: fix typo in preset file
 8cae07c librbd: fix potential double free of SetSnapRequest instance
+b443fdf ceph.spec.in: recommend ntp-daemon on SUSE
+299f84c deb: make ceph-base and radosgw recommend time-daemon
+2da7cb2 systemd: make Ceph daemon units "want" time-sync.target
 37ccacf rpm: Add rpm scripts for ceph-rbd-mirror
 c729bdd rpm: Start all the targets in %post
 c72f0bc rpm: implement scriptlets for the post-split daemon packages
@@ -25454,7 +25651,7 @@ f69d025 conf: make dup lines override previous value
 5f3ef77 mon: make pool snap creation ops idempotent
 53aa959 objecter: return ENOENT/EEXIST on pool snap delete/create
 507f99e librados: make snap create/destroy handle client-side errors
-3715d20 mon: check for invalid pool snap creates in preprocess_op, too
+3715d205 mon: check for invalid pool snap creates in preprocess_op, too
 640e5fd qa: simple tests for 'ceph osd create|rm' commands
 6f7837a mon: make 'osd rm ...' idempotent
 4788567 qa: simple test for pool create/delete commands

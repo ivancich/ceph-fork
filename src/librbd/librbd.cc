@@ -87,11 +87,11 @@ struct C_OpenComplete : public Context {
     }
     if (r < 0) {
       *ictxp = nullptr;
-      comp->fail(ictx->cct, r);
+      comp->fail(r);
     } else {
       *ictxp = ictx;
       comp->lock.Lock();
-      comp->complete(ictx->cct);
+      comp->complete();
       comp->put_unlock();
     }
   }
@@ -123,10 +123,10 @@ struct C_CloseComplete : public Context {
   virtual void finish(int r) {
     ldout(cct, 20) << "C_CloseComplete::finish: r=" << r << dendl;
     if (r < 0) {
-      comp->fail(cct, r);
+      comp->fail(r);
     } else {
       comp->lock.Lock();
-      comp->complete(cct);
+      comp->complete();
       comp->put_unlock();
     }
   }
@@ -313,7 +313,7 @@ namespace librbd {
   {
     TracepointProvider::initialize<tracepoint_traits>(get_cct(io_ctx));
     tracepoint(librbd, create4_enter, io_ctx.get_pool_name().c_str(), io_ctx.get_id(), name, size, opts.opts);
-    int r = librbd::create(io_ctx, name, size, opts);
+    int r = librbd::create(io_ctx, name, size, opts, "", "");
     tracepoint(librbd, create4_exit, r);
     return r;
   }
@@ -1619,7 +1619,7 @@ extern "C" int rbd_create4(rados_ioctx_t p, const char *name,
   TracepointProvider::initialize<tracepoint_traits>(get_cct(io_ctx));
   tracepoint(librbd, create4_enter, io_ctx.get_pool_name().c_str(), io_ctx.get_id(), name, size, opts);
   librbd::ImageOptions opts_(opts);
-  int r = librbd::create(io_ctx, name, size, opts_);
+  int r = librbd::create(io_ctx, name, size, opts_, "", "");
   tracepoint(librbd, create4_exit, r);
   return r;
 }

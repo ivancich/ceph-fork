@@ -453,50 +453,49 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@am__append_94 = libclient_fuse.la
 @ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@am__append_95 = client/fuse_ll.h
 @ENABLE_CLIENT_TRUE@am__append_96 = ceph_test_ioctls
-@WITH_LTTNG_TRUE@am__append_97 = -ldl -llttng-ust
-@WITH_TCMALLOC_TRUE@am__append_98 = perfglue/heap_profiler.cc
+@WITH_TCMALLOC_TRUE@am__append_97 = perfglue/heap_profiler.cc
+@WITH_TCMALLOC_TRUE@am__append_98 = -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
 @WITH_TCMALLOC_TRUE@am__append_99 = -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-@WITH_TCMALLOC_TRUE@am__append_100 = -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-@WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_TRUE@am__append_101 = perfglue/heap_profiler.cc
+@WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_TRUE@am__append_100 = perfglue/heap_profiler.cc
+@WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_TRUE@am__append_101 = -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
 @WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_TRUE@am__append_102 = -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-@WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_TRUE@am__append_103 = -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-@WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_FALSE@am__append_104 = perfglue/disabled_heap_profiler.cc
-@WITH_PROFILER_TRUE@am__append_105 = perfglue/cpu_profiler.cc
-@WITH_PROFILER_FALSE@am__append_106 = perfglue/disabled_stubs.cc
-@ENABLE_SERVER_TRUE@am__append_107 = \
+@WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_FALSE@am__append_103 = perfglue/disabled_heap_profiler.cc
+@WITH_PROFILER_TRUE@am__append_104 = perfglue/cpu_profiler.cc
+@WITH_PROFILER_FALSE@am__append_105 = perfglue/disabled_stubs.cc
+@ENABLE_SERVER_TRUE@am__append_106 = \
 @ENABLE_SERVER_TRUE@	common/xattr.c \
 @ENABLE_SERVER_TRUE@	common/ipaddr.cc \
 @ENABLE_SERVER_TRUE@	common/ceph_json.cc \
 @ENABLE_SERVER_TRUE@	common/util.cc \
 @ENABLE_SERVER_TRUE@	common/pick_address.cc
 
-@LINUX_TRUE@am__append_108 = \
+@LINUX_TRUE@am__append_107 = \
 @LINUX_TRUE@	common/linux_version.c
 
-@SOLARIS_TRUE@am__append_109 = \
+@SOLARIS_TRUE@am__append_108 = \
 @SOLARIS_TRUE@        common/solaris_errno.cc
 
-@AIX_TRUE@am__append_110 = \
+@AIX_TRUE@am__append_109 = \
 @AIX_TRUE@        common/aix_errno.cc
 
-@ENABLE_XIO_TRUE@am__append_111 = \
+@ENABLE_XIO_TRUE@am__append_110 = \
 @ENABLE_XIO_TRUE@	common/address_helper.cc
 
-@WITH_GOOD_YASM_ELF64_TRUE@am__append_112 = common/crc32c_intel_fast_asm.S common/crc32c_intel_fast_zero_asm.S
+@WITH_GOOD_YASM_ELF64_TRUE@am__append_111 = common/crc32c_intel_fast_asm.S common/crc32c_intel_fast_zero_asm.S
+@HAVE_ARMV8_CRC_TRUE@am__append_112 = libcommon_crc_aarch64.la
 @HAVE_ARMV8_CRC_TRUE@am__append_113 = libcommon_crc_aarch64.la
-@HAVE_ARMV8_CRC_TRUE@am__append_114 = libcommon_crc_aarch64.la
-@LINUX_TRUE@am__append_115 = -lrt -lblkid
-@ENABLE_XIO_TRUE@am__append_116 = \
+@LINUX_TRUE@am__append_114 = -lrt -lblkid
+@ENABLE_XIO_TRUE@am__append_115 = \
 @ENABLE_XIO_TRUE@	common/address_helper.h
 
-@LINUX_TRUE@am__append_117 = libsecret.la
-@LINUX_TRUE@am__append_118 = msg/async/EventEpoll.cc
-@DARWIN_TRUE@am__append_119 = msg/async/EventKqueue.cc
-@FREEBSD_TRUE@am__append_120 = msg/async/EventKqueue.cc
-@LINUX_TRUE@am__append_121 = msg/async/EventEpoll.h
-@DARWIN_TRUE@am__append_122 = msg/async/EventKqueue.h
-@FREEBSD_TRUE@am__append_123 = msg/async/EventKqueue.h
-@ENABLE_XIO_TRUE@am__append_124 = \
+@LINUX_TRUE@am__append_116 = libsecret.la
+@LINUX_TRUE@am__append_117 = msg/async/EventEpoll.cc
+@DARWIN_TRUE@am__append_118 = msg/async/EventKqueue.cc
+@FREEBSD_TRUE@am__append_119 = msg/async/EventKqueue.cc
+@LINUX_TRUE@am__append_120 = msg/async/EventEpoll.h
+@DARWIN_TRUE@am__append_121 = msg/async/EventKqueue.h
+@FREEBSD_TRUE@am__append_122 = msg/async/EventKqueue.h
+@ENABLE_XIO_TRUE@am__append_123 = \
 @ENABLE_XIO_TRUE@	msg/xio/QueueStrategy.cc \
 @ENABLE_XIO_TRUE@	msg/xio/XioConnection.cc \
 @ENABLE_XIO_TRUE@	msg/xio/XioMessenger.cc \
@@ -504,7 +503,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_XIO_TRUE@	msg/xio/XioPortal.cc \
 @ENABLE_XIO_TRUE@	msg/xio/XioPool.cc
 
-@ENABLE_XIO_TRUE@am__append_125 = \
+@ENABLE_XIO_TRUE@am__append_124 = \
 @ENABLE_XIO_TRUE@	msg/xio/DispatchStrategy.h \
 @ENABLE_XIO_TRUE@	msg/xio/FastStrategy.h \
 @ENABLE_XIO_TRUE@	msg/xio/QueueStrategy.h \
@@ -516,22 +515,22 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_XIO_TRUE@	msg/xio/XioPortal.h \
 @ENABLE_XIO_TRUE@	msg/xio/XioSubmit.h
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_126 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_125 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/include/rados/librgw.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/include/rados/rgw_file.h
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_127 =  \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_126 =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados_internal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados_api.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	libjournal.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_128 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_127 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados_internal.la libcls_lock_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(LIBOSDC) $(LIBCOMMON_DEPS)
 
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@am__append_129 = -fvisibility=hidden -fvisibility-inlines-hidden
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@am__append_130 = -Xcompiler -Xlinker -Xcompiler '--exclude-libs=ALL'
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_131 = librados.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_132 = \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@am__append_128 = -fvisibility=hidden -fvisibility-inlines-hidden
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@am__append_129 = -Xcompiler -Xlinker -Xcompiler '--exclude-libs=ALL'
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_130 = librados.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_131 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados/snap_set_diff.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados/AioCompletionImpl.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados/IoCtxImpl.h \
@@ -540,13 +539,13 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados/RadosXattrIter.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados/ListObjectImpl.h
 
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_133 = -export-symbols-regex '^radosstriper_.*'
-@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_134 = libradosstriper.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_135 = \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_132 = -export-symbols-regex '^radosstriper_.*'
+@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_133 = libradosstriper.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_134 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	libradosstriper/RadosStriperImpl.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	libradosstriper/MultiAioCompletionImpl.h
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_136 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_135 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/AsyncOpTracker.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/Entry.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/Future.h \
@@ -562,12 +561,12 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/ReplayHandler.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/Utils.h
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_137 = libjournal.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_138 = librbd_internal.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_136 = libjournal.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_137 = librbd_internal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_api.la
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_139 = -Xcompiler -Xlinker -Xcompiler '--exclude-libs=ALL'
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_140 = librbd.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_141 = \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_138 = -Xcompiler -Xlinker -Xcompiler '--exclude-libs=ALL'
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_139 = librbd.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_140 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/AioCompletion.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/AioImageRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/AioImageRequestWQ.h \
@@ -636,7 +635,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 
 
 # inject rgw stuff in the decoder testcase
-@ENABLE_CLIENT_TRUE@am__append_142 = \
+@ENABLE_CLIENT_TRUE@am__append_141 = \
 @ENABLE_CLIENT_TRUE@	rgw/rgw_dencoder.cc \
 @ENABLE_CLIENT_TRUE@	rgw/rgw_acl.cc \
 @ENABLE_CLIENT_TRUE@	rgw/rgw_basic_types.cc \
@@ -645,7 +644,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@	rgw/rgw_json_enc.cc \
 @ENABLE_CLIENT_TRUE@	rgw/rgw_keystone.cc
 
-@ENABLE_CLIENT_TRUE@am__append_143 = -lcurl -lexpat \
+@ENABLE_CLIENT_TRUE@am__append_142 = -lcurl -lexpat \
 @ENABLE_CLIENT_TRUE@	libcls_version_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_log_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_refcount_client.la \
@@ -659,9 +658,9 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@	libcls_user_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_numops_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_journal_client.la
-@ENABLE_CLIENT_TRUE@@WITH_OPENLDAP_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_144 = rgw/rgw_ldap.cc
+@ENABLE_CLIENT_TRUE@@WITH_OPENLDAP_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_143 = rgw/rgw_ldap.cc
 # noinst_LTLIBRARIES += librgw.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_145 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_144 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	$(LIBRADOS) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	libcls_rgw_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	libcls_log_client.la \
@@ -678,16 +677,16 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	-lfcgi \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	-ldl
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_146 = librgw.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_147 = -lssl -lcrypto
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_148 = libcivetweb.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_149 = radosgw \
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_145 = librgw.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_146 = -lssl -lcrypto
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_147 = libcivetweb.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_148 = radosgw \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	radosgw-admin \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	radosgw-token \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	radosgw-object-expirer
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_150 = ceph_rgw_multiparser \
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_149 = ceph_rgw_multiparser \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	ceph_rgw_jsonparser
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_151 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_150 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	rgw/rgw_acl.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	rgw/rgw_acl_s3.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	rgw/rgw_acl_swift.h \
@@ -773,7 +772,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	civetweb/include/civetweb_conf.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	civetweb/src/md5.h
 
-@ENABLE_CLIENT_TRUE@am__append_152 = libcls_lock_client.la \
+@ENABLE_CLIENT_TRUE@am__append_151 = libcls_lock_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_refcount_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_version_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_log_client.la \
@@ -785,7 +784,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@	libcls_cephfs_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_numops_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_journal_client.la
-@ENABLE_CLIENT_TRUE@am__append_153 = \
+@ENABLE_CLIENT_TRUE@am__append_152 = \
 @ENABLE_CLIENT_TRUE@	cls/lock/cls_lock_types.h \
 @ENABLE_CLIENT_TRUE@	cls/lock/cls_lock_ops.h \
 @ENABLE_CLIENT_TRUE@	cls/lock/cls_lock_client.h \
@@ -821,7 +820,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@	cls/journal/cls_journal_client.h \
 @ENABLE_CLIENT_TRUE@	cls/journal/cls_journal_types.h
 
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_154 = libcls_hello.la \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_153 = libcls_hello.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libcls_numops.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libcls_rbd.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libcls_lock.la \
@@ -835,13 +834,13 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libcls_rgw.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libcls_cephfs.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libcls_journal.la
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_155 = libcls_kvs.la
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_156 = \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_154 = libcls_kvs.la
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_155 = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	key_value_store/key_value_structure.h \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	key_value_store/kv_flat_btree_async.h \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	key_value_store/kvs_arg_types.h
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_157 = rbd_replay/ActionTypes.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_156 = rbd_replay/ActionTypes.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	rbd_replay/actions.hpp \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	rbd_replay/BoundedBuffer.hpp \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	rbd_replay/BufferReader.h \
@@ -851,27 +850,27 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	rbd_replay/rbd_loc.hpp \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	rbd_replay/rbd_replay_debug.hpp \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	rbd_replay/Replayer.hpp
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_158 = librbd_replay_types.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_157 = librbd_replay_types.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_replay.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_replay_ios.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_159 = librbd_replay_types.la
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_160 = rbd-replay
-@ENABLE_CLIENT_TRUE@@WITH_BABELTRACE_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_161 = rbd-replay-prep
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_162 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_158 = librbd_replay_types.la
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_159 = rbd-replay
+@ENABLE_CLIENT_TRUE@@WITH_BABELTRACE_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_160 = rbd-replay-prep
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_161 = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/test-erasure-code.sh \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/test-erasure-eio.sh
 
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_163 = test/erasure-code/ceph_erasure_code_benchmark.h \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_162 = test/erasure-code/ceph_erasure_code_benchmark.h \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/ceph_erasure_code_benchmark.h \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/ErasureCodeExample.h
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_164 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_165 = ceph_erasure_code_benchmark \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_163 = -ldl
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_164 = ceph_erasure_code_benchmark \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph_erasure_code
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_166 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_167 = ceph_erasure_code_non_regression
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_168 = -ldl
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_169 = -export-symbols-regex '.*__erasure_code_.*'
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_170 = libec_example.la \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_165 = -ldl
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_166 = ceph_erasure_code_non_regression
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_167 = -ldl
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_168 = -export-symbols-regex '.*__erasure_code_.*'
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_169 = libec_example.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libec_missing_entry_point.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libec_missing_version.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libec_hangs.la \
@@ -885,6 +884,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libec_test_shec_sse4.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libec_test_shec_sse3.la \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	libec_test_shec_generic.la
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_170 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_171 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_172 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_173 = -export-symbols-regex '.*__erasure_code_.*'
@@ -893,20 +893,19 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_176 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_177 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_178 = -export-symbols-regex '.*__erasure_code_.*'
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_179 = -export-symbols-regex '.*__erasure_code_.*'
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_180 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_181 = unittest_erasure_code_plugin \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_179 = -ldl
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_180 = unittest_erasure_code_plugin \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_erasure_code \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_erasure_code_jerasure \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_erasure_code_plugin_jerasure
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_181 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_182 = -ldl
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_183 = -ldl
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@am__append_184 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@am__append_185 = unittest_erasure_code_isa \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@am__append_183 = -ldl
+@ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@am__append_184 = unittest_erasure_code_isa \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	unittest_erasure_code_plugin_isa
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@am__append_186 = -ldl
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_187 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_188 =  \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@am__append_185 = -ldl
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_186 = -ldl
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_187 =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_erasure_code_lrc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_erasure_code_plugin_lrc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_erasure_code_shec \
@@ -920,61 +919,61 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_compression_plugin_snappy \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_compression_zlib \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_compression_plugin_zlib
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_188 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_189 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_190 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_191 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_192 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_193 = -ldl
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_194 = -ldl
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_194 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_195 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_196 = -export-symbols-regex '.*__erasure_code_.*'
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_197 = -export-symbols-regex '.*__erasure_code_.*'
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_198 = -export-symbols-regex '.*__erasure_code_.*'
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@am__append_199 = test/messenger/message_helper.h \
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@am__append_198 = test/messenger/message_helper.h \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/simple_dispatcher.h \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/xio_dispatcher.h
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@@LINUX_TRUE@am__append_199 = -ldl
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@@LINUX_TRUE@am__append_200 = -ldl
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@@LINUX_TRUE@am__append_201 = -ldl
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@am__append_202 = simple_server \
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@am__append_201 = simple_server \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	simple_client xio_server \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	xio_client
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@@LINUX_TRUE@am__append_202 = -ldl
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@@LINUX_TRUE@am__append_203 = -ldl
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@@LINUX_TRUE@am__append_204 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_205 = test/compressor/compressor_example.h
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_206 = libceph_example.la
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_204 = test/compressor/compressor_example.h
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_205 = libceph_example.la
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_206 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_207 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_208 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_209 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_210 = -ldl
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_211 = -ldl
+@COMPILER_HAS_VTA_TRUE@@ENABLE_CLIENT_TRUE@am__append_211 = -fno-var-tracking-assignments
 @COMPILER_HAS_VTA_TRUE@@ENABLE_CLIENT_TRUE@am__append_212 = -fno-var-tracking-assignments
-@COMPILER_HAS_VTA_TRUE@@ENABLE_CLIENT_TRUE@am__append_213 = -fno-var-tracking-assignments
-@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@am__append_214 = -DWITH_RBD
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@am__append_215 = -DWITH_RADOSGW
-@ENABLE_CLIENT_TRUE@am__append_216 = ceph-dencoder
-@ENABLE_CLIENT_TRUE@am__append_217 = \
+@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@am__append_213 = -DWITH_RBD
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@am__append_214 = -DWITH_RADOSGW
+@ENABLE_CLIENT_TRUE@am__append_215 = ceph-dencoder
+@ENABLE_CLIENT_TRUE@am__append_216 = \
 @ENABLE_CLIENT_TRUE@	test/encoding/test_ceph_time.h
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_218 = libradostest.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_217 = libradostest.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados_test_stub.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	libjournal_test_mock.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_219 = ceph_test_rados \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_218 = ceph_test_rados \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_mutate
-@ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOS_TRUE@am__append_220 = test_build_librados
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_221 =  \
+@ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOS_TRUE@am__append_219 = test_build_librados
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_220 =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_smalliobench \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_omapbench \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_objectstore_bench
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@am__append_222 = ceph_kvstorebench \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@am__append_221 = ceph_kvstorebench \
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_list_parallel \
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_open_pools_parallel \
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_delete_pools_parallel \
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_watch_notify
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_223 =  \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_222 =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	unittest_librados \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	unittest_librados_config \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	unittest_journal
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_224 =  \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_223 =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_multi_stress_watch \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_cls_rbd \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_cls_refcount \
@@ -1003,7 +1002,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_api_lock \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_api_tmap_migrate \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_test_stress_watch
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_225 = test/librados_test_stub/LibradosTestStub.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_224 = test/librados_test_stub/LibradosTestStub.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/MockTestMemIoCtxImpl.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/MockTestMemRadosClient.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestClassHandler.h \
@@ -1013,19 +1012,20 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestMemIoCtxImpl.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados_test_stub/TestIoCtxImpl.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/journal/mock/MockJournaler.h
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_226 = ceph_smalliobenchrbd \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_225 = ceph_smalliobenchrbd \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_librbd \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_librbd_api \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_rbd_mirror \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_rbd_mirror_random_write \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_rbd_mirror_image_replay
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_227 = unittest_rbd_replay
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_228 = librbd_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_226 = unittest_rbd_replay
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_227 = librbd_test.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_test.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_229 = unittest_librbd \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_228 = unittest_librbd \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	unittest_rbd_mirror
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_230 = test/run-rbd-unit-tests.sh
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_231 = test/librbd/test_fixture.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_229 = test/run-rbd-unit-tests.sh
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_230 = test/librbd/test_fixture.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_mock_fixture.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_support.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockAioImageRequestWQ.h \
@@ -1042,23 +1042,23 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/object_map/mock/MockInvalidateRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_fixture.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_fixture.h
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_232 = ceph_test_librbd_fsx
-@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_233 = libradosstripertest.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_234 = ceph_test_rados_striper_api_io \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_231 = ceph_test_librbd_fsx
+@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_232 = libradosstripertest.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__append_233 = ceph_test_rados_striper_api_io \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_striper_api_aio \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	ceph_test_rados_striper_api_striping
-@ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_235 = test_build_libcephfs
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_236 = unittest_encoding \
+@ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_234 = test_build_libcephfs
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_235 = unittest_encoding \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	unittest_base64 \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	unittest_run_cmd \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	unittest_simple_spin \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	unittest_libcephfs_config
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_237 = test/libcephfs/flock.cc
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_238 = ceph_test_libcephfs \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_236 = test/libcephfs/flock.cc
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_237 = ceph_test_libcephfs \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	ceph_test_c_headers
-@CLANG_FALSE@@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_239 = -Werror -Wold-style-declaration
-@ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_240 = test_build_librgw
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_241 = ceph_test_cors \
+@CLANG_FALSE@@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_238 = -Werror -Wold-style-declaration
+@ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_239 = test_build_librgw
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__append_240 = ceph_test_cors \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	ceph_test_rgw_manifest \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	ceph_test_rgw_period_history \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	ceph_test_rgw_obj \
@@ -1071,20 +1071,20 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	librgw_file_gp \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	librgw_file_aw \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	librgw_file_nfsns
-@ENABLE_SERVER_TRUE@am__append_242 = ceph_test_async_driver \
+@ENABLE_SERVER_TRUE@am__append_241 = ceph_test_async_driver \
 @ENABLE_SERVER_TRUE@	ceph_test_msgr ceph_test_trans \
 @ENABLE_SERVER_TRUE@	ceph_test_mon_workloadgen \
 @ENABLE_SERVER_TRUE@	ceph_test_mon_msg ceph_perf_objectstore \
 @ENABLE_SERVER_TRUE@	ceph_perf_local ceph_perf_msgr_server \
 @ENABLE_SERVER_TRUE@	ceph_perf_msgr_client
-@ENABLE_SERVER_TRUE@am__append_243 = test/perf_helper.h
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@am__append_244 =  \
+@ENABLE_SERVER_TRUE@am__append_242 = test/perf_helper.h
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@am__append_243 =  \
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@	ceph_test_objectstore \
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@	ceph_test_keyvaluedb \
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@	ceph_test_filestore
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@am__append_245 = unittest_bluefs \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@am__append_244 = unittest_bluefs \
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@	unittest_bluestore_types
-@ENABLE_SERVER_TRUE@am__append_246 =  \
+@ENABLE_SERVER_TRUE@am__append_245 =  \
 @ENABLE_SERVER_TRUE@	ceph_test_objectstore_workloadgen \
 @ENABLE_SERVER_TRUE@	ceph_test_filestore_idempotent \
 @ENABLE_SERVER_TRUE@	ceph_test_filestore_idempotent_sequence \
@@ -1092,51 +1092,52 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_SERVER_TRUE@	ceph_test_object_map \
 @ENABLE_SERVER_TRUE@	ceph_test_keyvaluedb_atomicity \
 @ENABLE_SERVER_TRUE@	ceph_test_keyvaluedb_iterators
-@ENABLE_SERVER_TRUE@am__append_247 = unittest_transaction
-@ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_RADOS_TRUE@am__append_248 = ceph_smalliobenchfs \
+@ENABLE_SERVER_TRUE@am__append_246 = unittest_transaction
+@ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_RADOS_TRUE@am__append_247 = ceph_smalliobenchfs \
 @ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_RADOS_TRUE@	ceph_smalliobenchdumb \
 @ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_RADOS_TRUE@	ceph_tpbench
-@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_249 = ceph_test_keys
-@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_250 = get_command_descriptions
-@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_251 =  \
+@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_248 = ceph_test_keys
+@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_249 = get_command_descriptions
+@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_250 =  \
 @ENABLE_SERVER_TRUE@@WITH_MON_TRUE@	unittest_mon_moncap \
 @ENABLE_SERVER_TRUE@@WITH_MON_TRUE@	unittest_mon_pgmap
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_252 =  \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_251 =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_ecbackend \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_osdscrub \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_pglog \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_hitset \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_osd_osdcap \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	unittest_pageset
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_252 = -ldl
 @ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_253 = -ldl
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_254 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_255 = ceph_test_snap_mapper
-@ENABLE_SERVER_TRUE@@WITH_SLIBROCKSDB_TRUE@am__append_256 = unittest_rocksdb_option_static
-@ENABLE_SERVER_TRUE@@WITH_DLIBROCKSDB_TRUE@am__append_257 = unittest_rocksdb_option
-@ENABLE_SERVER_TRUE@am__append_258 = unittest_chain_xattr \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_254 = ceph_test_snap_mapper
+@ENABLE_SERVER_TRUE@@WITH_SLIBROCKSDB_TRUE@am__append_255 = unittest_rocksdb_option_static
+@ENABLE_SERVER_TRUE@@WITH_DLIBROCKSDB_TRUE@am__append_256 = unittest_rocksdb_option
+@ENABLE_SERVER_TRUE@am__append_257 = unittest_chain_xattr \
 @ENABLE_SERVER_TRUE@	unittest_lfnindex
-@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@am__append_259 = unittest_mds_authcap
-@WITH_BUILD_TESTS_TRUE@am__append_260 = test_build_libcommon
-@LINUX_TRUE@am__append_261 = libsystest.la
-@SOLARIS_TRUE@am__append_262 = \
+@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@am__append_258 = unittest_mds_authcap
+@WITH_BUILD_TESTS_TRUE@am__append_259 = test_build_libcommon
+@LINUX_TRUE@am__append_260 = libsystest.la
+@SOLARIS_TRUE@am__append_261 = \
 @SOLARIS_TRUE@	-lsocket -lnsl
 
-@LINUX_TRUE@am__append_263 = unittest_blkdev
-@LINUX_TRUE@am__append_264 = ceph_test_get_blkdev_size
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_265 =  \
+@LINUX_TRUE@am__append_262 = unittest_blkdev
+@LINUX_TRUE@am__append_263 = ceph_test_get_blkdev_size
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_264 =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_scratchtool \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_scratchtoolpp \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	ceph_radosacl
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_266 = rados
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_267 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_265 = rados
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_266 = \
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/action/Kernel.cc \
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/action/Nbd.cc
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_268 = tools/rbd/ArgumentTypes.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_267 = tools/rbd/ArgumentTypes.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/IndentStream.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/OptionPrinter.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/Shell.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/Utils.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/BaseRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ClusterWatcher.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ImageReplayer.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ImageSync.h \
@@ -1144,38 +1145,42 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/PoolWatcher.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ProgressContext.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Replayer.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ImageDeleter.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Threads.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/types.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/BootstrapRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CloseImageRequest.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CreateImageRequest.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenImageRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/Utils.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ImageCopyRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ObjectCopyRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCopyRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SnapshotCreateRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointCreateRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/SyncPointPruneRequest.h
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_269 = $(LIBKRBD)
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_270 = rbd
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_271 = rbd-nbd
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_272 = librbd_mirror_internal.la
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_273 = rbd-mirror
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_274 = ceph-client-debug
-@ENABLE_SERVER_TRUE@am__append_275 = ceph-osdomap-tool \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_268 = $(LIBKRBD)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_269 = rbd
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_270 = rbd-nbd
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_271 = librbd_mirror_internal.la
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_272 = rbd-mirror
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_273 = ceph-client-debug
+@ENABLE_SERVER_TRUE@am__append_274 = ceph-osdomap-tool \
 @ENABLE_SERVER_TRUE@	ceph-monstore-tool ceph-kvstore-tool
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_276 = -ldl
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_277 = ceph-objectstore-tool
-@ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@@WITH_RADOS_TRUE@am__append_278 = cephfs-journal-tool \
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@@WITH_OSD_TRUE@am__append_275 = -ldl
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_276 = ceph-objectstore-tool
+@ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@@WITH_RADOS_TRUE@am__append_277 = cephfs-journal-tool \
 @ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@@WITH_RADOS_TRUE@	cephfs-table-tool \
 @ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@@WITH_RADOS_TRUE@	cephfs-data-scan
-@WITH_LTTNG_TRUE@am__append_279 = \
+@WITH_LTTNG_TRUE@am__append_278 = \
 @WITH_LTTNG_TRUE@	libosd_tp.la \
 @WITH_LTTNG_TRUE@	libos_tp.la \
 @WITH_LTTNG_TRUE@	librados_tp.la \
 @WITH_LTTNG_TRUE@	librbd_tp.la
 
-@WITH_LTTNG_TRUE@am__append_280 = \
+@WITH_LTTNG_TRUE@am__append_279 = \
 @WITH_LTTNG_TRUE@	tracing/librados.h \
 @WITH_LTTNG_TRUE@	tracing/librbd.h \
 @WITH_LTTNG_TRUE@	tracing/objectstore.h \
@@ -1183,63 +1188,63 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @WITH_LTTNG_TRUE@	tracing/osd.h \
 @WITH_LTTNG_TRUE@	tracing/pg.h
 
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_281 = $(srcdir)/pybind/rados/setup.py $(srcdir)/pybind/rados/rados.pyx $(srcdir)/pybind/rados/rados.pxd
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_282 = rados-pybind-all
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_283 = rados-pybind-clean
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_284 = rados-pybind-install-exec
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_285 = $(srcdir)/pybind/rbd/setup.py $(srcdir)/pybind/rbd/rbd.pyx
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_286 = rbd-pybind-all
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_287 = rbd-pybind-clean
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_288 = rbd-pybind-install-exec
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_289 = $(srcdir)/pybind/cephfs/setup.py $(srcdir)/pybind/cephfs/cephfs.pyx
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_290 = cephfs-pybind-all
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_291 = cephfs-pybind-clean
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_292 = cephfs-pybind-install-exec
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_280 = $(srcdir)/pybind/rados/setup.py $(srcdir)/pybind/rados/rados.pyx $(srcdir)/pybind/rados/rados.pxd
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_281 = rados-pybind-all
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_282 = rados-pybind-clean
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_283 = rados-pybind-install-exec
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_284 = $(srcdir)/pybind/rbd/setup.py $(srcdir)/pybind/rbd/rbd.pyx
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_285 = rbd-pybind-all
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_286 = rbd-pybind-clean
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_287 = rbd-pybind-install-exec
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_288 = $(srcdir)/pybind/cephfs/setup.py $(srcdir)/pybind/cephfs/cephfs.pyx
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_289 = cephfs-pybind-all
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_290 = cephfs-pybind-clean
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_CYTHON_TRUE@@WITH_RADOS_TRUE@am__append_291 = cephfs-pybind-install-exec
 TESTS = $(am__EXEEXT_63) $(check_SCRIPTS)
-@ENABLE_CLIENT_TRUE@am__append_293 = \
+@ENABLE_CLIENT_TRUE@am__append_292 = \
 @ENABLE_CLIENT_TRUE@	pybind/ceph_argparse.py \
 @ENABLE_CLIENT_TRUE@	pybind/ceph_daemon.py
 
-@ENABLE_CLIENT_TRUE@am__append_294 = ceph-syn
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_295 = \
+@ENABLE_CLIENT_TRUE@am__append_293 = ceph-syn
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_294 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/bash_completion/rados \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/bash_completion/radosgw-admin
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_296 = librados-config
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_297 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_295 = librados-config
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_296 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(srcdir)/bash_completion/rbd
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_298 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_297 = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph-rbdnamer \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	rbd-replay-many \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@        rbdmap
 
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_299 = libkrbd.la
-@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_RADOS_TRUE@am__append_300 = ceph-fuse
-@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_301 = rbd-fuse
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_302 = cephfs
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_303 = pybind/ceph_volume_client.py
-@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_304 = -Xcompiler -Xlinker -Xcompiler '--exclude-libs=libcommon.a'
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_305 = libcephfs.la
-@ENABLE_CEPHFS_JAVA_TRUE@@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_306 = libcephfs_jni.la
-@ENABLE_SERVER_TRUE@am__append_307 = ceph-run ceph-rest-api \
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_298 = libkrbd.la
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_RADOS_TRUE@am__append_299 = ceph-fuse
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_300 = rbd-fuse
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_301 = cephfs
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_302 = pybind/ceph_volume_client.py
+@ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_303 = -Xcompiler -Xlinker -Xcompiler '--exclude-libs=libcommon.a'
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_304 = libcephfs.la
+@ENABLE_CEPHFS_JAVA_TRUE@@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@am__append_305 = libcephfs_jni.la
+@ENABLE_SERVER_TRUE@am__append_306 = ceph-run ceph-rest-api \
 @ENABLE_SERVER_TRUE@	ceph-debugpack ceph-crush-location \
 @ENABLE_SERVER_TRUE@	ceph-coverage
-@ENABLE_SERVER_TRUE@am__append_308 = pybind/ceph_rest_api.py
-@ENABLE_SERVER_TRUE@am__append_309 = ceph-coverage init-ceph
-@ENABLE_SERVER_TRUE@am__append_310 = init-ceph
-@ENABLE_SERVER_TRUE@@LINUX_TRUE@am__append_311 = mount.ceph
-@ENABLE_SERVER_TRUE@am__append_312 = mount.fuse.ceph
-@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_313 = ceph-mon
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_314 = \
+@ENABLE_SERVER_TRUE@am__append_307 = pybind/ceph_rest_api.py
+@ENABLE_SERVER_TRUE@am__append_308 = ceph-coverage init-ceph
+@ENABLE_SERVER_TRUE@am__append_309 = init-ceph
+@ENABLE_SERVER_TRUE@@LINUX_TRUE@am__append_310 = mount.ceph
+@ENABLE_SERVER_TRUE@am__append_311 = mount.fuse.ceph
+@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_312 = ceph-mon
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_313 = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-disk-udev
 
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_315 = \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_314 = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-clsinfo
 
-@ENABLE_SERVER_TRUE@@WITH_LTTNG_TRUE@@WITH_OSD_TRUE@am__append_316 = $(LIBOSD_TP)
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_317 = ceph-osd
-@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@am__append_318 = ceph-mds
+@ENABLE_SERVER_TRUE@@WITH_LTTNG_TRUE@@WITH_OSD_TRUE@am__append_315 = $(LIBOSD_TP)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_316 = ceph-osd
+@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@am__append_317 = ceph-mds
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
@@ -1892,7 +1897,7 @@ libcls_version_client_la_OBJECTS =  \
 	$(am_libcls_version_client_la_OBJECTS)
 @ENABLE_CLIENT_TRUE@am_libcls_version_client_la_rpath =
 am__DEPENDENCIES_5 = libcommon_internal.la libcommon_crc.la \
-	$(am__append_113) $(LIBERASURE_CODE) $(LIBCOMPRESSOR) \
+	$(am__append_112) $(LIBERASURE_CODE) $(LIBCOMPRESSOR) \
 	$(LIBMSG) $(LIBAUTH) $(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) \
 	$(LIBARCH) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 libcommon_la_DEPENDENCIES = $(am__DEPENDENCIES_5)
@@ -2026,8 +2031,7 @@ libec_example_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_example_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_example_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_example_la_rpath = -rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_example_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_initialize_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2040,9 +2044,7 @@ libec_fail_to_initialize_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_fail_to_initialize_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_fail_to_initialize_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_fail_to_initialize_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_fail_to_initialize_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_register_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2055,9 +2057,7 @@ libec_fail_to_register_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_fail_to_register_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_fail_to_register_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_fail_to_register_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_fail_to_register_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_hangs_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2069,8 +2069,7 @@ libec_hangs_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_hangs_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_hangs_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_hangs_la_rpath = -rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_hangs_la_rpath =
 @WITH_BETTER_YASM_ELF64_TRUE@libec_isa_la_DEPENDENCIES = libisa.la \
 @WITH_BETTER_YASM_ELF64_TRUE@	$(LIBCRUSH) $(am__DEPENDENCIES_1) \
 @WITH_BETTER_YASM_ELF64_TRUE@	$(am__DEPENDENCIES_3)
@@ -2233,9 +2232,7 @@ libec_missing_entry_point_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_missing_entry_point_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_missing_entry_point_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_missing_entry_point_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_missing_entry_point_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_version_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2248,9 +2245,7 @@ libec_missing_version_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_missing_version_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_missing_version_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_missing_version_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_missing_version_la_rpath =
 libec_shec_la_DEPENDENCIES = $(LIBCRUSH) $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_3)
 am_libec_shec_la_OBJECTS = erasure-code/shec/libec_shec_la-ErasureCodePluginSelectShec.lo
@@ -2398,9 +2393,7 @@ libec_test_jerasure_generic_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_jerasure_generic_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_jerasure_generic_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_generic_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_generic_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_neon_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2413,9 +2406,7 @@ libec_test_jerasure_neon_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_jerasure_neon_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_jerasure_neon_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_neon_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_neon_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse3_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2428,9 +2419,7 @@ libec_test_jerasure_sse3_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_jerasure_sse3_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_jerasure_sse3_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_sse3_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_sse3_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse4_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2443,9 +2432,7 @@ libec_test_jerasure_sse4_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_jerasure_sse4_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_jerasure_sse4_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_sse4_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_jerasure_sse4_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_generic_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2458,9 +2445,7 @@ libec_test_shec_generic_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_shec_generic_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_shec_generic_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_generic_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_generic_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_neon_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2473,9 +2458,7 @@ libec_test_shec_neon_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_shec_neon_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_shec_neon_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_neon_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_neon_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse3_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2488,9 +2471,7 @@ libec_test_shec_sse3_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_shec_sse3_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_shec_sse3_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_sse3_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_sse3_la_rpath =
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse4_la_DEPENDENCIES =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__DEPENDENCIES_3)
@@ -2503,13 +2484,10 @@ libec_test_shec_sse4_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libec_test_shec_sse4_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libec_test_shec_sse4_la_LDFLAGS) $(LDFLAGS) -o $@
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_sse4_la_rpath =  \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(erasure_codelibdir)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am_libec_test_shec_sse4_la_rpath =
 am_liberasure_code_la_OBJECTS = erasure-code/ErasureCodePlugin.lo
 liberasure_code_la_OBJECTS = $(am_liberasure_code_la_OBJECTS)
-libglobal_la_DEPENDENCIES = $(am__DEPENDENCIES_4) \
-	$(am__DEPENDENCIES_1)
+libglobal_la_DEPENDENCIES = $(am__DEPENDENCIES_4)
 am_libglobal_la_OBJECTS = global/global_context.lo \
 	global/global_init.lo global/pidfile.lo \
 	global/signal_handler.lo common/TrackedOp.lo
@@ -3018,9 +2996,12 @@ am__librbd_mirror_internal_la_SOURCES_DIST =  \
 	tools/rbd_mirror/ImageReplayer.cc \
 	tools/rbd_mirror/ImageSync.cc tools/rbd_mirror/Mirror.cc \
 	tools/rbd_mirror/PoolWatcher.cc tools/rbd_mirror/Replayer.cc \
-	tools/rbd_mirror/Threads.cc tools/rbd_mirror/types.cc \
+	tools/rbd_mirror/ImageDeleter.cc tools/rbd_mirror/Threads.cc \
+	tools/rbd_mirror/types.cc \
 	tools/rbd_mirror/image_replayer/BootstrapRequest.cc \
 	tools/rbd_mirror/image_replayer/CloseImageRequest.cc \
+	tools/rbd_mirror/image_replayer/CreateImageRequest.cc \
+	tools/rbd_mirror/image_replayer/OpenImageRequest.cc \
 	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc \
 	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc \
 	tools/rbd_mirror/image_sync/ImageCopyRequest.cc \
@@ -3035,10 +3016,13 @@ am__librbd_mirror_internal_la_SOURCES_DIST =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Mirror.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/PoolWatcher.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Replayer.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/ImageDeleter.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Threads.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/types.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/BootstrapRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CloseImageRequest.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CreateImageRequest.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenImageRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ImageCopyRequest.lo \
@@ -3055,11 +3039,13 @@ am__librbd_mirror_test_la_SOURCES_DIST =  \
 	test/rbd_mirror/test_ClusterWatcher.cc \
 	test/rbd_mirror/test_PoolWatcher.cc \
 	test/rbd_mirror/test_ImageReplayer.cc \
+	test/rbd_mirror/test_ImageDeleter.cc \
 	test/rbd_mirror/test_ImageSync.cc \
 	test/rbd_mirror/test_fixture.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_mirror_test_la_OBJECTS = test/rbd_mirror/librbd_mirror_test_la-test_ClusterWatcher.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/librbd_mirror_test_la-test_PoolWatcher.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/librbd_mirror_test_la-test_ImageReplayer.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/librbd_mirror_test_la-test_ImageDeleter.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/librbd_mirror_test_la-test_ImageSync.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/librbd_mirror_test_la-test_fixture.lo
 librbd_mirror_test_la_OBJECTS = $(am_librbd_mirror_test_la_OBJECTS)
@@ -3334,6 +3320,7 @@ libsystest_la_OBJECTS = $(am_libsystest_la_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_librbd$(EXEEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_librbd_api$(EXEEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_rbd_mirror$(EXEEXT) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_rbd_mirror_random_write$(EXEEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_rbd_mirror_image_replay$(EXEEXT)
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__EXEEXT_10 = ceph_test_librbd_fsx$(EXEEXT)
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@am__EXEEXT_11 = ceph_test_rados_striper_api_io$(EXEEXT) \
@@ -3631,8 +3618,8 @@ am__DEPENDENCIES_17 = librgw.la $(am__DEPENDENCIES_1)
 @ENABLE_CLIENT_TRUE@	libcls_user_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_numops_client.la \
 @ENABLE_CLIENT_TRUE@	libcls_journal_client.la
-am__DEPENDENCIES_19 = $(am__append_48) $(am__append_137) \
-	$(am__DEPENDENCIES_18) $(am__append_159)
+am__DEPENDENCIES_19 = $(am__append_48) $(am__append_136) \
+	$(am__DEPENDENCIES_18) $(am__append_158)
 @ENABLE_CLIENT_TRUE@ceph_dencoder_DEPENDENCIES =  \
 @ENABLE_CLIENT_TRUE@	$(am__DEPENDENCIES_17) $(LIBRADOS) \
 @ENABLE_CLIENT_TRUE@	$(LIBRBD_TYPES) $(LIBOSD_TYPES) \
@@ -4813,6 +4800,19 @@ ceph_test_rbd_mirror_image_replay_OBJECTS =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_lock_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_journal_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__DEPENDENCIES_10)
+am__ceph_test_rbd_mirror_random_write_SOURCES_DIST =  \
+	test/rbd_mirror/random_write.cc
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_ceph_test_rbd_mirror_random_write_OBJECTS = test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.$(OBJEXT)
+ceph_test_rbd_mirror_random_write_OBJECTS =  \
+	$(am_ceph_test_rbd_mirror_random_write_OBJECTS)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@ceph_test_rbd_mirror_random_write_DEPENDENCIES =  \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRBD) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRADOS) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__DEPENDENCIES_10)
+ceph_test_rbd_mirror_random_write_LINK = $(LIBTOOL) $(AM_V_lt) \
+	--tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link \
+	$(CXXLD) $(ceph_test_rbd_mirror_random_write_CXXFLAGS) \
+	$(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 am_ceph_test_rewrite_latency_OBJECTS =  \
 	test/test_rewrite_latency.$(OBJEXT)
 ceph_test_rewrite_latency_OBJECTS =  \
@@ -5180,7 +5180,7 @@ rbd_OBJECTS = $(am_rbd_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__DEPENDENCIES_10) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__DEPENDENCIES_1) \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_269)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_268)
 am__rbd_fuse_SOURCES_DIST = rbd_fuse/rbd-fuse.cc
 @ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_rbd_fuse_OBJECTS = rbd_fuse/rbd_fuse-rbd-fuse.$(OBJEXT)
 rbd_fuse_OBJECTS = $(am_rbd_fuse_OBJECTS)
@@ -6618,6 +6618,7 @@ am__unittest_rbd_mirror_SOURCES_DIST = test/rbd_mirror/test_main.cc \
 	test/rbd_mirror/test_mock_ImageReplayer.cc \
 	test/rbd_mirror/test_mock_ImageSync.cc \
 	test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc \
+	test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc \
@@ -6629,6 +6630,7 @@ am__unittest_rbd_mirror_SOURCES_DIST = test/rbd_mirror/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.$(OBJEXT) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ObjectCopyRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_SnapshotCopyRequest.$(OBJEXT) \
@@ -7167,6 +7169,7 @@ SOURCES = $(libkv_a_SOURCES) $(libmon_a_SOURCES) $(libos_a_SOURCES) \
 	$(ceph_test_rados_watch_notify_SOURCES) \
 	$(ceph_test_rbd_mirror_SOURCES) \
 	$(ceph_test_rbd_mirror_image_replay_SOURCES) \
+	$(ceph_test_rbd_mirror_random_write_SOURCES) \
 	$(ceph_test_rewrite_latency_SOURCES) \
 	$(ceph_test_rgw_manifest_SOURCES) $(ceph_test_rgw_obj_SOURCES) \
 	$(ceph_test_rgw_period_history_SOURCES) \
@@ -7458,6 +7461,7 @@ DIST_SOURCES = $(am__libkv_a_SOURCES_DIST) \
 	$(am__ceph_test_rados_watch_notify_SOURCES_DIST) \
 	$(am__ceph_test_rbd_mirror_SOURCES_DIST) \
 	$(am__ceph_test_rbd_mirror_image_replay_SOURCES_DIST) \
+	$(am__ceph_test_rbd_mirror_random_write_SOURCES_DIST) \
 	$(ceph_test_rewrite_latency_SOURCES) \
 	$(am__ceph_test_rgw_manifest_SOURCES_DIST) \
 	$(am__ceph_test_rgw_obj_SOURCES_DIST) \
@@ -8060,15 +8064,20 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	test/unit.h test/journal/RadosTestFixture.h \
 	tools/rbd/ArgumentTypes.h tools/rbd/IndentStream.h \
 	tools/rbd/OptionPrinter.h tools/rbd/Shell.h tools/rbd/Utils.h \
+	tools/rbd_mirror/BaseRequest.h \
 	tools/rbd_mirror/ClusterWatcher.h \
 	tools/rbd_mirror/ImageReplayer.h tools/rbd_mirror/ImageSync.h \
 	tools/rbd_mirror/Mirror.h tools/rbd_mirror/PoolWatcher.h \
 	tools/rbd_mirror/ProgressContext.h tools/rbd_mirror/Replayer.h \
-	tools/rbd_mirror/Threads.h tools/rbd_mirror/types.h \
+	tools/rbd_mirror/ImageDeleter.h tools/rbd_mirror/Threads.h \
+	tools/rbd_mirror/types.h \
 	tools/rbd_mirror/image_replayer/BootstrapRequest.h \
 	tools/rbd_mirror/image_replayer/CloseImageRequest.h \
+	tools/rbd_mirror/image_replayer/CreateImageRequest.h \
+	tools/rbd_mirror/image_replayer/OpenImageRequest.h \
 	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.h \
 	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.h \
+	tools/rbd_mirror/image_replayer/Utils.h \
 	tools/rbd_mirror/image_sync/ImageCopyRequest.h \
 	tools/rbd_mirror/image_sync/ObjectCopyRequest.h \
 	tools/rbd_mirror/image_sync/SnapshotCopyRequest.h \
@@ -8337,8 +8346,8 @@ ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
 AM_CXXFLAGS = @AM_CXXFLAGS@ $(AM_COMMON_CFLAGS) -ftemplate-depth-1024 \
 	-Wnon-virtual-dtor -Wno-invalid-offsetof $(am__append_7) \
-	$(am__append_10) $(am__append_13) $(am__append_100) \
-	$(am__append_103)
+	$(am__append_10) $(am__append_13) $(am__append_99) \
+	$(am__append_102)
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
 ARM_CRC_FLAGS = @ARM_CRC_FLAGS@
@@ -8542,7 +8551,7 @@ top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = gnu subdir-objects
 SUBDIRS = ocf java
 DIST_SUBDIRS = gmock ocf java
-BUILT_SOURCES = $(am__append_280) $(am__append_310)
+BUILT_SOURCES = $(am__append_279) $(am__append_309)
 
 # extra bits
 EXTRA_DIST = $(am__append_31) ceph-detect-init/AUTHORS.rst \
@@ -9234,7 +9243,7 @@ EXTRA_DIST = $(am__append_31) ceph-detect-init/AUTHORS.rst \
 	spdk/include/spdk/queue_extras.h spdk/include/spdk/file.h \
 	spdk/include/spdk/assert.h spdk/include/spdk/barrier.h \
 	spdk/include/spdk/mmio.h tracing/tracing-common.h \
-	$(am__append_281) $(am__append_285) $(am__append_289) \
+	$(am__append_280) $(am__append_284) $(am__append_288) \
 	$(srcdir)/$(shell_scripts:%=%.in) $(srcdir)/vstart.sh \
 	$(srcdir)/stop.sh ceph-run $(srcdir)/ceph-osd-prestart.sh \
 	$(srcdir)/ceph_common.sh $(srcdir)/init-radosgw \
@@ -9398,7 +9407,7 @@ noinst_HEADERS = arch/intel.h arch/arm.h arch/probe.h \
 	common/TracepointProvider.h common/event_socket.h \
 	common/PluginRegistry.h common/scrub_types.h \
 	common/ceph_time.h common/ceph_timer.h common/align.h \
-	common/mutex_debug.h common/shunique_lock.h $(am__append_116) \
+	common/mutex_debug.h common/shunique_lock.h $(am__append_115) \
 	common/secret.h msg/Connection.h msg/Dispatcher.h \
 	msg/Message.h msg/Messenger.h msg/SimplePolicyMessenger.h \
 	msg/msg_types.h msg/simple/Accepter.h \
@@ -9407,7 +9416,7 @@ noinst_HEADERS = arch/intel.h arch/arm.h arch/probe.h \
 	msg/async/AsyncConnection.h msg/async/AsyncMessenger.h \
 	msg/async/Event.h msg/async/EventEpoll.h \
 	msg/async/EventSelect.h msg/async/net_handler.h \
-	$(am__append_125) messages/MAuth.h messages/MAuthReply.h \
+	$(am__append_124) messages/MAuth.h messages/MAuthReply.h \
 	messages/MCacheExpire.h messages/MClientCaps.h \
 	messages/MClientCapRelease.h messages/MClientLease.h \
 	messages/MClientReconnect.h messages/MClientReply.h \
@@ -9500,12 +9509,12 @@ noinst_HEADERS = arch/intel.h arch/arm.h arch/probe.h \
 	include/util.h include/stat.h include/on_exit.h \
 	include/memory.h include/rados/memory.h \
 	include/unordered_set.h include/unordered_map.h \
-	include/timegm.h include/event_type.h $(am__append_132) \
-	$(am__append_135) $(am__append_136) $(am__append_141) \
-	$(am__append_151) $(am__append_153) $(am__append_156) \
-	$(am__append_157) $(am__append_163) $(am__append_199) \
-	$(am__append_205) $(am__append_217) $(am__append_225) \
-	$(am__append_231) $(am__append_243) test/bench/backend.h \
+	include/timegm.h include/event_type.h $(am__append_131) \
+	$(am__append_134) $(am__append_135) $(am__append_140) \
+	$(am__append_150) $(am__append_152) $(am__append_155) \
+	$(am__append_156) $(am__append_162) $(am__append_198) \
+	$(am__append_204) $(am__append_216) $(am__append_224) \
+	$(am__append_230) $(am__append_242) test/bench/backend.h \
 	test/bench/bencher.h test/bench/detailed_stat_collector.h \
 	test/bench/distribution.h test/bench/dumb_backend.h \
 	test/bench/rados_backend.h test/bench/rbd_backend.h \
@@ -9528,7 +9537,7 @@ noinst_HEADERS = arch/intel.h arch/arm.h arch/probe.h \
 	test/system/st_rados_list_objects.h \
 	test/system/st_rados_notify.h test/system/st_rados_watch.h \
 	test/system/systest_runnable.h test/system/systest_settings.h \
-	test/unit.h test/journal/RadosTestFixture.h $(am__append_268) \
+	test/unit.h test/journal/RadosTestFixture.h $(am__append_267) \
 	tools/cephfs/JournalTool.h tools/cephfs/JournalScanner.h \
 	tools/cephfs/JournalFilter.h tools/cephfs/EventOutput.h \
 	tools/cephfs/Resetter.h tools/cephfs/Dumper.h \
@@ -9540,42 +9549,42 @@ noinst_HEADERS = arch/intel.h arch/arm.h arch/probe.h \
 	bash_completion/ceph bash_completion/rados bash_completion/rbd \
 	bash_completion/radosgw-admin mount/canonicalize.c \
 	mount/mtab.c objclass/objclass.h
-bin_SCRIPTS = $(am__append_30) $(am__append_298) $(am__append_307) \
-	$(am__append_315)
+bin_SCRIPTS = $(am__append_30) $(am__append_297) $(am__append_306) \
+	$(am__append_314)
 sbin_SCRIPTS = 
-su_sbin_SCRIPTS = $(am__append_312)
+su_sbin_SCRIPTS = $(am__append_311)
 dist_bin_SCRIPTS = 
-lib_LTLIBRARIES = $(am__append_131) $(am__append_134) \
-	$(am__append_140) $(am__append_146) $(am__append_279) \
-	$(am__append_305) $(am__append_306)
+lib_LTLIBRARIES = $(am__append_130) $(am__append_133) \
+	$(am__append_139) $(am__append_145) $(am__append_278) \
+	$(am__append_304) $(am__append_305)
 noinst_LTLIBRARIES = libarch.la libauth.la libcrush.la libmon_types.la \
 	$(am__append_49) libosd_types.la $(am__append_87) \
 	liberasure_code.la libcompressor.la libosdc.la \
 	$(am__append_92) $(am__append_94) libglobal.la \
 	libjson_spirit.la liblog.la libperfglue.la \
-	libcommon_internal.la libcommon_crc.la $(am__append_114) \
-	libcommon.la $(am__append_117) libmsg.la $(am__append_127) \
-	librbd_types.la $(am__append_138) $(am__append_148) \
-	$(am__append_152) $(am__append_158) $(am__append_218) \
-	$(am__append_228) $(am__append_233) $(am__append_261) \
-	$(am__append_272) $(am__append_299)
+	libcommon_internal.la libcommon_crc.la $(am__append_113) \
+	libcommon.la $(am__append_116) libmsg.la $(am__append_126) \
+	librbd_types.la $(am__append_137) $(am__append_147) \
+	$(am__append_151) $(am__append_157) $(am__append_217) \
+	$(am__append_227) $(am__append_232) $(am__append_260) \
+	$(am__append_271) $(am__append_298)
 noinst_LIBRARIES = $(am__append_32) $(am__append_45) libos_types.a \
 	$(am__append_57) $(am__append_61) $(am__append_67)
-radoslib_LTLIBRARIES = $(am__append_154) $(am__append_155)
+radoslib_LTLIBRARIES = $(am__append_153) $(am__append_154)
 
 # like bin_PROGRAMS, but these targets are only built for debug builds
-bin_DEBUGPROGRAMS = $(am__append_96) $(am__append_150) \
-	$(am__append_165) $(am__append_219) $(am__append_220) \
-	$(am__append_221) $(am__append_222) $(am__append_224) \
-	$(am__append_226) $(am__append_232) $(am__append_234) \
-	$(am__append_235) $(am__append_238) $(am__append_240) \
-	$(am__append_241) $(am__append_242) $(am__append_244) \
-	$(am__append_246) $(am__append_248) $(am__append_249) \
-	$(am__append_255) ceph_test_timers ceph_test_signal_handlers \
-	ceph_test_rewrite_latency ceph_test_crypto $(am__append_260) \
+bin_DEBUGPROGRAMS = $(am__append_96) $(am__append_149) \
+	$(am__append_164) $(am__append_218) $(am__append_219) \
+	$(am__append_220) $(am__append_221) $(am__append_223) \
+	$(am__append_225) $(am__append_231) $(am__append_233) \
+	$(am__append_234) $(am__append_237) $(am__append_239) \
+	$(am__append_240) $(am__append_241) $(am__append_243) \
+	$(am__append_245) $(am__append_247) $(am__append_248) \
+	$(am__append_254) ceph_test_timers ceph_test_signal_handlers \
+	ceph_test_rewrite_latency ceph_test_crypto $(am__append_259) \
 	ceph_bench_log ceph_test_objectcacher_stress \
-	ceph_test_cfuse_cache_invalidate $(am__append_264) \
-	$(am__append_265) $(am__append_274) $(am__append_275) \
+	ceph_test_cfuse_cache_invalidate $(am__append_263) \
+	$(am__append_264) $(am__append_273) $(am__append_274) \
 	ceph_psim
 
 # like sbin_SCRIPTS but can be used to install to e.g. /usr/sbin
@@ -9585,12 +9594,12 @@ ceph_sbindir = $(sbindir)
 su_sbindir = /sbin
 
 # C/C++ tests to build and executed will be appended to this
-check_TESTPROGRAMS = $(am__append_181) $(am__append_185) \
-	$(am__append_188) $(am__append_223) $(am__append_227) \
-	$(am__append_236) $(am__append_245) $(am__append_247) \
-	$(am__append_251) $(am__append_252) $(am__append_256) \
-	$(am__append_257) $(am__append_258) $(am__append_259) \
-	unittest_addrs $(am__append_263) unittest_bloom_filter \
+check_TESTPROGRAMS = $(am__append_180) $(am__append_184) \
+	$(am__append_187) $(am__append_222) $(am__append_226) \
+	$(am__append_235) $(am__append_244) $(am__append_246) \
+	$(am__append_250) $(am__append_251) $(am__append_255) \
+	$(am__append_256) $(am__append_257) $(am__append_258) \
+	unittest_addrs $(am__append_262) unittest_bloom_filter \
 	unittest_histogram unittest_prioritized_queue \
 	unittest_weighted_priority_queue unittest_str_map \
 	unittest_mutex_debug unittest_shunique_lock \
@@ -9652,7 +9661,7 @@ check_TESTPROGRAMS = $(am__append_181) $(am__append_185) \
 # GNU Library Public License for more details.
 #
 check_SCRIPTS = ceph-detect-init/run-tox.sh ceph-disk/run-tox.sh \
-	$(am__append_162) $(am__append_230) \
+	$(am__append_161) $(am__append_229) \
 	test/ceph_objectstore_tool.py test/test-ceph-helpers.sh \
 	test/cephtool-test-osd.sh test/cephtool-test-mon.sh \
 	test/cephtool-test-mds.sh test/cephtool-test-rados.sh \
@@ -9708,7 +9717,7 @@ AM_COMMON_CFLAGS = \
 	-fsigned-char
 
 AM_CFLAGS = $(AM_COMMON_CFLAGS) $(am__append_6) $(am__append_12) \
-	$(am__append_99) $(am__append_102)
+	$(am__append_98) $(am__append_101)
 AM_CPPFLAGS = $(AM_COMMON_CPPFLAGS)
 
 # note: this is position dependant, it affects the -l options that
@@ -9773,29 +9782,29 @@ CEPH_GLOBAL = $(LIBGLOBAL) $(LIBCOMMON) $(PTHREAD_LIBS) -lm $(CRYPTO_LIBS) $(EXT
 
 # important; libmsg before libauth!
 LIBCOMMON_DEPS = libcommon_internal.la libcommon_crc.la \
-	$(am__append_113) $(LIBERASURE_CODE) $(LIBCOMPRESSOR) \
+	$(am__append_112) $(LIBERASURE_CODE) $(LIBCOMPRESSOR) \
 	$(LIBMSG) $(LIBAUTH) $(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) \
-	$(LIBARCH) $(BOOST_RANDOM_LIBS) -luuid $(am__append_115)
-LIBRADOS_DEPS = $(am__append_128)
-LIBRGW_DEPS = $(am__append_145)
-LIBCIVETWEB_DEPS = $(am__append_147)
+	$(LIBARCH) $(BOOST_RANDOM_LIBS) -luuid $(am__append_114)
+LIBRADOS_DEPS = $(am__append_127)
+LIBRGW_DEPS = $(am__append_144)
+LIBCIVETWEB_DEPS = $(am__append_146)
 
 # This is used by the dencoder test
 
 # Do not use TCMALLOC with dencoder
 DENCODER_SOURCES = $(am__append_47) perfglue/disabled_heap_profiler.cc \
-	perfglue/disabled_stubs.cc $(am__append_142)
-DENCODER_DEPS = $(am__append_48) $(am__append_137) $(am__append_143) \
-	$(am__append_159)
+	perfglue/disabled_stubs.cc $(am__append_141)
+DENCODER_DEPS = $(am__append_48) $(am__append_136) $(am__append_142) \
+	$(am__append_158)
 radoslibdir = $(libdir)/rados-classes
-LOCAL_ALL = ceph-detect-init-all ceph-disk-all $(am__append_282) \
-	$(am__append_286) $(am__append_290)
-LOCAL_CLEAN = ceph-detect-init-clean ceph-disk-clean $(am__append_283) \
-	$(am__append_287) $(am__append_291) base-clean-local
+LOCAL_ALL = ceph-detect-init-all ceph-disk-all $(am__append_281) \
+	$(am__append_285) $(am__append_289)
+LOCAL_CLEAN = ceph-detect-init-clean ceph-disk-clean $(am__append_282) \
+	$(am__append_286) $(am__append_290) base-clean-local
 LOCAL_INSTALLDATA = ceph-detect-init-install-data \
 	ceph-disk-install-data base-install-data-local
-LOCAL_INSTALLEXEC = $(am__append_284) $(am__append_288) \
-	$(am__append_292)
+LOCAL_INSTALLEXEC = $(am__append_283) $(am__append_287) \
+	$(am__append_291)
 libarch_la_SOURCES = \
 	arch/intel.c \
 	arch/arm.c \
@@ -9964,7 +9973,8 @@ erasure_codelib_LTLIBRARIES = libec_jerasure_generic.la \
 	$(am__append_71) $(am__append_73) $(am__append_75) \
 	libec_jerasure.la libec_lrc.la libec_shec_generic.la \
 	$(am__append_80) $(am__append_82) $(am__append_84) \
-	libec_shec.la $(am__append_89) $(am__append_170)
+	libec_shec.la $(am__append_89)
+check_LTLIBRARIES = $(am__append_169)
 jerasure_sources = \
   erasure-code/ErasureCode.cc \
   erasure-code/jerasure/jerasure/src/cauchy.c \
@@ -10271,7 +10281,7 @@ liberasure_code_la_DEPENDENCIES = $(erasure_codelib_LTLIBRARIES)
 @LINUX_TRUE@liberasure_code_la_LIBADD = -ldl
 compressorlibdir = $(pkglibdir)/compressor
 compressorlib_LTLIBRARIES = libceph_zlib.la libceph_snappy.la \
-	$(am__append_206)
+	$(am__append_205)
 zlib_sources = \
   compressor/Compressor.cc \
   compressor/zlib/CompressionPluginZlib.cc \
@@ -10332,7 +10342,7 @@ libglobal_la_SOURCES = \
 	global/signal_handler.cc \
 	common/TrackedOp.cc
 
-libglobal_la_LIBADD = $(LIBCOMMON) $(am__append_97)
+libglobal_la_LIBADD = $(LIBCOMMON)
 libjson_spirit_la_SOURCES = \
 	json_spirit/json_spirit_reader.cpp \
 	json_spirit/json_spirit_writer.cpp
@@ -10342,8 +10352,8 @@ liblog_la_SOURCES = \
 	log/Log.cc \
 	log/SubsystemMap.cc
 
-libperfglue_la_SOURCES = $(am__append_98) $(am__append_101) \
-	$(am__append_104) $(am__append_105) $(am__append_106)
+libperfglue_la_SOURCES = $(am__append_97) $(am__append_100) \
+	$(am__append_103) $(am__append_104) $(am__append_105)
 @WITH_TCMALLOC_FALSE@@WITH_TCMALLOC_MINIMAL_TRUE@libperfglue_la_LIBADD = -ltcmalloc_minimal
 @WITH_TCMALLOC_TRUE@libperfglue_la_LIBADD = -ltcmalloc
 
@@ -10377,9 +10387,9 @@ libcommon_internal_la_SOURCES = ceph_ver.c common/DecayCounter.cc \
 	common/bloom_filter.cc common/module.c common/Readahead.cc \
 	common/Cycles.cc common/ContextCompletion.cc \
 	common/TracepointProvider.cc common/PluginRegistry.cc \
-	common/scrub_types.cc common/blkdev.cc $(am__append_107) \
-	$(am__append_108) $(am__append_109) $(am__append_110) \
-	$(am__append_111) mon/MonCap.cc mon/MonClient.cc mon/MonMap.cc \
+	common/scrub_types.cc common/blkdev.cc $(am__append_106) \
+	$(am__append_107) $(am__append_108) $(am__append_109) \
+	$(am__append_110) mon/MonCap.cc mon/MonClient.cc mon/MonMap.cc \
 	osd/OSDMap.cc osd/osd_types.cc osd/ECMsgTypes.cc osd/HitSet.cc \
 	mds/MDSMap.cc mds/FSMap.cc mds/inode_backtrace.cc \
 	mds/mdstypes.cc mds/flock.cc
@@ -10387,7 +10397,7 @@ libcommon_internal_la_SOURCES = ceph_ver.c common/DecayCounter.cc \
 # inject crc in common
 libcommon_crc_la_SOURCES = common/sctp_crc32.c common/crc32c.cc \
 	common/crc32c_intel_baseline.c common/crc32c_intel_fast.c \
-	$(am__append_112)
+	$(am__append_111)
 @WITH_GOOD_YASM_ELF64_TRUE@libcommon_crc_la_LIBTOOLFLAGS = --tag=CC
 @HAVE_ARMV8_CRC_TRUE@libcommon_crc_aarch64_la_SOURCES = common/crc32c_aarch64.c
 @HAVE_ARMV8_CRC_TRUE@libcommon_crc_aarch64_la_CFLAGS = $(AM_CFLAGS) $(ARM_CRC_FLAGS)
@@ -10401,9 +10411,9 @@ libmsg_la_SOURCES = msg/Message.cc msg/Messenger.cc msg/msg_types.cc \
 	msg/simple/SimpleMessenger.cc msg/async/AsyncConnection.cc \
 	msg/async/AsyncMessenger.cc msg/async/Event.cc \
 	msg/async/net_handler.cc msg/async/EventSelect.cc \
-	$(am__append_118) $(am__append_119) $(am__append_120) \
-	$(am__append_121) $(am__append_122) $(am__append_123) \
-	$(am__append_124)
+	$(am__append_117) $(am__append_118) $(am__append_119) \
+	$(am__append_120) $(am__append_121) $(am__append_122) \
+	$(am__append_123)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@rados_includedir = $(includedir)/rados
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@rados_include_DATA = $(srcdir)/include/rados/librados.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/include/rados/rados_types.h \
@@ -10414,7 +10424,7 @@ libmsg_la_SOURCES = msg/Message.cc msg/Messenger.cc msg/msg_types.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/include/page.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/include/crc32c.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(srcdir)/include/memory.h \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__append_126)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__append_125)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_includedir = $(includedir)/rbd
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_include_DATA = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(srcdir)/include/rbd/features.h \
@@ -10446,12 +10456,12 @@ libmsg_la_SOURCES = msg/Message.cc msg/Messenger.cc msg/msg_types.cc \
 # We need this to avoid basename conflicts with the librados build tests in test/Makefile.am
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@librados_la_CXXFLAGS =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	${AM_CXXFLAGS} \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__append_129)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__append_128)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@librados_la_LIBADD = $(LIBRADOS_DEPS) $(PTHREAD_LIBS) $(CRYPTO_LIBS) $(EXTRALIBS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@librados_la_LDFLAGS =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	${AM_LDFLAGS} \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	-version-info 2:0:0 \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__append_130)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__append_129)
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@libradosstriper_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	libradosstriper/libradosstriper.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	libradosstriper/RadosStriperImpl.cc \
@@ -10465,7 +10475,7 @@ libmsg_la_SOURCES = msg/Message.cc msg/Messenger.cc msg/msg_types.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@libradosstriper_la_LDFLAGS = ${AM_LDFLAGS} \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	-version-info \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	1:0:0 \
-@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	$(am__append_133)
+@ENABLE_CLIENT_TRUE@@WITH_RADOSSTRIPER_TRUE@@WITH_RADOS_TRUE@	$(am__append_132)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@libjournal_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/AsyncOpTracker.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	journal/Entry.cc \
@@ -10561,7 +10571,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_la_LDFLAGS = ${AM_LDFLAGS} \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	-version-info \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	1:0:0 \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_139)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_138)
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_la_CXXFLAGS = -fvisibility=hidden -fvisibility-inlines-hidden
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@librgw_la_SOURCES = rgw/rgw_acl.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	rgw/rgw_acl_s3.cc \
@@ -10631,7 +10641,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	rgw/rgw_xml.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	rgw/rgw_xml_enc.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	rgw/rgw_website.cc \
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	$(am__append_144)
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	$(am__append_143)
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@librgw_la_CXXFLAGS = -Woverloaded-virtual -fPIC -I$(srcdir)/xxHash \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	${AM_CXXFLAGS}
 
@@ -10835,7 +10845,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(BOOST_PROGRAM_OPTIONS_LIBS) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_164)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_163)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@ceph_erasure_code_non_regression_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/ceph_erasure_code_non_regression.cc
 
@@ -10843,7 +10853,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(BOOST_PROGRAM_OPTIONS_LIBS) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_166)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_165)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@ceph_erasure_code_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/ceph_erasure_code.cc
 
@@ -10851,7 +10861,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(BOOST_PROGRAM_OPTIONS_LIBS) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_168)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_167)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_example_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	erasure-code/ErasureCode.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/ErasureCodePluginExample.cc
@@ -10862,7 +10872,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_example_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_169)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_168)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_entry_point_la_SOURCES = test/erasure-code/ErasureCodePluginMissingEntryPoint.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_entry_point_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_entry_point_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10870,7 +10881,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_entry_point_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_171)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_170)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_version_la_SOURCES = test/erasure-code/ErasureCodePluginMissingVersion.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_version_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_version_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10878,7 +10890,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_missing_version_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_172)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_171)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_hangs_la_SOURCES = test/erasure-code/ErasureCodePluginHangs.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_hangs_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_hangs_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10886,7 +10899,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_hangs_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_173)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_172)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_initialize_la_SOURCES = test/erasure-code/ErasureCodePluginFailToInitialize.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_initialize_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_initialize_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10894,7 +10908,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_initialize_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_174)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_173)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_register_la_SOURCES = test/erasure-code/ErasureCodePluginFailToRegister.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_register_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_register_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10902,7 +10917,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_fail_to_register_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_175)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_174)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_neon_la_SOURCES = test/erasure-code/TestJerasurePluginNEON.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_neon_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_neon_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10910,7 +10926,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_neon_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_176)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_175)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse4_la_SOURCES = test/erasure-code/TestJerasurePluginSSE4.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse4_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse4_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10918,7 +10935,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse4_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_177)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_176)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse3_la_SOURCES = test/erasure-code/TestJerasurePluginSSE3.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse3_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse3_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10926,7 +10944,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_sse3_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_178)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_177)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_generic_la_SOURCES = test/erasure-code/TestJerasurePluginGeneric.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_generic_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_generic_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -10934,7 +10953,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_jerasure_generic_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_179)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_178)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_plugin_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	erasure-code/ErasureCode.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodePlugin.cc 
@@ -10944,7 +10964,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_180)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_179)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	erasure-code/ErasureCode.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCode.cc
@@ -10967,7 +10987,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_182)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_181)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_plugin_jerasure_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodePluginJerasure.cc
 
@@ -10976,7 +10996,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_183)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_182)
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_isa_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	erasure-code/ErasureCode.cc \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodeIsa.cc
@@ -10988,7 +11008,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	libisa.la \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(LIBERASURE_CODE) \
-@ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(am__append_184)
+@ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(am__append_183)
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_plugin_isa_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	erasure-code/ErasureCode.cc \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodePluginIsa.cc
@@ -10999,7 +11019,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(LIBERASURE_CODE) \
-@ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(am__append_186)
+@ENABLE_SERVER_TRUE@@WITH_BETTER_YASM_ELF64_TRUE@@WITH_OSD_TRUE@	$(am__append_185)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_lrc_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodeLrc.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${lrc_sources}
@@ -11009,7 +11029,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_187)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_186)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_plugin_lrc_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodePluginLrc.cc
 
@@ -11018,7 +11038,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_189)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_188)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_shec_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodeShec.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${shec_sources}
@@ -11039,7 +11059,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_190)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_189)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_shec_all_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodeShec_all.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${shec_sources}
@@ -11060,7 +11080,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_191)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_190)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_shec_thread_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodeShec_thread.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${shec_sources}
@@ -11081,7 +11101,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_192)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_191)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_shec_arguments_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodeShec_arguments.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${shec_sources}
@@ -11102,7 +11122,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_193)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_192)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_plugin_shec_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@        test/erasure-code/TestErasureCodePluginShec.cc
 
@@ -11111,7 +11131,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_194)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_193)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_neon_la_SOURCES = test/erasure-code/TestShecPluginNEON.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_neon_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_neon_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -11119,7 +11139,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_neon_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_195)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_194)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse4_la_SOURCES = test/erasure-code/TestShecPluginSSE4.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse4_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse4_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -11127,7 +11148,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse4_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_196)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_195)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse3_la_SOURCES = test/erasure-code/TestShecPluginSSE3.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse3_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse3_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -11135,7 +11157,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_sse3_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_197)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_196)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_generic_la_SOURCES = test/erasure-code/TestShecPluginGeneric.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_generic_la_CFLAGS = ${AM_CFLAGS}
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_generic_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -11143,7 +11166,8 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libec_test_shec_generic_la_LDFLAGS =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${AM_LDFLAGS} -module \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-avoid-version -shared \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_198)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	-rpath /nowhere \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_197)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_erasure_code_example_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	erasure-code/ErasureCode.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/erasure-code/TestErasureCodeExample.cc
@@ -11161,7 +11185,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(PTHREAD_LIBS) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(EXTRALIBS) \
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_200)
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_199)
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@simple_client_SOURCES = \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/simple_client.cc \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/simple_dispatcher.cc
@@ -11173,7 +11197,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(PTHREAD_LIBS) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(EXTRALIBS) \
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_201)
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_200)
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@xio_server_SOURCES = \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/xio_server.cc \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/xio_dispatcher.cc
@@ -11185,7 +11209,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(PTHREAD_LIBS) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(EXTRALIBS) \
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_203)
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_202)
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@xio_client_SOURCES = \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/xio_client.cc \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	test/messenger/xio_dispatcher.cc
@@ -11197,7 +11221,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(PTHREAD_LIBS) \
 @ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(EXTRALIBS) \
-@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_204)
+@ENABLE_SERVER_TRUE@@ENABLE_XIO_TRUE@	$(am__append_203)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@libceph_example_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	compressor/Compressor.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/compressor/compressor_plugin_example.cc
@@ -11215,7 +11239,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_207)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_206)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_snappy_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/compressor/test_compression_snappy.cc \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	${snappy_sources}
@@ -11225,7 +11249,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_208)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_207)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_snappy_LDFLAGS = -lsnappy
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_plugin_snappy_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/compressor/test_compression_plugin_snappy.cc \
@@ -11237,7 +11261,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBCOMPRESSOR) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_209)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_208)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_plugin_snappy_LDFLAGS = -lsnappy
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_zlib_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/compressor/test_compression_zlib.cc \
@@ -11248,7 +11272,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBCOMMON) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_210)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_209)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_zlib_LDFLAGS = -lz
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_plugin_zlib_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	test/compressor/test_compression_plugin_zlib.cc \
@@ -11260,7 +11284,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBCOMPRESSOR) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_211)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_210)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_compression_plugin_zlib_LDFLAGS = -lz
 
 # This should use LIBMDS_TYPES once it exists
@@ -11281,10 +11305,10 @@ librbd_types_la_SOURCES = \
 
 # These should always use explicit _CFLAGS/_CXXFLAGS so avoid basename conflicts
 @ENABLE_CLIENT_TRUE@ceph_dencoder_CFLAGS = ${AM_CFLAGS} \
-@ENABLE_CLIENT_TRUE@	$(am__append_212)
+@ENABLE_CLIENT_TRUE@	$(am__append_211)
 @ENABLE_CLIENT_TRUE@ceph_dencoder_CXXFLAGS = ${AM_CXXFLAGS} \
-@ENABLE_CLIENT_TRUE@	$(am__append_213) $(am__append_214) \
-@ENABLE_CLIENT_TRUE@	$(am__append_215)
+@ENABLE_CLIENT_TRUE@	$(am__append_212) $(am__append_213) \
+@ENABLE_CLIENT_TRUE@	$(am__append_214)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@libradostest_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados/test.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	test/librados/TestCase.cc
@@ -11602,6 +11626,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_ClusterWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_PoolWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_ImageReplayer.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@        test/rbd_mirror/test_ImageDeleter.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_ImageSync.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_fixture.cc
 
@@ -11612,6 +11637,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_ImageReplayer.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_ImageSync.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc \
@@ -11655,6 +11681,13 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librados_api.la $(LIBRADOS_DEPS) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBOSDC) $(UNITTEST_LDADD) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(CEPH_GLOBAL) $(RADOS_TEST_LDADD)
+
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@ceph_test_rbd_mirror_random_write_SOURCES = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/random_write.cc
+
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@ceph_test_rbd_mirror_random_write_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@ceph_test_rbd_mirror_random_write_LDADD = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRBD) $(LIBRADOS) $(CEPH_GLOBAL)
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@ceph_test_rbd_mirror_image_replay_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_replay.cc
@@ -11728,7 +11761,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	test/libcephfs/multiclient.cc \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	test/libcephfs/access.cc \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	test/libcephfs/acl.cc \
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	$(am__append_237)
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	$(am__append_236)
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@ceph_test_libcephfs_LDADD = $(LIBRADOS) $(LIBCEPHFS) $(LIBCOMMON) $(UNITTEST_LDADD)
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@ceph_test_libcephfs_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@unittest_encoding_SOURCES = test/encoding.cc
@@ -11751,7 +11784,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	-Wignored-qualifiers \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	-Wold-style-definition \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	-Wtype-limits \
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	$(am__append_239)
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	$(am__append_238)
 @ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@test_build_librgw_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	test/buildtest_skeleton.cc \
 @ENABLE_CLIENT_TRUE@@WITH_BUILD_TESTS_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	$(librgw_la_SOURCES)
@@ -11979,13 +12012,13 @@ librbd_types_la_SOURCES = \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_osdscrub_LDADD =  \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_253)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_252)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_pglog_SOURCES = test/osd/TestPGLog.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_pglog_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_pglog_LDADD = $(LIBOSD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(UNITTEST_LDADD) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_254)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_253)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_hitset_SOURCES = test/osd/hitset.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_hitset_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@unittest_hitset_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
@@ -12052,7 +12085,7 @@ UNITTEST_CXXFLAGS = \
 UNITTEST_LDADD = $(top_builddir)/src/gmock/lib/libgmock_main.la \
 	$(top_builddir)/src/gmock/lib/libgmock.la \
 	$(top_builddir)/src/gmock/gtest/lib/libgtest.la \
-	$(PTHREAD_LIBS) $(am__append_262)
+	$(PTHREAD_LIBS) $(am__append_261)
 unittest_addrs_SOURCES = test/test_addrs.cc
 unittest_addrs_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_addrs_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
@@ -12294,7 +12327,7 @@ ceph_test_cfuse_cache_invalidate_SOURCES = test/test_cfuse_cache_invalidate.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/action/Snap.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/action/Status.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd/action/Watch.cc \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_267)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_266)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@rbd_LDADD = libjournal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_journal_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_rbd_client.la \
@@ -12305,7 +12338,7 @@ ceph_test_cfuse_cache_invalidate_SOURCES = test/test_cfuse_cache_invalidate.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(BOOST_REGEX_LIBS) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(BOOST_PROGRAM_OPTIONS_LIBS) \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_269)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_268)
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@rbd_nbd_SOURCES = tools/rbd_nbd/rbd-nbd.cc
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@rbd_nbd_CXXFLAGS = $(AM_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@LINUX_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@rbd_nbd_LDADD = $(LIBRBD) $(LIBRADOS) $(CEPH_GLOBAL) $(BOOST_REGEX_LIBS)
@@ -12318,10 +12351,13 @@ ceph_test_cfuse_cache_invalidate_SOURCES = test/test_cfuse_cache_invalidate.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Mirror.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/PoolWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Replayer.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@        tools/rbd_mirror/ImageDeleter.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/Threads.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/types.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/BootstrapRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CloseImageRequest.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/CreateImageRequest.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenImageRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	tools/rbd_mirror/image_sync/ImageCopyRequest.cc \
@@ -12363,7 +12399,7 @@ ceph_test_cfuse_cache_invalidate_SOURCES = test/test_cfuse_cache_invalidate.cc
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBOS) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(BOOST_PROGRAM_OPTIONS_LIBS) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_276)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_275)
 @ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@@WITH_RADOS_TRUE@cephfs_journal_tool_SOURCES = \
 @ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@@WITH_RADOS_TRUE@	tools/cephfs/cephfs-journal-tool.cc \
 @ENABLE_CLIENT_TRUE@@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@@WITH_RADOS_TRUE@	tools/cephfs/JournalTool.cc \
@@ -12469,7 +12505,7 @@ editpaths = sed \
 	-e 's|@@GCOV_PREFIX_STRIP[@][@]|$(GCOV_PREFIX_STRIP)|g'
 
 shell_scripts = ceph-debugpack ceph-post-file ceph-crush-location \
-	$(am__append_309)
+	$(am__append_308)
 doc_DATA = $(srcdir)/sample.ceph.conf sample.fetch_config
 
 # various scripts in $(libexecdir)
@@ -12489,11 +12525,11 @@ AM_TESTS_ENVIRONMENT = export CEPH_ROOT="$(abs_top_srcdir)"; export \
 	PATH="$(abs_srcdir):$$PATH";
 
 # pybind
-python_PYTHON = $(am__append_293) $(am__append_303) $(am__append_308)
+python_PYTHON = $(am__append_292) $(am__append_302) $(am__append_307)
 @ENABLE_CLIENT_TRUE@bash_completiondir = $(sysconfdir)/bash_completion.d
 @ENABLE_CLIENT_TRUE@bash_completion_DATA =  \
 @ENABLE_CLIENT_TRUE@	$(srcdir)/bash_completion/ceph \
-@ENABLE_CLIENT_TRUE@	$(am__append_295) $(am__append_297)
+@ENABLE_CLIENT_TRUE@	$(am__append_294) $(am__append_296)
 @ENABLE_CLIENT_TRUE@ceph_syn_SOURCES = ceph_syn.cc \
 @ENABLE_CLIENT_TRUE@	client/SyntheticClient.cc # uses g_conf.. \
 @ENABLE_CLIENT_TRUE@	needs cleanup
@@ -12520,7 +12556,7 @@ python_PYTHON = $(am__append_293) $(am__append_303) $(am__append_308)
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	1:0:0 \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	-export-symbols-regex \
 @ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	'^ceph_.*' \
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	$(am__append_304)
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@	$(am__append_303)
 
 # jni library (java source is in src/java)
 @ENABLE_CEPHFS_JAVA_TRUE@@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@libcephfs_jni_la_SOURCES = \
@@ -12533,7 +12569,7 @@ python_PYTHON = $(am__append_293) $(am__append_303) $(am__append_308)
 @ENABLE_CEPHFS_JAVA_TRUE@@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@libcephfs_jni_la_CPPFLAGS = $(JDK_CPPFLAGS) $(AM_CPPFLAGS)
 @ENABLE_CEPHFS_JAVA_TRUE@@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_RADOS_TRUE@libcephfs_jni_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0
 @ENABLE_SERVER_TRUE@ceph_sbin_SCRIPTS = ceph-create-keys \
-@ENABLE_SERVER_TRUE@	$(am__append_314)
+@ENABLE_SERVER_TRUE@	$(am__append_313)
 @ENABLE_SERVER_TRUE@mount_ceph_SOURCES = mount/mount.ceph.c
 @ENABLE_SERVER_TRUE@mount_ceph_LDADD = $(LIBSECRET) $(LIBCOMMON)
 @ENABLE_SERVER_TRUE@@WITH_MON_TRUE@ceph_mon_SOURCES = ceph_mon.cc
@@ -12543,7 +12579,7 @@ python_PYTHON = $(am__append_293) $(am__append_303) $(am__append_308)
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOSD) $(LIBOSD_TYPES) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(LIBOS_TYPES) $(LIBOS) \
 @ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(CEPH_GLOBAL) $(LIBCOMMON) \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_316)
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	$(am__append_315)
 @ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@ceph_mds_SOURCES = ceph_mds.cc
 @ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@ceph_mds_LDADD = $(LIBMDS) $(LIBOSDC) $(CEPH_GLOBAL) $(LIBCOMMON)
 @ENABLE_COVERAGE_TRUE@@ENABLE_SERVER_TRUE@COV_DIR = $(DESTDIR)$(libdir)/ceph/coverage
@@ -12853,6 +12889,17 @@ libosd.a: $(libosd_a_OBJECTS) $(libosd_a_DEPENDENCIES) $(EXTRA_libosd_a_DEPENDEN
 	$(AM_V_at)-rm -f libosd.a
 	$(AM_V_AR)$(libosd_a_AR) libosd.a $(libosd_a_OBJECTS) $(libosd_a_LIBADD)
 	$(AM_V_at)$(RANLIB) libosd.a
+
+clean-checkLTLIBRARIES:
+	-test -z "$(check_LTLIBRARIES)" || rm -f $(check_LTLIBRARIES)
+	@list='$(check_LTLIBRARIES)'; \
+	locs=`for p in $$list; do echo $$p; done | \
+	      sed 's|^[^/]*$$|.|; s|/[^/]*$$||; s|$$|/so_locations|' | \
+	      sort -u`; \
+	test -z "$$locs" || { \
+	  echo rm -f $${locs}; \
+	  rm -f $${locs}; \
+	}
 
 install-compressorlibLTLIBRARIES: $(compressorlib_LTLIBRARIES)
 	@$(NORMAL_INSTALL)
@@ -15138,6 +15185,8 @@ tools/rbd_mirror/PoolWatcher.lo: tools/rbd_mirror/$(am__dirstamp) \
 	tools/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/Replayer.lo: tools/rbd_mirror/$(am__dirstamp) \
 	tools/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
+tools/rbd_mirror/ImageDeleter.lo: tools/rbd_mirror/$(am__dirstamp) \
+	tools/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/Threads.lo: tools/rbd_mirror/$(am__dirstamp) \
 	tools/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/types.lo: tools/rbd_mirror/$(am__dirstamp) \
@@ -15152,6 +15201,12 @@ tools/rbd_mirror/image_replayer/BootstrapRequest.lo:  \
 	tools/rbd_mirror/image_replayer/$(am__dirstamp) \
 	tools/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/image_replayer/CloseImageRequest.lo:  \
+	tools/rbd_mirror/image_replayer/$(am__dirstamp) \
+	tools/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
+tools/rbd_mirror/image_replayer/CreateImageRequest.lo:  \
+	tools/rbd_mirror/image_replayer/$(am__dirstamp) \
+	tools/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
+tools/rbd_mirror/image_replayer/OpenImageRequest.lo:  \
 	tools/rbd_mirror/image_replayer/$(am__dirstamp) \
 	tools/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
 tools/rbd_mirror/image_replayer/OpenLocalImageRequest.lo:  \
@@ -15200,6 +15255,9 @@ test/rbd_mirror/librbd_mirror_test_la-test_PoolWatcher.lo:  \
 	test/rbd_mirror/$(am__dirstamp) \
 	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/librbd_mirror_test_la-test_ImageReplayer.lo:  \
+	test/rbd_mirror/$(am__dirstamp) \
+	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
+test/rbd_mirror/librbd_mirror_test_la-test_ImageDeleter.lo:  \
 	test/rbd_mirror/$(am__dirstamp) \
 	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/librbd_mirror_test_la-test_ImageSync.lo:  \
@@ -16651,6 +16709,13 @@ test/rbd_mirror/image_replay.$(OBJEXT):  \
 ceph_test_rbd_mirror_image_replay$(EXEEXT): $(ceph_test_rbd_mirror_image_replay_OBJECTS) $(ceph_test_rbd_mirror_image_replay_DEPENDENCIES) $(EXTRA_ceph_test_rbd_mirror_image_replay_DEPENDENCIES) 
 	@rm -f ceph_test_rbd_mirror_image_replay$(EXEEXT)
 	$(AM_V_CXXLD)$(CXXLINK) $(ceph_test_rbd_mirror_image_replay_OBJECTS) $(ceph_test_rbd_mirror_image_replay_LDADD) $(LIBS)
+test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.$(OBJEXT):  \
+	test/rbd_mirror/$(am__dirstamp) \
+	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
+
+ceph_test_rbd_mirror_random_write$(EXEEXT): $(ceph_test_rbd_mirror_random_write_OBJECTS) $(ceph_test_rbd_mirror_random_write_DEPENDENCIES) $(EXTRA_ceph_test_rbd_mirror_random_write_DEPENDENCIES) 
+	@rm -f ceph_test_rbd_mirror_random_write$(EXEEXT)
+	$(AM_V_CXXLD)$(ceph_test_rbd_mirror_random_write_LINK) $(ceph_test_rbd_mirror_random_write_OBJECTS) $(ceph_test_rbd_mirror_random_write_LDADD) $(LIBS)
 test/test_rewrite_latency.$(OBJEXT): test/$(am__dirstamp) \
 	test/$(DEPDIR)/$(am__dirstamp)
 
@@ -18286,6 +18351,9 @@ test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) test/rbd_mirror/image_replayer/$(DEPDIR)
 	@: > test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.$(OBJEXT):  \
+	test/rbd_mirror/image_replayer/$(am__dirstamp) \
+	test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
+test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.$(OBJEXT):  \
 	test/rbd_mirror/image_replayer/$(am__dirstamp) \
 	test/rbd_mirror/image_replayer/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/image_sync/$(am__dirstamp):
@@ -20243,8 +20311,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/osdc/$(DEPDIR)/FakeWriteback.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/osdc/$(DEPDIR)/object_cacher_stress.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror-test_main.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror_random_write-random_write.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/image_replay.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ClusterWatcher.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageDeleter.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageReplayer.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageSync.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_PoolWatcher.Plo@am__quote@
@@ -20254,6 +20324,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageSync.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_fixture.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_BootstrapRequest.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_CreateImageRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ObjectCopyRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_SnapshotCopyRequest.Po@am__quote@
@@ -20346,6 +20417,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd/action/$(DEPDIR)/Status.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd/action/$(DEPDIR)/Watch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/$(DEPDIR)/ClusterWatcher.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/$(DEPDIR)/ImageDeleter.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/$(DEPDIR)/ImageReplayer.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/$(DEPDIR)/ImageSync.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/$(DEPDIR)/Mirror.Plo@am__quote@
@@ -20356,6 +20428,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/$(DEPDIR)/types.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/BootstrapRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/CloseImageRequest.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/CreateImageRequest.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/OpenImageRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/OpenLocalImageRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_replayer/$(DEPDIR)/ReplayStatusFormatter.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/rbd_mirror/image_sync/$(DEPDIR)/ImageCopyRequest.Plo@am__quote@
@@ -24127,6 +24201,13 @@ test/rbd_mirror/librbd_mirror_test_la-test_ImageReplayer.lo: test/rbd_mirror/tes
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_mirror_test_la_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/librbd_mirror_test_la-test_ImageReplayer.lo `test -f 'test/rbd_mirror/test_ImageReplayer.cc' || echo '$(srcdir)/'`test/rbd_mirror/test_ImageReplayer.cc
 
+test/rbd_mirror/librbd_mirror_test_la-test_ImageDeleter.lo: test/rbd_mirror/test_ImageDeleter.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_mirror_test_la_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/librbd_mirror_test_la-test_ImageDeleter.lo -MD -MP -MF test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageDeleter.Tpo -c -o test/rbd_mirror/librbd_mirror_test_la-test_ImageDeleter.lo `test -f 'test/rbd_mirror/test_ImageDeleter.cc' || echo '$(srcdir)/'`test/rbd_mirror/test_ImageDeleter.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageDeleter.Tpo test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageDeleter.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/test_ImageDeleter.cc' object='test/rbd_mirror/librbd_mirror_test_la-test_ImageDeleter.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_mirror_test_la_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/librbd_mirror_test_la-test_ImageDeleter.lo `test -f 'test/rbd_mirror/test_ImageDeleter.cc' || echo '$(srcdir)/'`test/rbd_mirror/test_ImageDeleter.cc
+
 test/rbd_mirror/librbd_mirror_test_la-test_ImageSync.lo: test/rbd_mirror/test_ImageSync.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_mirror_test_la_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/librbd_mirror_test_la-test_ImageSync.lo -MD -MP -MF test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageSync.Tpo -c -o test/rbd_mirror/librbd_mirror_test_la-test_ImageSync.lo `test -f 'test/rbd_mirror/test_ImageSync.cc' || echo '$(srcdir)/'`test/rbd_mirror/test_ImageSync.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageSync.Tpo test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_ImageSync.Plo
@@ -26247,6 +26328,20 @@ test/rbd_mirror/ceph_test_rbd_mirror-test_main.obj: test/rbd_mirror/test_main.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/test_main.cc' object='test/rbd_mirror/ceph_test_rbd_mirror-test_main.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_test_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/ceph_test_rbd_mirror-test_main.obj `if test -f 'test/rbd_mirror/test_main.cc'; then $(CYGPATH_W) 'test/rbd_mirror/test_main.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/test_main.cc'; fi`
+
+test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.o: test/rbd_mirror/random_write.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_test_rbd_mirror_random_write_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.o -MD -MP -MF test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror_random_write-random_write.Tpo -c -o test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.o `test -f 'test/rbd_mirror/random_write.cc' || echo '$(srcdir)/'`test/rbd_mirror/random_write.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror_random_write-random_write.Tpo test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror_random_write-random_write.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/random_write.cc' object='test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_test_rbd_mirror_random_write_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.o `test -f 'test/rbd_mirror/random_write.cc' || echo '$(srcdir)/'`test/rbd_mirror/random_write.cc
+
+test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.obj: test/rbd_mirror/random_write.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_test_rbd_mirror_random_write_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.obj -MD -MP -MF test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror_random_write-random_write.Tpo -c -o test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.obj `if test -f 'test/rbd_mirror/random_write.cc'; then $(CYGPATH_W) 'test/rbd_mirror/random_write.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/random_write.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror_random_write-random_write.Tpo test/rbd_mirror/$(DEPDIR)/ceph_test_rbd_mirror_random_write-random_write.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/random_write.cc' object='test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_test_rbd_mirror_random_write_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/ceph_test_rbd_mirror_random_write-random_write.obj `if test -f 'test/rbd_mirror/random_write.cc'; then $(CYGPATH_W) 'test/rbd_mirror/random_write.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/random_write.cc'; fi`
 
 test/rgw/ceph_test_rgw_manifest-test_rgw_manifest.o: test/rgw/test_rgw_manifest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_test_rgw_manifest_CXXFLAGS) $(CXXFLAGS) -MT test/rgw/ceph_test_rgw_manifest-test_rgw_manifest.o -MD -MP -MF test/rgw/$(DEPDIR)/ceph_test_rgw_manifest-test_rgw_manifest.Tpo -c -o test/rgw/ceph_test_rgw_manifest-test_rgw_manifest.o `test -f 'test/rgw/test_rgw_manifest.cc' || echo '$(srcdir)/'`test/rgw/test_rgw_manifest.cc
@@ -29776,6 +29871,20 @@ test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.ob
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_BootstrapRequest.obj `if test -f 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc'; fi`
 
+test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.o: test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.o -MD -MP -MF test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_CreateImageRequest.Tpo -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.o `test -f 'test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_CreateImageRequest.Tpo test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_CreateImageRequest.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc' object='test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.o `test -f 'test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
+
+test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.obj: test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.obj -MD -MP -MF test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_CreateImageRequest.Tpo -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.obj `if test -f 'test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_CreateImageRequest.Tpo test/rbd_mirror/image_replayer/$(DEPDIR)/unittest_rbd_mirror-test_mock_CreateImageRequest.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc' object='test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/image_replayer/unittest_rbd_mirror-test_mock_CreateImageRequest.obj `if test -f 'test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc'; then $(CYGPATH_W) 'test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc'; fi`
+
 test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.o: test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.o -MD -MP -MF test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Tpo -c -o test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.o `test -f 'test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc' || echo '$(srcdir)/'`test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Tpo test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Po
@@ -30952,7 +31061,7 @@ check-TESTS:
 	log_list=`echo $$log_list`; trs_list=`echo $$trs_list`; \
 	$(MAKE) $(AM_MAKEFLAGS) $(TEST_SUITE_LOG) TEST_LOGS="$$log_list"; \
 	exit $$?;
-recheck: all $(check_PROGRAMS) $(check_SCRIPTS)
+recheck: all $(check_LTLIBRARIES) $(check_PROGRAMS) $(check_SCRIPTS)
 	@test -z "$(TEST_SUITE_LOG)" || rm -f $(TEST_SUITE_LOG)
 	@set +e; $(am__set_TESTS_bases); \
 	bases=`for i in $$bases; do echo $$i; done \
@@ -32024,7 +32133,8 @@ distdir: $(DISTFILES)
 	  top_distdir="$(top_distdir)" distdir="$(distdir)" \
 	  dist-hook
 check-am: all-am
-	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS) $(check_SCRIPTS)
+	$(MAKE) $(AM_MAKEFLAGS) $(check_LTLIBRARIES) $(check_PROGRAMS) \
+	  $(check_SCRIPTS)
 	$(MAKE) $(AM_MAKEFLAGS) check-TESTS
 check: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) check-recursive
@@ -32335,7 +32445,7 @@ maintainer-clean-generic:
 	-test -z "$(BUILT_SOURCES)" || rm -f $(BUILT_SOURCES)
 clean: clean-recursive
 
-clean-am: clean-binPROGRAMS clean-checkPROGRAMS \
+clean-am: clean-binPROGRAMS clean-checkLTLIBRARIES clean-checkPROGRAMS \
 	clean-compressorlibLTLIBRARIES \
 	clean-erasure_codelibLTLIBRARIES clean-generic \
 	clean-libLTLIBRARIES clean-libtool clean-local \
@@ -32437,7 +32547,8 @@ uninstall-am: uninstall-bash_completionDATA uninstall-binPROGRAMS \
 
 .PHONY: $(am__recursive_targets) CTAGS GTAGS TAGS all all-am all-local \
 	check check-TESTS check-am clean clean-binPROGRAMS \
-	clean-checkPROGRAMS clean-compressorlibLTLIBRARIES \
+	clean-checkLTLIBRARIES clean-checkPROGRAMS \
+	clean-compressorlibLTLIBRARIES \
 	clean-erasure_codelibLTLIBRARIES clean-generic \
 	clean-libLTLIBRARIES clean-libtool clean-local \
 	clean-noinstLIBRARIES clean-noinstLTLIBRARIES \

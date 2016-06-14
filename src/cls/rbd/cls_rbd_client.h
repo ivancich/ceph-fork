@@ -66,6 +66,8 @@ namespace librbd {
 		   uint64_t *parent_overlap);
     int set_parent(librados::IoCtx *ioctx, const std::string &oid,
 		   parent_spec pspec, uint64_t parent_overlap);
+    void set_parent(librados::ObjectWriteOperation *op,
+                    parent_spec pspec, uint64_t parent_overlap);
     void get_flags_start(librados::ObjectReadOperation *op,
                          const std::vector<snapid_t> &snap_ids);
     int get_flags_finish(bufferlist::iterator *it, uint64_t *flags,
@@ -135,6 +137,10 @@ namespace librbd {
     int metadata_list(librados::IoCtx *ioctx, const std::string &oid,
                       const std::string &start, uint64_t max_return,
                       map<string, bufferlist> *pairs);
+    void metadata_list_start(librados::ObjectReadOperation *op,
+                             const std::string &start, uint64_t max_return);
+    int metadata_list_finish(bufferlist::iterator *it,
+                             std::map<std::string, bufferlist> *pairs);
     int metadata_set(librados::IoCtx *ioctx, const std::string &oid,
                      const map<std::string, bufferlist> &data);
     int metadata_remove(librados::IoCtx *ioctx, const std::string &oid,
@@ -239,6 +245,10 @@ namespace librbd {
                                   std::string *image_id);
     int mirror_image_get(librados::IoCtx *ioctx, const std::string &image_id,
 			 cls::rbd::MirrorImage *mirror_image);
+    void mirror_image_get_start(librados::ObjectReadOperation *op,
+                                const std::string &image_id);
+    int mirror_image_get_finish(bufferlist::iterator *iter,
+			        cls::rbd::MirrorImage *mirror_image);
     int mirror_image_set(librados::IoCtx *ioctx, const std::string &image_id,
 			 const cls::rbd::MirrorImage &mirror_image);
     int mirror_image_remove(librados::IoCtx *ioctx,

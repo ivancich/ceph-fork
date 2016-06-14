@@ -460,6 +460,7 @@ librbd_mirror_test_la_SOURCES = \
 	test/rbd_mirror/test_ClusterWatcher.cc \
 	test/rbd_mirror/test_PoolWatcher.cc \
 	test/rbd_mirror/test_ImageReplayer.cc \
+        test/rbd_mirror/test_ImageDeleter.cc \
 	test/rbd_mirror/test_ImageSync.cc \
 	test/rbd_mirror/test_fixture.cc
 
@@ -476,6 +477,7 @@ unittest_rbd_mirror_SOURCES = \
 	test/rbd_mirror/test_mock_ImageReplayer.cc \
 	test/rbd_mirror/test_mock_ImageSync.cc \
 	test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc \
+	test/rbd_mirror/image_replayer/test_mock_CreateImageRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_SnapshotCopyRequest.cc \
@@ -519,6 +521,13 @@ ceph_test_rbd_mirror_LDADD = \
 	$(LIBOSDC) $(UNITTEST_LDADD) \
 	$(CEPH_GLOBAL) $(RADOS_TEST_LDADD)
 bin_DEBUGPROGRAMS += ceph_test_rbd_mirror
+
+ceph_test_rbd_mirror_random_write_SOURCES = \
+	test/rbd_mirror/random_write.cc
+ceph_test_rbd_mirror_random_write_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+ceph_test_rbd_mirror_random_write_LDADD = \
+	$(LIBRBD) $(LIBRADOS) $(CEPH_GLOBAL)
+bin_DEBUGPROGRAMS += ceph_test_rbd_mirror_random_write
 
 ceph_test_rbd_mirror_image_replay_SOURCES = \
 	test/rbd_mirror/image_replay.cc

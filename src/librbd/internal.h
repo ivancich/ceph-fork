@@ -13,6 +13,7 @@
 #include "include/buffer_fwd.h"
 #include "include/rbd/librbd.hpp"
 #include "include/rbd_types.h"
+#include "librbd/parent_types.h"
 
 enum {
   l_librbd_first = 26000,
@@ -88,6 +89,9 @@ namespace librbd {
   bool image_options_is_empty(rbd_image_options_t opts);
 
   int snap_set(ImageCtx *ictx, const char *snap_name);
+
+  int list_images_v2(librados::IoCtx& io_ctx,
+      std::map<std::string, std::string>& images);
   int list(librados::IoCtx& io_ctx, std::vector<std::string>& names);
   int list_children(ImageCtx *ictx,
 		    std::set<std::pair<std::string, std::string> > & names);
@@ -97,12 +101,14 @@ namespace librbd {
 	     bool old_format, uint64_t features, int *order,
 	     uint64_t stripe_unit, uint64_t stripe_count);
   int create(IoCtx& io_ctx, const char *imgname, uint64_t size,
-	     ImageOptions& opts);
+	     ImageOptions& opts,
+             const std::string &non_primary_global_image_id,
+             const std::string &primary_mirror_uuid);
   int create_v2(IoCtx& io_ctx, const char *imgname, uint64_t bid, uint64_t size,
-		int order, uint64_t features, uint64_t stripe_unit,
-		uint64_t stripe_count, uint8_t journal_order,
-		uint8_t journal_splay_width,
-		const std::string &journal_pool,
+                int order, uint64_t features, uint64_t stripe_unit,
+                uint64_t stripe_count, uint8_t journal_order,
+                uint8_t journal_splay_width,
+                const std::string &journal_pool,
                 const std::string &non_primary_global_image_id,
                 const std::string &primary_mirror_uuid);
   int clone(IoCtx& p_ioctx, const char *p_name, const char *p_snap_name,
@@ -111,6 +117,10 @@ namespace librbd {
 	    uint64_t stripe_unit, int stripe_count);
   int clone(IoCtx& p_ioctx, const char *p_name, const char *p_snap_name,
 	    IoCtx& c_ioctx, const char *c_name, ImageOptions& c_opts);
+  int clone(ImageCtx *p_imctx, IoCtx& c_ioctx, const char *c_name,
+            ImageOptions& c_opts,
+            const std::string &non_primary_global_image_id,
+            const std::string &primary_mirror_uuid);
   int rename(librados::IoCtx& io_ctx, const char *srcname, const char *dstname);
   int info(ImageCtx *ictx, image_info_t& info, size_t image_size);
   int get_old_format(ImageCtx *ictx, uint8_t *old);
@@ -125,7 +135,7 @@ namespace librbd {
   int is_exclusive_lock_owner(ImageCtx *ictx, bool *is_owner);
 
   int remove(librados::IoCtx& io_ctx, const char *imgname,
-	     ProgressContext& prog_ctx);
+	     ProgressContext& prog_ctx, bool force=false);
   int snap_list(ImageCtx *ictx, std::vector<snap_info_t>& snaps);
   int snap_exists(ImageCtx *ictx, const char *snap_name, bool *exists);
   int snap_is_protected(ImageCtx *ictx, const char *snap_name,
