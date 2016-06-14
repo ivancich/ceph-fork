@@ -95,8 +95,6 @@ install: build
 	install -D -m 644 udev/95-ceph-osd.rules $(DESTDIR)/lib/udev/rules.d/95-ceph-osd.rules
 	install -D -m 644 src/etc-rbdmap $(DESTDIR)/etc/ceph/rbdmap
 	install -D -m 755 src/init-rbdmap $(DESTDIR)/etc/init.d/rbdmap
-	# Drop ceph-test binaries that link to libradosstriper
-	rm $(DESTDIR)/usr/bin/ceph_test_rados_striper*
 
 # Add here commands to install the package into debian/testpack.
 # Build architecture-independent files here.
@@ -205,7 +203,6 @@ binary-arch: build install
 	dh_strip -pceph-common --dbg-package=ceph-common-dbg
 	dh_strip -pceph-fs-common --dbg-package=ceph-fs-common-dbg
 	dh_strip -plibrados2 --dbg-package=librados2-dbg
-	dh_strip -plibradosstriper1 --dbg-package=libradosstriper1-dbg
 	dh_strip -plibrbd1 --dbg-package=librbd1-dbg
 	dh_strip -plibcephfs1 --dbg-package=libcephfs1-dbg
 	dh_strip -plibrgw2 --dbg-package=librgw2-dbg

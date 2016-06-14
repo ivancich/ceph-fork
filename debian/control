@@ -101,7 +101,6 @@ Depends: binutils,
 Recommends: btrfs-tools,
             ceph-mds (= ${binary:Version}),
             librados2 (= ${binary:Version}),
-            libradosstriper1 (= ${binary:Version}),
             librbd1 (= ${binary:Version}),
             ntp | time-daemon
 Replaces: ceph-common (<< 0.78-500), python-ceph (<< 0.92-1223),
@@ -437,39 +436,6 @@ Description: RADOS distributed object store client library (development files)
  .
  This package contains development files needed for building applications that
  link against librados.
-
-Package: libradosstriper1
-Architecture: linux-any
-Section: libs
-Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
-Description: RADOS striping interface
- Striping interface built on top of the rados library, allowing
- to stripe bigger objects onto several standard rados objects using
- an interface very similar to the rados one.
-
-Package: libradosstriper1-dbg
-Architecture: linux-any
-Section: debug
-Priority: extra
-Depends: libradosstriper1 (= ${binary:Version}), ${misc:Depends}
-Description: debugging symbols for libradosstriper
- libradosstriper is a striping interface built on top of the rados
- library, allowing to stripe bigger objects onto several standard
- rados objects using an interface very similar to the rados one.
- .
- This package contains debugging symbols for libradosstriper.
-
-Package: libradosstriper-dev
-Architecture: linux-any
-Section: libdevel
-Depends: libradosstriper1 (= ${binary:Version}), ${misc:Depends}
-Description: RADOS striping interface (development files)
- libradosstriper is a striping interface built on top of the rados
- library, allowing to stripe bigger objects onto several standard
- rados objects using an interface very similar to the rados one.
- .
- This package contains development files needed for building applications that
- link against libradosstriper.
 
 Package: librbd1
 Architecture: linux-any
