@@ -1,0 +1,207 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 15 Jun 2016 17:42:59 -0400
+Subject: rbd-mirror: prune sync points referencing missing snapshots
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+
+Resolves: rhbz#1346880
+---
+ .../image_sync/test_mock_SyncPointPruneRequest.cc  | 60 ++++++++++++++++++++++
+ src/test/rbd_mirror/test_mock_ImageSync.cc         |  1 +
+ src/tools/rbd_mirror/ImageSync.cc                  |  5 +-
+ .../rbd_mirror/image_sync/SyncPointPruneRequest.cc | 24 +++++++--
+ .../rbd_mirror/image_sync/SyncPointPruneRequest.h  |  2 +
+ 5 files changed, 87 insertions(+), 5 deletions(-)
+
+diff --git a/src/test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc b/src/test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc
+index 7025457..76844dc 100644
+--- a/src/test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc
++++ b/src/test/rbd_mirror/image_sync/test_mock_SyncPointPruneRequest.cc
+@@ -31,6 +31,7 @@ namespace image_sync {
+ 
+ using ::testing::_;
+ using ::testing::InSequence;
++using ::testing::Return;
+ using ::testing::StrEq;
+ using ::testing::WithArg;
+ 
+@@ -51,6 +52,12 @@ public:
+       .WillOnce(WithArg<1>(CompleteContext(r)));
+   }
+ 
++  void expect_get_snap_id(librbd::MockImageCtx &mock_remote_image_ctx,
++                          const std::string &snap_name, uint64_t snap_id) {
++    EXPECT_CALL(mock_remote_image_ctx, get_snap_id(StrEq(snap_name)))
++      .WillOnce(Return(snap_id));
++  }
++
+   void expect_image_refresh(librbd::MockImageCtx &mock_remote_image_ctx, int r) {
+     EXPECT_CALL(*mock_remote_image_ctx.state, refresh(_))
+       .WillOnce(CompleteContext(r));
+@@ -82,6 +89,7 @@ TEST_F(TestMockImageSyncSyncPointPruneRequest, SyncInProgressSuccess) {
+   journal::MockJournaler mock_journaler;
+ 
+   InSequence seq;
++  expect_get_snap_id(mock_remote_image_ctx, "snap1", 123);
+   expect_image_refresh(mock_remote_image_ctx, 0);
+   expect_update_client(mock_journaler, 0);
+ 
+@@ -103,6 +111,7 @@ TEST_F(TestMockImageSyncSyncPointPruneRequest, RestartedSyncInProgressSuccess) {
+   journal::MockJournaler mock_journaler;
+ 
+   InSequence seq;
++  expect_get_snap_id(mock_remote_image_ctx, "snap1", 123);
+   expect_snap_remove(mock_remote_image_ctx, "snap2", 0);
+   expect_image_refresh(mock_remote_image_ctx, 0);
+   expect_update_client(mock_journaler, 0);
+@@ -117,6 +126,57 @@ TEST_F(TestMockImageSyncSyncPointPruneRequest, RestartedSyncInProgressSuccess) {
+   ASSERT_EQ(client_meta, m_client_meta);
+ }
+ 
++TEST_F(TestMockImageSyncSyncPointPruneRequest, SyncInProgressMissingSnapSuccess) {
++  librbd::journal::MirrorPeerClientMeta client_meta;
++  client_meta.sync_points.emplace_front("snap2", "snap1", boost::none);
++  client_meta.sync_points.emplace_front("snap1", boost::none);
++  m_client_meta = client_meta;
++
++  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
++  journal::MockJournaler mock_journaler;
++
++  InSequence seq;
++  expect_get_snap_id(mock_remote_image_ctx, "snap1", CEPH_NOSNAP);
++  expect_snap_remove(mock_remote_image_ctx, "snap2", 0);
++  expect_snap_remove(mock_remote_image_ctx, "snap1", 0);
++  expect_image_refresh(mock_remote_image_ctx, 0);
++  expect_update_client(mock_journaler, 0);
++
++  C_SaferCond ctx;
++  MockSyncPointPruneRequest *req = create_request(mock_remote_image_ctx,
++                                                  mock_journaler, false, &ctx);
++  req->send();
++  ASSERT_EQ(0, ctx.wait());
++
++  client_meta.sync_points.clear();
++  ASSERT_EQ(client_meta, m_client_meta);
++}
++
++TEST_F(TestMockImageSyncSyncPointPruneRequest, SyncInProgressUnexpectedFromSnapSuccess) {
++  librbd::journal::MirrorPeerClientMeta client_meta;
++  client_meta.sync_points.emplace_front("snap2", "snap1", boost::none);
++  m_client_meta = client_meta;
++
++  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
++  journal::MockJournaler mock_journaler;
++
++  InSequence seq;
++  expect_get_snap_id(mock_remote_image_ctx, "snap2", 124);
++  expect_snap_remove(mock_remote_image_ctx, "snap2", 0);
++  expect_snap_remove(mock_remote_image_ctx, "snap1", 0);
++  expect_image_refresh(mock_remote_image_ctx, 0);
++  expect_update_client(mock_journaler, 0);
++
++  C_SaferCond ctx;
++  MockSyncPointPruneRequest *req = create_request(mock_remote_image_ctx,
++                                                  mock_journaler, false, &ctx);
++  req->send();
++  ASSERT_EQ(0, ctx.wait());
++
++  client_meta.sync_points.clear();
++  ASSERT_EQ(client_meta, m_client_meta);
++}
++
+ TEST_F(TestMockImageSyncSyncPointPruneRequest, SyncCompleteSuccess) {
+   librbd::journal::MirrorPeerClientMeta client_meta;
+   client_meta.sync_points.emplace_front("snap1", boost::none);
+diff --git a/src/test/rbd_mirror/test_mock_ImageSync.cc b/src/test/rbd_mirror/test_mock_ImageSync.cc
+index 868a030..4e58ac7 100644
+--- a/src/test/rbd_mirror/test_mock_ImageSync.cc
++++ b/src/test/rbd_mirror/test_mock_ImageSync.cc
+@@ -340,6 +340,7 @@ TEST_F(TestMockImageSync, CancelImageCopy) {
+   m_client_meta.sync_points = {{"snap1", boost::none}};
+ 
+   InSequence seq;
++  expect_prune_sync_point(mock_sync_point_prune_request, false, 0);
+   expect_copy_snapshots(mock_snapshot_copy_request, 0);
+ 
+   C_SaferCond image_copy_ctx;
+diff --git a/src/tools/rbd_mirror/ImageSync.cc b/src/tools/rbd_mirror/ImageSync.cc
+index 2f28fd4..1f55a03 100644
+--- a/src/tools/rbd_mirror/ImageSync.cc
++++ b/src/tools/rbd_mirror/ImageSync.cc
+@@ -73,13 +73,16 @@ template <typename I>
+ void ImageSync<I>::send_prune_catch_up_sync_point() {
+   update_progress("PRUNE_CATCH_UP_SYNC_POINT");
+ 
+-  if (m_client_meta->sync_points.size() <= 1) {
++  if (m_client_meta->sync_points.empty()) {
+     send_create_sync_point();
+     return;
+   }
+ 
+   dout(20) << dendl;
+ 
++  // prune will remove sync points with missing snapshots and
++  // ensure we have a maximum of one sync point (in case we
++  // restarted)
+   Context *ctx = create_context_callback<
+     ImageSync<I>, &ImageSync<I>::handle_prune_catch_up_sync_point>(this);
+   SyncPointPruneRequest<I> *request = SyncPointPruneRequest<I>::create(
+diff --git a/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.cc b/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.cc
+index d9b5e8e..8341fbe 100644
+--- a/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.cc
++++ b/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.cc
+@@ -53,14 +53,26 @@ void SyncPointPruneRequest<I>::send() {
+       m_snap_names.push_back(sync_point.from_snap_name);
+     }
+   } else {
+-    // if we have more than one sync point, trim the extras off
++    // if we have more than one sync point or invalid sync points,
++    // trim them off
++    RWLock::RLocker snap_locker(m_remote_image_ctx->snap_lock);
+     std::set<std::string> snap_names;
+     for (auto it = m_client_meta_copy.sync_points.rbegin();
+          it != m_client_meta_copy.sync_points.rend(); ++it) {
+-      MirrorPeerSyncPoint &sync_point =
+-        m_client_meta_copy.sync_points.back();
++      MirrorPeerSyncPoint &sync_point = *it;
+       if (&sync_point == &m_client_meta_copy.sync_points.front()) {
+-        break;
++        if (m_remote_image_ctx->get_snap_id(sync_point.snap_name) ==
++              CEPH_NOSNAP) {
++          derr << ": failed to locate sync point snapshot: "
++               << sync_point.snap_name << dendl;
++        } else if (!sync_point.from_snap_name.empty()) {
++          derr << ": unexpected from_snap_name in primary sync point: "
++               << sync_point.from_snap_name << dendl;
++        } else {
++          // first sync point is OK -- keep it
++          break;
++        }
++        m_invalid_master_sync_point = true;
+       }
+ 
+       if (snap_names.count(sync_point.snap_name) == 0) {
+@@ -156,6 +168,10 @@ void SyncPointPruneRequest<I>::send_update_client() {
+     while (m_client_meta_copy.sync_points.size() > 1) {
+       m_client_meta_copy.sync_points.pop_back();
+     }
++    if (m_invalid_master_sync_point) {
++      // all subsequent sync points would have been pruned
++      m_client_meta_copy.sync_points.clear();
++    }
+   }
+ 
+   bufferlist client_data_bl;
+diff --git a/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.h b/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.h
+index 3ef4ab6..65e13ef 100644
+--- a/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.h
++++ b/src/tools/rbd_mirror/image_sync/SyncPointPruneRequest.h
+@@ -73,6 +73,8 @@ private:
+   MirrorPeerClientMeta m_client_meta_copy;
+   std::list<std::string> m_snap_names;
+ 
++  bool m_invalid_master_sync_point = false;
++
+   void send_remove_snap();
+   void handle_remove_snap(int r);
+ 

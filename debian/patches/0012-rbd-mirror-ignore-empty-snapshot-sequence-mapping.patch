@@ -1,0 +1,61 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 15 Jun 2016 16:34:44 -0400
+Subject: rbd-mirror: ignore empty snapshot sequence mapping
+
+This invalid condition will be gracefully detected and handled
+when the snapshot mappings are computed.
+
+Fixes: http://tracker.ceph.com/issues/16329
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+
+Resolves: rhbz#1346880
+---
+ .../image_sync/test_mock_ImageCopyRequest.cc       | 22 ++++++++++++++++++++++
+ .../rbd_mirror/image_sync/ImageCopyRequest.cc      |  1 -
+ 2 files changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/src/test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc b/src/test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc
+index abc6cc0..ca6326e 100644
+--- a/src/test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc
++++ b/src/test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc
+@@ -489,6 +489,28 @@ TEST_F(TestMockImageSyncImageCopyRequest, EmptySnapMap) {
+   ASSERT_EQ(-EINVAL, ctx.wait());
+ }
+ 
++TEST_F(TestMockImageSyncImageCopyRequest, EmptySnapSeqs) {
++  ASSERT_EQ(0, create_snap("snap1"));
++  ASSERT_EQ(0, create_snap("snap2"));
++  m_client_meta.snap_seqs = {};
++  m_client_meta.sync_points = {{"snap2", "snap1", boost::none}};
++
++  librbd::MockImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
++  librbd::MockImageCtx mock_local_image_ctx(*m_local_image_ctx);
++  journal::MockJournaler mock_journaler;
++
++  expect_get_snap_id(mock_remote_image_ctx);
++
++  C_SaferCond ctx;
++  MockImageCopyRequest *request = create_request(mock_remote_image_ctx,
++                                                 mock_local_image_ctx,
++                                                 mock_journaler,
++                                                 m_client_meta.sync_points.front(),
++                                                 &ctx);
++  request->send();
++  ASSERT_EQ(-EINVAL, ctx.wait());
++}
++
+ } // namespace image_sync
+ } // namespace mirror
+ } // namespace rbd
+diff --git a/src/tools/rbd_mirror/image_sync/ImageCopyRequest.cc b/src/tools/rbd_mirror/image_sync/ImageCopyRequest.cc
+index e037f88..e1845e4 100644
+--- a/src/tools/rbd_mirror/image_sync/ImageCopyRequest.cc
++++ b/src/tools/rbd_mirror/image_sync/ImageCopyRequest.cc
+@@ -38,7 +38,6 @@ ImageCopyRequest<I>::ImageCopyRequest(I *local_image_ctx, I *remote_image_ctx,
+     m_lock(unique_lock_name("ImageCopyRequest::m_lock", this)),
+     m_client_meta_copy(*client_meta) {
+   assert(!m_client_meta_copy.sync_points.empty());
+-  assert(!m_client_meta_copy.snap_seqs.empty());
+ }
+ 
+ template <typename I>

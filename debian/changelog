@@ -1,3 +1,15 @@
+ceph (10.2.2-4redhat1) stable; urgency=medium
+
+  * journal: do not log watch errors against deleted journal (rhbz#1347195)
+  * librbd: force-remove journal when disabling feature and removing image
+    (rhbz#1347195)
+  * librbd: ignore ENOENT error when removing image from mirror directory
+    (rhbz#1347195)
+  * rbd-mirror: prune sync points referencing missing snapshots (rhbz#1346880)
+  * rbd-mirror: ignore empty snapshot sequence mapping (rhbz#1346880)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 16 Jun 2016 17:44:46 +0000
+
 ceph (10.2.2-3redhat1) stable; urgency=medium
 
   * Drop libradosstriper entirely (rhbz#1339870)

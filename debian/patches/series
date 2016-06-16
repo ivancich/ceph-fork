@@ -9,3 +9,8 @@
 0009-rgw-ldap-fix-ldap-bindpw-parsing.patch
 0010-Revert-rados-Added-striper-option-to-the-command-lin.patch
 0011-libradosstriper-remove-the-rest-of-the-libradosstrip.patch
+0012-rbd-mirror-ignore-empty-snapshot-sequence-mapping.patch
+0013-rbd-mirror-prune-sync-points-referencing-missing-sna.patch
+0014-librbd-ignore-ENOENT-error-when-removing-image-from-.patch
+0015-librbd-force-remove-journal-when-disabling-feature-a.patch
+0016-journal-do-not-log-watch-errors-against-deleted-jour.patch

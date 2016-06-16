@@ -1,0 +1,34 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 16 Jun 2016 09:31:03 -0400
+Subject: librbd: ignore ENOENT error when removing image from mirror directory
+
+Fixes: http://tracker.ceph.com/issues/16348
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+
+Resolves: rhbz#1347195
+---
+ src/librbd/internal.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/librbd/internal.cc b/src/librbd/internal.cc
+index 13682df..55036dd 100644
+--- a/src/librbd/internal.cc
++++ b/src/librbd/internal.cc
+@@ -395,7 +395,7 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+ 
+   if (remove) {
+     r = cls_client::mirror_image_remove(&ictx->md_ctx, ictx->id);
+-    if (r < 0) {
++    if (r < 0 && r != -ENOENT) {
+       lderr(cct) << "failed to remove image from mirroring directory: "
+                  << cpp_strerror(r) << dendl;
+       return r;
+@@ -1827,7 +1827,7 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+             }
+           } else if (mirror_mode == RBD_MIRROR_MODE_POOL) {
+             r = cls_client::mirror_image_remove(&ictx->md_ctx, ictx->id);
+-            if (r < 0) {
++            if (r < 0 && r != -ENOENT) {
+               lderr(cct) << "failed to remove image from mirroring directory: "
+                          << cpp_strerror(r) << dendl;
+               return r;
