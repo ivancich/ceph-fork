@@ -14,3 +14,4 @@
 0014-librbd-ignore-ENOENT-error-when-removing-image-from-.patch
 0015-librbd-force-remove-journal-when-disabling-feature-a.patch
 0016-journal-do-not-log-watch-errors-against-deleted-jour.patch
+0017-rbd-mirror-ensure-replay-status-formatter-has-comple.patch

@@ -1,3 +1,10 @@
+ceph (10.2.2-5redhat1) stable; urgency=medium
+
+  * rbd-mirror: ensure replay status formatter has completed before stopping
+    (rhbz#1347405)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 16 Jun 2016 15:49:24 -0600
+
 ceph (10.2.2-4redhat1) stable; urgency=medium
 
   * journal: do not log watch errors against deleted journal (rhbz#1347195)
