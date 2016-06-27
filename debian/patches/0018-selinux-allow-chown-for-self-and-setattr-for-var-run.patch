@@ -1,0 +1,29 @@
+From: Boris Ranto <branto@redhat.com>
+Date: Mon, 13 Jun 2016 12:34:39 +0200
+Subject: selinux: allow chown for self and setattr for /var/run/ceph
+
+Fixes: http://tracker.ceph.com/issues/16126
+
+Signed-off-by: Boris Ranto <branto@redhat.com>
+(cherry picked from commit 2a6c738abda35f540af6f9398406d4e49337c34d)
+
+Resolves: rhbz#1347391
+---
+ selinux/ceph.te | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/selinux/ceph.te b/selinux/ceph.te
+index 52bb504..0e85c84 100644
+--- a/selinux/ceph.te
++++ b/selinux/ceph.te
+@@ -84,8 +84,8 @@ logging_send_syslog_msg(ceph_t)
+ sysnet_dns_name_resolve(ceph_t)
+ 
+ # basis for future security review
+-allow ceph_t ceph_var_run_t:sock_file { create unlink write };
+-allow ceph_t self:capability sys_rawio;
++allow ceph_t ceph_var_run_t:sock_file { create unlink write setattr };
++allow ceph_t self:capability { sys_rawio chown };
+ 
+ allow ceph_t self:tcp_socket { accept listen };
+ corenet_tcp_connect_cyphesis_port(ceph_t)

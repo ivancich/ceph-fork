@@ -15,3 +15,14 @@
 0015-librbd-force-remove-journal-when-disabling-feature-a.patch
 0016-journal-do-not-log-watch-errors-against-deleted-jour.patch
 0017-rbd-mirror-ensure-replay-status-formatter-has-comple.patch
+0018-selinux-allow-chown-for-self-and-setattr-for-var-run.patch
+0019-rgw-add-missing-metadata_heap-pool-to-old-zones.patch
+0020-rbd-mirror-clean-up-ImageReplayer-before-stopping-st.patch
+0021-librbd-ignore-snap-unprotect-EBUSY-errors-during-jou.patch
+0022-librbd-memory-leak-possible-if-journal-op-event-fail.patch
+0023-rbd-mirror-keep-local-pointer-to-image-journal.patch
+0024-librbd-journal-callback-to-interrupt-replay.patch
+0025-librbd-potential-race-when-replaying-journal-ops.patch
+0026-librbd-journal-Replay-no-longer-holds-lock-while-com.patch
+0027-librbd-do-not-propagate-mirror-status-notification-f.patch
+0028-librbd-mark-exclusive-lock-as-released-after-journal.patch

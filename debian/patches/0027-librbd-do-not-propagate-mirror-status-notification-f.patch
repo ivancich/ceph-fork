@@ -1,0 +1,52 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Fri, 24 Jun 2016 10:03:53 -0400
+Subject: librbd: do not propagate mirror status notification failures
+
+These should be treated as a broadcast since no ACK is required. The
+peer will eventually see the notification or its watch will have timed
+out and it will re-sync.
+
+Fixes: http://tracker.ceph.com/issues/16470
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+
+Resolves: rhbz#1349892
+---
+ src/librbd/internal.cc | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/src/librbd/internal.cc b/src/librbd/internal.cc
+index 55036dd..bb3e454 100644
+--- a/src/librbd/internal.cc
++++ b/src/librbd/internal.cc
+@@ -248,7 +248,6 @@ int mirror_image_enable(CephContext *cct, librados::IoCtx &io_ctx,
+   if (r < 0) {
+     lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
+                << dendl;
+-    return r;
+   }
+ 
+   ldout(cct, 20) << "image mirroring is enabled: global_id=" <<
+@@ -341,7 +340,6 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+   if (r < 0) {
+     lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
+                << dendl;
+-    return r;
+   }
+ 
+   header_oid = ::journal::Journaler::header_oid(ictx->id);
+@@ -3199,7 +3197,6 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+       if (r < 0) {
+         lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
+                    << dendl;
+-        return r;
+       }
+     }
+ 
+@@ -3355,7 +3352,6 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+     if (r < 0) {
+       lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
+                  << dendl;
+-      return r;
+     }
+     return 0;
+   }

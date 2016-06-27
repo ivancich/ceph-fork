@@ -1,0 +1,107 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 23 Jun 2016 08:45:59 -0400
+Subject: librbd: ignore snap unprotect -EBUSY errors during journal replay
+
+Fixes: http://tracker.ceph.com/issues/16445
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+
+Resolves: rhbz#1349402
+---
+ src/librbd/journal/Replay.cc                | 10 +++++++++-
+ src/librbd/journal/Replay.h                 |  1 +
+ src/test/librbd/journal/test_mock_Replay.cc | 28 ++++++++++++++++++++++++++++
+ 3 files changed, 38 insertions(+), 1 deletion(-)
+
+diff --git a/src/librbd/journal/Replay.cc b/src/librbd/journal/Replay.cc
+index c57202a..f1da098 100644
+--- a/src/librbd/journal/Replay.cc
++++ b/src/librbd/journal/Replay.cc
+@@ -340,6 +340,7 @@ void Replay<I>::handle_event(const journal::OpFinishEvent &event,
+                  << "op_tid=" << event.op_tid << dendl;
+ 
+   bool op_in_progress;
++  bool filter_ret_val;
+   Context *on_op_complete = nullptr;
+   Context *on_op_finish_event = nullptr;
+   {
+@@ -360,6 +361,10 @@ void Replay<I>::handle_event(const journal::OpFinishEvent &event,
+     op_in_progress = op_event.op_in_progress;
+     std::swap(on_op_complete, op_event.on_op_complete);
+     std::swap(on_op_finish_event, op_event.on_op_finish_event);
++
++    // special errors which indicate op never started but was recorded
++    // as failed in the journal
++    filter_ret_val = (op_event.op_finish_error_codes.count(event.r) != 0);
+   }
+ 
+   if (event.r < 0) {
+@@ -373,7 +378,7 @@ void Replay<I>::handle_event(const journal::OpFinishEvent &event,
+       // creating the op event
+       delete on_op_complete;
+       delete on_op_finish_event;
+-      handle_op_complete(event.op_tid, event.r);
++      handle_op_complete(event.op_tid, filter_ret_val ? 0 : event.r);
+     }
+     return;
+   }
+@@ -503,6 +508,9 @@ void Replay<I>::handle_event(const journal::SnapUnprotectEvent &event,
+                                                                event,
+                                                                on_op_complete));
+ 
++  // ignore errors recorded in the journal
++  op_event->op_finish_error_codes = {-EBUSY};
++
+   // ignore errors caused due to replay
+   op_event->ignore_error_codes = {-EINVAL};
+ 
+diff --git a/src/librbd/journal/Replay.h b/src/librbd/journal/Replay.h
+index aeca5ba..9b0516f 100644
+--- a/src/librbd/journal/Replay.h
++++ b/src/librbd/journal/Replay.h
+@@ -52,6 +52,7 @@ private:
+     Context *on_finish_ready = nullptr;
+     Context *on_finish_safe = nullptr;
+     Context *on_op_complete = nullptr;
++    ReturnValues op_finish_error_codes;
+     ReturnValues ignore_error_codes;
+   };
+ 
+diff --git a/src/test/librbd/journal/test_mock_Replay.cc b/src/test/librbd/journal/test_mock_Replay.cc
+index 43f2909..8a9c869 100644
+--- a/src/test/librbd/journal/test_mock_Replay.cc
++++ b/src/test/librbd/journal/test_mock_Replay.cc
+@@ -972,6 +972,34 @@ TEST_F(TestMockJournalReplay, SnapUnprotectEvent) {
+   ASSERT_EQ(0, on_finish_safe.wait());
+ }
+ 
++TEST_F(TestMockJournalReplay, SnapUnprotectOpFinishBusy) {
++  REQUIRE_FEATURE(RBD_FEATURE_JOURNALING);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockReplayImageCtx mock_image_ctx(*ictx);
++  MockJournalReplay mock_journal_replay(mock_image_ctx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  C_SaferCond on_start_ready;
++  C_SaferCond on_start_safe;
++  when_process(mock_journal_replay, EventEntry{SnapUnprotectEvent(123, "snap")},
++               &on_start_ready, &on_start_safe);
++  ASSERT_EQ(0, on_start_ready.wait());
++
++  // aborts the snap unprotect op if image had children
++  C_SaferCond on_finish_ready;
++  C_SaferCond on_finish_safe;
++  when_process(mock_journal_replay, EventEntry{OpFinishEvent(123, -EBUSY)},
++               &on_finish_ready, &on_finish_safe);
++
++  ASSERT_EQ(0, on_start_safe.wait());
++  ASSERT_EQ(0, on_finish_safe.wait());
++  ASSERT_EQ(0, on_finish_ready.wait());
++}
++
+ TEST_F(TestMockJournalReplay, SnapUnprotectEventInvalid) {
+   REQUIRE_FEATURE(RBD_FEATURE_JOURNALING);
+ 

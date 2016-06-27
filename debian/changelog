@@ -1,3 +1,24 @@
+ceph (10.2.2-6redhat1) stable; urgency=medium
+
+  * rgw: add missing metadata_heap pool to old zones (rhbz#1349746)
+  * rbd-mirror: clean up ImageReplayer before stopping state machine
+    (rhbz#1350351)
+  * librbd: ignore snap unprotect -EBUSY errors during journal replay
+    (rhbz#1349402)
+  * librbd: memory leak possible if journal op event failed
+    (rhbz#1349402)
+  * rbd-mirror: keep local pointer to image journal (rhbz#1349983)
+  * librbd: journal callback to interrupt replay (rhbz#1349983)
+  * librbd: potential race when replaying journal ops (rhbz#1349983)
+  * librbd: journal::Replay no longer holds lock while completing
+    callback (rhbz#1349983)
+  * librbd: do not propagate mirror status notification failures
+    (rhbz#1349892)
+  * librbd: mark exclusive lock as released after journal is closed
+    (rhbz#1349288)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 27 Jun 2016 15:06:31 -0600
+
 ceph (10.2.2-5redhat1) stable; urgency=medium
 
   * rbd-mirror: ensure replay status formatter has completed before stopping

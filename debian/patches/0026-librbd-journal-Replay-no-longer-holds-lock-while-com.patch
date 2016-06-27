@@ -1,0 +1,42 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 22 Jun 2016 18:09:29 -0400
+Subject: librbd: journal::Replay no longer holds lock while completing
+ callback
+
+Fixes: http://tracker.ceph.com/issues/16433
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+
+Resolves: rhbz#1349983
+---
+ src/librbd/journal/Replay.cc | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/src/librbd/journal/Replay.cc b/src/librbd/journal/Replay.cc
+index 7e9d6e6..12c691a 100644
+--- a/src/librbd/journal/Replay.cc
++++ b/src/librbd/journal/Replay.cc
+@@ -788,12 +788,18 @@ void Replay<I>::handle_op_complete(uint64_t op_tid, int r) {
+ 
+   // shut down request might have occurred while lock was
+   // dropped -- handle if pending
+-  Mutex::Locker locker(m_lock);
+-  assert(m_in_flight_op_events > 0);
+-  --m_in_flight_op_events;
+-  if (m_flush_ctx != nullptr && m_in_flight_op_events == 0 &&
+-      (m_in_flight_aio_flush + m_in_flight_aio_modify) == 0) {
+-    m_image_ctx.op_work_queue->queue(m_flush_ctx, 0);
++  Context *on_flush = nullptr;
++  {
++    Mutex::Locker locker(m_lock);
++    assert(m_in_flight_op_events > 0);
++    --m_in_flight_op_events;
++    if (m_in_flight_op_events == 0 &&
++        (m_in_flight_aio_flush + m_in_flight_aio_modify) == 0) {
++      on_flush = m_flush_ctx;
++    }
++  }
++  if (on_flush != nullptr) {
++    m_image_ctx.op_work_queue->queue(on_flush, 0);
+   }
+ }
+ 
