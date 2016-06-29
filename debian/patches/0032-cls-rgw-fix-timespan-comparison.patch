@@ -1,0 +1,27 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Thu, 9 Jun 2016 12:59:35 -0700
+Subject: cls/rgw: fix timespan comparison
+
+Fixes: http://tracker.ceph.com/issues/16220
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit e0a07f70f7740a66ffa2646e0a57e8bdc0285373)
+
+Resolves: rhbz#1349285
+---
+ src/cls/rgw/cls_rgw.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/cls/rgw/cls_rgw.cc b/src/cls/rgw/cls_rgw.cc
+index a29ad7b..146da9c 100644
+--- a/src/cls/rgw/cls_rgw.cc
++++ b/src/cls/rgw/cls_rgw.cc
+@@ -1912,7 +1912,7 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
+                 cur_disk.pending_map.begin();
+       while(iter != cur_disk.pending_map.end()) {
+         map<string, struct rgw_bucket_pending_info>::iterator cur_iter=iter++;
+-        if (cur_time > (cur_iter->second.timestamp + tag_timeout)) {
++        if (cur_time > (cur_iter->second.timestamp + timespan(tag_timeout))) {
+           cur_disk.pending_map.erase(cur_iter);
+         }
+       }

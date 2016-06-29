@@ -1,0 +1,56 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Sat, 4 Jun 2016 03:29:12 -0700
+Subject: rgw: squash bi complete bi log entries
+
+only process the newest complete operation in a bilog listing.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit f69db8e455f07c5594363c5beac329cb964be1ff)
+
+Resolves: rhbz#1349285
+---
+ src/rgw/rgw_data_sync.cc | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index fad1121..160a512 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -2256,6 +2256,7 @@ class RGWBucketShardIncrementalSyncCR : public RGWCoroutine {
+   RGWBucketInfo *bucket_info;
+   list<rgw_bi_log_entry> list_result;
+   list<rgw_bi_log_entry>::iterator entries_iter;
++  map<string, pair<real_time, RGWModifyOp> > squash_map;
+   rgw_bucket_shard_inc_sync_marker inc_marker;
+   rgw_obj_key key;
+   rgw_bi_log_entry *entry;
+@@ -2337,6 +2338,16 @@ int RGWBucketShardIncrementalSyncCR::operate()
+         drain_all();
+         return set_cr_error(retcode);
+       }
++      squash_map.clear();
++      for (auto& e : list_result) {
++        if (e.state != CLS_RGW_STATE_COMPLETE) {
++          continue;
++        }
++        auto& squash_entry = squash_map[e.object];
++        if (squash_entry.first <= e.timestamp) {
++          squash_entry = make_pair<>(e.timestamp, e.op);
++        }
++      }
+       entries_iter = list_result.begin();
+       for (; entries_iter != list_result.end(); ++entries_iter) {
+         entry = &(*entries_iter);
+@@ -2380,6 +2391,12 @@ int RGWBucketShardIncrementalSyncCR::operate()
+           marker_tracker->try_update_high_marker(cur_id, 0, entry->timestamp);
+           continue;
+         }
++        if (make_pair<>(entry->timestamp, entry->op) != squash_map[entry->object]) {
++          set_status() << "squashed operation, skipping";
++          ldout(sync_env->cct, 20) << "[inc sync] skipping object: " << bucket_name << ":" << bucket_id << ":" << shard_id << "/" << key << ": squashed operation" << dendl;
++          /* not updating high marker though */
++          continue;
++        }
+         ldout(sync_env->cct, 20) << "[inc sync] syncing object: " << bucket_name << ":" << bucket_id << ":" << shard_id << "/" << key << dendl;
+         updated_status = false;
+         while (!marker_tracker->can_do_op(key)) {

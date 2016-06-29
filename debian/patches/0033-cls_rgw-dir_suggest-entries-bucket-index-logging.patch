@@ -1,0 +1,118 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Thu, 9 Jun 2016 14:22:07 -0700
+Subject: cls_rgw: dir_suggest entries bucket index logging
+
+Fixes: http://tracker.ceph.com/issues/16222
+
+Log entries that were set through the dir_suggest mechanism in
+the bucket index log.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit ae00c5529219d81987425160dbb2a4e937661a6c)
+
+Resolves: rhbz#1349285
+---
+ src/cls/rgw/cls_rgw.cc      | 19 +++++++++++++++++++
+ src/cls/rgw/cls_rgw_types.h |  2 ++
+ src/rgw/rgw_rados.cc        |  8 ++++++--
+ 3 files changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/src/cls/rgw/cls_rgw.cc b/src/cls/rgw/cls_rgw.cc
+index 146da9c..46c2a3f 100644
+--- a/src/cls/rgw/cls_rgw.cc
++++ b/src/cls/rgw/cls_rgw.cc
+@@ -1933,12 +1933,22 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
+       }
+       struct rgw_bucket_category_stats& stats =
+           header.stats[cur_change.meta.category];
++      bool log_op = (op & CEPH_RGW_DIR_SUGGEST_LOG_OP) != 0;
++      op &= CEPH_RGW_DIR_SUGGEST_OP_MASK;
+       switch(op) {
+       case CEPH_RGW_REMOVE:
+         CLS_LOG(10, "CEPH_RGW_REMOVE name=%s instance=%s\n", cur_change.key.name.c_str(), cur_change.key.instance.c_str());
+ 	ret = cls_cxx_map_remove_key(hctx, cur_change_key);
+ 	if (ret < 0)
+ 	  return ret;
++        if (log_op && cur_disk.exists) {
++          ret = log_index_operation(hctx, cur_disk.key, CLS_RGW_OP_DEL, cur_disk.tag, cur_disk.meta.mtime,
++                                    cur_disk.ver, CLS_RGW_STATE_COMPLETE, header.ver, header.max_marker, 0, NULL, NULL);
++          if (ret < 0) {
++            CLS_LOG(0, "ERROR: %s(): failed to log operation ret=%d", __func__, ret);
++            return ret;
++          }
++        }
+         break;
+       case CEPH_RGW_UPDATE:
+         CLS_LOG(10, "CEPH_RGW_UPDATE name=%s instance=%s total_entries: %" PRId64 " -> %" PRId64 "\n",
+@@ -1953,9 +1963,18 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
+         ret = cls_cxx_map_set_val(hctx, cur_change_key, &cur_state_bl);
+         if (ret < 0)
+ 	  return ret;
++        if (log_op) {
++          ret = log_index_operation(hctx, cur_change.key, CLS_RGW_OP_ADD, cur_change.tag, cur_change.meta.mtime,
++                                    cur_change.ver, CLS_RGW_STATE_COMPLETE, header.ver, header.max_marker, 0, NULL, NULL);
++          if (ret < 0) {
++            CLS_LOG(0, "ERROR: %s(): failed to log operation ret=%d", __func__, ret);
++            return ret;
++          }
++        }
+         break;
+       }
+     }
++
+   }
+ 
+   if (header_changed) {
+diff --git a/src/cls/rgw/cls_rgw_types.h b/src/cls/rgw/cls_rgw_types.h
+index a7d3b7a..08dd5c2 100644
+--- a/src/cls/rgw/cls_rgw_types.h
++++ b/src/cls/rgw/cls_rgw_types.h
+@@ -12,6 +12,8 @@
+ #define CEPH_RGW_REMOVE 'r'
+ #define CEPH_RGW_UPDATE 'u'
+ #define CEPH_RGW_TAG_TIMEOUT 60*60*24
++#define CEPH_RGW_DIR_SUGGEST_LOG_OP  0x80
++#define CEPH_RGW_DIR_SUGGEST_OP_MASK 0x7f
+ 
+ class JSONObj;
+ 
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 687b61b..7d8222a 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -11311,6 +11311,8 @@ int RGWRados::remove_objs_from_index(rgw_bucket& bucket, list<rgw_obj_key>& oid_
+   librados::IoCtx index_ctx;
+   string dir_oid;
+ 
++  uint8_t suggest_flag = (get_zone().log_data ? CEPH_RGW_DIR_SUGGEST_LOG_OP : 0);
++
+   int r = open_bucket_index(bucket, index_ctx, dir_oid);
+   if (r < 0)
+     return r;
+@@ -11325,7 +11327,7 @@ int RGWRados::remove_objs_from_index(rgw_bucket& bucket, list<rgw_obj_key>& oid_
+     rgw_bucket_dir_entry entry;
+     entry.ver.epoch = (uint64_t)-1; // ULLONG_MAX, needed to that objclass doesn't skip out request
+     key.transform(&entry.key);
+-    updates.append(CEPH_RGW_REMOVE);
++    updates.append(CEPH_RGW_REMOVE | suggest_flag);
+     ::encode(entry, updates);
+   }
+ 
+@@ -11342,6 +11344,8 @@ int RGWRados::check_disk_state(librados::IoCtx io_ctx,
+                                RGWObjEnt& object,
+                                bufferlist& suggested_updates)
+ {
++  uint8_t suggest_flag = (get_zone().log_data ? CEPH_RGW_DIR_SUGGEST_LOG_OP : 0);
++
+   rgw_obj obj;
+   std::string oid, instance, loc, ns;
+   rgw_obj_key key;
+@@ -11438,7 +11442,7 @@ int RGWRados::check_disk_state(librados::IoCtx io_ctx,
+   list_state.meta.owner_display_name = owner.get_display_name();
+ 
+   list_state.exists = true;
+-  cls_rgw_encode_suggestion(CEPH_RGW_UPDATE, list_state, suggested_updates);
++  cls_rgw_encode_suggestion(CEPH_RGW_UPDATE | suggest_flag, list_state, suggested_updates);
+   return 0;
+ }
+ 

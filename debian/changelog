@@ -1,3 +1,18 @@
+ceph (10.2.2-8redhat1) stable; urgency=medium
+
+  * rgw: stop bucket lease only after draining object sync operations
+    (rhbz#1349285)
+  * rgw: squash bi complete bi log entries (rhbz#1349285)
+  * rgw: data sync squash, prioritize object removal (rhbz#1349285)
+  * cls/rgw: fix timespan comparison (rhbz#1349285)
+  * cls_rgw: dir_suggest entries bucket index logging (rhbz#1349285)
+  * cls/rgw: reduce tag_timeout significantly (rhbz#1349285)
+  * rgw: rgw_obj comparison also accounts for bucket id (rhbz#1349285)
+  * rgw: add obj tombstone cache (rhbz#1349285)
+  * rgw: add pg_ver to tombstone_cache (rhbz#1349285)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 29 Jun 2016 10:31:25 -0600
+
 ceph (10.2.2-7redhat1) stable; urgency=medium
 
   * Update libradosstriper patch (rhbz#1339870)

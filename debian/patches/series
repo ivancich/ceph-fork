@@ -26,3 +26,12 @@
 0026-librbd-journal-Replay-no-longer-holds-lock-while-com.patch
 0027-librbd-do-not-propagate-mirror-status-notification-f.patch
 0028-librbd-mark-exclusive-lock-as-released-after-journal.patch
+0029-rgw-stop-bucket-lease-only-after-draining-object-syn.patch
+0030-rgw-squash-bi-complete-bi-log-entries.patch
+0031-rgw-data-sync-squash-prioritize-object-removal.patch
+0032-cls-rgw-fix-timespan-comparison.patch
+0033-cls_rgw-dir_suggest-entries-bucket-index-logging.patch
+0034-cls-rgw-reduce-tag_timeout-significantly.patch
+0035-rgw-rgw_obj-comparison-also-accounts-for-bucket-id.patch
+0036-rgw-add-obj-tombstone-cache.patch
+0037-rgw-add-pg_ver-to-tombstone_cache.patch

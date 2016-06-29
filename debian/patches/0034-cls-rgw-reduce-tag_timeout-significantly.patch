@@ -1,0 +1,28 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Thu, 9 Jun 2016 14:30:42 -0700
+Subject: cls/rgw: reduce tag_timeout significantly
+
+The tag timeout is used for applying dir_suggest changes. Shorten it
+so that changes will be reported early and can be used in data sync.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 99efdc673b7aed439eebdaa92ff117ba9646dd7c)
+
+Resolves: rhbz#1349285
+---
+ src/cls/rgw/cls_rgw_types.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/cls/rgw/cls_rgw_types.h b/src/cls/rgw/cls_rgw_types.h
+index 08dd5c2..cf143ce 100644
+--- a/src/cls/rgw/cls_rgw_types.h
++++ b/src/cls/rgw/cls_rgw_types.h
+@@ -11,7 +11,7 @@
+ 
+ #define CEPH_RGW_REMOVE 'r'
+ #define CEPH_RGW_UPDATE 'u'
+-#define CEPH_RGW_TAG_TIMEOUT 60*60*24
++#define CEPH_RGW_TAG_TIMEOUT 120
+ #define CEPH_RGW_DIR_SUGGEST_LOG_OP  0x80
+ #define CEPH_RGW_DIR_SUGGEST_OP_MASK 0x7f
+ 

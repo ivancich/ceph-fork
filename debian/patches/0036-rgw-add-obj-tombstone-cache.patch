@@ -1,0 +1,136 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Fri, 10 Jun 2016 14:35:01 -0700
+Subject: rgw: add obj tombstone cache
+
+The obj tombstone cache is used in multi-zone environmet to keep
+track of removed objects' mtime. This is then used to fetch remote
+object only if its newer than the object that was removed, otherwise
+we're just fetching ghost of the past.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit eb10214920c23b24edd94ca53d0f36c85404644d)
+
+Resolves: rhbz#1349285
+---
+ src/common/config_opts.h |  2 ++
+ src/rgw/rgw_rados.cc     | 23 +++++++++++++++++++++--
+ src/rgw/rgw_rados.h      | 10 +++++++++-
+ 3 files changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 398d068..067cc91 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1361,6 +1361,8 @@ OPTION(rgw_opstate_ratelimit_sec, OPT_INT, 30) // min time between opstate updat
+ OPTION(rgw_curl_wait_timeout_ms, OPT_INT, 1000) // timeout for certain curl calls
+ OPTION(rgw_copy_obj_progress, OPT_BOOL, true) // should dump progress during long copy operations?
+ OPTION(rgw_copy_obj_progress_every_bytes, OPT_INT, 1024 * 1024) // min bytes between copy progress output
++OPTION(rgw_obj_tombstone_cache_size, OPT_INT, 1000) // how many objects in tombstone cache, which is used in multi-zone sync to keep
++                                                    // track of removed objects' mtime
+ 
+ OPTION(rgw_data_log_window, OPT_INT, 30) // data log entries window (in seconds)
+ OPTION(rgw_data_log_changes_size, OPT_INT, 1000) // number of in-memory entries to hold for data changes log
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 7d8222a..282ca50 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -3163,6 +3163,7 @@ void RGWRados::finalize()
+     cr_registry->put();
+   }
+   delete binfo_cache;
++  delete obj_tombstone_cache;
+ }
+ 
+ /** 
+@@ -3775,6 +3776,12 @@ int RGWRados::init_complete()
+   binfo_cache = new RGWChainedCacheImpl<bucket_info_entry>;
+   binfo_cache->init(this);
+ 
++  bool need_tombstone_cache = !zone_conn_map.empty();
++
++  if (need_tombstone_cache) {
++    obj_tombstone_cache = new tombstone_cache_t(cct->_conf->rgw_obj_tombstone_cache_size);
++  }
++
+   return ret;
+ }
+ 
+@@ -6494,7 +6501,7 @@ int RGWRados::fetch_remote_obj(RGWObjectCtx& obj_ctx,
+     if (ret < 0)
+       return ret;
+ 
+-    if (dest_state->exists) {
++    if (!real_clock::is_zero(dest_state->mtime)) {
+       dest_mtime_weight.init(dest_state);
+       pmod = &dest_mtime_weight.mtime;
+     }
+@@ -7587,6 +7594,11 @@ int RGWRados::Object::Delete::delete_obj()
+ 
+   int64_t poolid = ref.ioctx.get_id();
+   if (r >= 0) {
++    tombstone_cache_t *obj_tombstone_cache = store->get_tombstone_cache();
++    pair<ceph::real_time, uint32_t> tombstone_entry = make_pair<>(state->mtime, state->zone_short_id);
++    if (obj_tombstone_cache) {
++      obj_tombstone_cache->add(obj, tombstone_entry);
++    }
+     r = index_op.complete_del(poolid, ref.ioctx.get_last_version(), state->mtime, params.remove_objs);
+   } else {
+     int ret = index_op.cancel();
+@@ -7807,7 +7819,14 @@ int RGWRados::get_obj_state_impl(RGWObjectCtx *rctx, rgw_obj& obj, RGWObjState *
+   if (r == -ENOENT) {
+     s->exists = false;
+     s->has_attrs = true;
+-    s->mtime = real_time();
++    pair<ceph::real_time, uint32_t> tombstone_entry;
++    if (obj_tombstone_cache && obj_tombstone_cache->find(obj, tombstone_entry)) {
++      s->mtime = tombstone_entry.first;
++      s->zone_short_id = tombstone_entry.second;
++      ldout(cct, 20) << __func__ << "(): found obj in tombstone cache: obj=" << obj << " mtime=" << s->mtime << dendl;
++    } else {
++      s->mtime = real_time();
++    }
+     return 0;
+   }
+   if (r < 0)
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index af290cb..ee35376 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -9,6 +9,7 @@
+ #include "common/RefCountedObj.h"
+ #include "common/RWLock.h"
+ #include "common/ceph_time.h"
++#include "common/lru_map.h"
+ #include "rgw_common.h"
+ #include "cls/rgw/cls_rgw_types.h"
+ #include "cls/version/cls_version_types.h"
+@@ -1809,6 +1810,9 @@ protected:
+   using RGWChainedCacheImpl_bucket_info_entry = RGWChainedCacheImpl<bucket_info_entry>;
+   RGWChainedCacheImpl_bucket_info_entry *binfo_cache;
+ 
++  using tombstone_cache_t = lru_map<rgw_obj, pair<ceph::real_time, uint32_t> >;
++  tombstone_cache_t *obj_tombstone_cache;
++
+   librados::IoCtx gc_pool_ctx;        // .rgw.gc
+   librados::IoCtx objexp_pool_ctx;
+ 
+@@ -1843,7 +1847,7 @@ public:
+                max_bucket_id(0), cct(NULL),
+                rados(NULL), next_rados_handle(0),
+                num_rados_handles(0), handle_lock("rados_handle_lock"),
+-               binfo_cache(NULL),
++               binfo_cache(NULL), obj_tombstone_cache(nullptr),
+                pools_initialized(false),
+                quota_handler(NULL),
+                finisher(NULL),
+@@ -1968,6 +1972,10 @@ public:
+     }
+   }
+ 
++  tombstone_cache_t *get_tombstone_cache() {
++    return obj_tombstone_cache;
++  }
++
+   int get_required_alignment(rgw_bucket& bucket, uint64_t *alignment);
+   int get_max_chunk_size(rgw_bucket& bucket, uint64_t *max_chunk_size);
+ 

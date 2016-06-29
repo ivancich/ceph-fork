@@ -1,0 +1,28 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Sat, 4 Jun 2016 05:47:50 -0700
+Subject: rgw: data sync squash, prioritize object removal
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 2fcd8b1d49aae2fd03b986dd10bb3f98d3b8f32e)
+
+Resolves: rhbz#1349285
+---
+ src/rgw/rgw_data_sync.cc | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 160a512..474f89b 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -2344,7 +2344,10 @@ int RGWBucketShardIncrementalSyncCR::operate()
+           continue;
+         }
+         auto& squash_entry = squash_map[e.object];
+-        if (squash_entry.first <= e.timestamp) {
++        if (squash_entry.first == e.timestamp &&
++            e.op == CLS_RGW_OP_DEL) {
++          squash_entry.second = e.op;
++        } else if (squash_entry.first < e.timestamp) {
+           squash_entry = make_pair<>(e.timestamp, e.op);
+         }
+       }
