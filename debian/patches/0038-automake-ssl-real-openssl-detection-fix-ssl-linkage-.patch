@@ -1,0 +1,266 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 21 Jun 2016 15:59:18 -0400
+Subject: automake, ssl:  real openssl detection, fix ssl linkage w/NSS
+
+This change mainly intends to prevent linking with libssl when the
+crypto provider is NSS, which provides an SSL implementation (the
+implementation we must use and prefer when NSS is selected).
+
+Secondarily, actually detect openssl when it is selected, which
+happens by default and co-selects with cryptopp.  To do this, we
+import the ax_check_openssl.m4 from the automake archive.
+
+Since upstream builds now prefer NSS crypto, make this the default.
+
+(cherry picked from commit 1aff6463356627efe2d6d55d2f8955d4687b326d)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+
+Resolves: rhbz#1351362
+---
+ configure.ac           |  67 ++++++++++++++------------
+ m4/ax_check_openssl.m4 | 124 +++++++++++++++++++++++++++++++++++++++++++++++++
+ src/rgw/Makefile.am    |   4 +-
+ 3 files changed, 164 insertions(+), 31 deletions(-)
+ create mode 100644 m4/ax_check_openssl.m4
+
+diff --git a/configure.ac b/configure.ac
+index e06baf1..38ac3fb 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -391,13 +391,27 @@ AC_CHECK_LIB([m], [pow], [true], AC_MSG_FAILURE([libm not found]))
+ AC_CHECK_FUNCS([syncfs], AC_DEFINE([HAVE_SYS_SYNCFS], [1], [we have syncfs]), [])
+ 
+ # Find some crypto library for us to use, while letting user to decide which one to use.
+-AC_ARG_WITH([cryptopp],
+-	[AS_HELP_STRING([--with-cryptopp], [Use cryptographic functions from cryptopp])],
++AC_ARG_WITH([nss],
++	[AS_HELP_STRING([--with-nss], [Use cryptographic functions from nss])],
+ 	[],
+-	[with_cryptopp=check])
+-have_cryptopp=no
+-# this looks clumsy but it's just if A then { success } else { if B then success }
+-AS_IF([test "x$with_cryptopp" != "xno"],
++	[with_nss=check])
++have_nss=no
++AS_IF([test "x$with_nss" != "xno"],
++    [PKG_CHECK_MODULES([NSS], [nss], [have_nss=yes], [true])])
++# bail out if given explicit --with-nss
++if test "x$have_nss" = "xno" -a "x$with_nss" != "xcheck" -a "x$with_nss" != "xno"; then
++    AC_MSG_FAILURE([--with-nss was given, but library was not found])
++fi
++
++if test "x$have_nss" = "xno"; then
++  AC_ARG_WITH([cryptopp],
++    [AS_HELP_STRING([--with-cryptopp], [Use cryptographic functions from cryptopp])],
++    [],
++    [with_cryptopp=check])
++
++  have_cryptopp=no
++  # this looks clumsy but it's just if A then { success } else { if B then success }
++  AS_IF([test "x$with_cryptopp" != "xno"],
+     [PKG_CHECK_MODULES([CRYPTOPP],
+ 	    [libcrypto++],
+ 	    [have_cryptopp=yes],
+@@ -415,32 +429,14 @@ AS_IF([test "x$with_cryptopp" != "xno"],
+ 		   CXXFLAGS="${SAVED_CXXFLAGS}"
+ 		   AC_LANG_POP([C++])
+ 	   ])])
+-# bail out if given explicit --with-cryptopp
+-if test "x$have_cryptopp" = "xno" -a "x$with_cryptopp" != "xcheck" -a "x$with_cryptopp" != "xno"; then
++  # bail out if given explicit --with-cryptopp
++  if test "x$have_cryptopp" = "xno" -a "x$with_cryptopp" != "xcheck" -a "x$with_cryptopp" != "xno"; then
+     AC_MSG_FAILURE([--with-cryptopp was given, but library was not found])
++  fi
+ fi
+ 
+-AC_ARG_WITH([nss],
+-	[AS_HELP_STRING([--with-nss], [Use cryptographic functions from nss])],
+-	[],
+-	[with_nss=check])
+-have_nss=no
+-AS_IF([test "x$with_nss" != "xno"],
+-    [PKG_CHECK_MODULES([NSS], [nss], [have_nss=yes], [true])])
+-# bail out if given explicit --with-nss
+-if test "x$have_nss" = "xno" -a "x$with_nss" != "xcheck" -a "x$with_nss" != "xno"; then
+-    AC_MSG_FAILURE([--with-nss was given, but library was not found])
+-fi
+-
+-# now decide which crypto library to really use
+-if test "x$have_cryptopp" = "xyes"; then
+-    AC_MSG_NOTICE([using cryptopp for cryptography])
+-    AC_DEFINE([USE_CRYPTOPP], [1], [Define if using CryptoPP.])
+-    AC_SUBST([CRYPTO_CFLAGS], [$CRYPTOPP_CFLAGS])
+-    #AC_SUBST([CRYPTO_CXXFLAGS], [$CRYPTOPP_CXXFLAGS])
+-    AM_CXXFLAGS="${AM_CXXFLAGS} ${CRYPTOPP_CXXFLAGS}"
+-    AC_SUBST([CRYPTO_LIBS], [$CRYPTOPP_LIBS])
+-elif test "x$have_nss" = "xyes"; then
++# now decide which crypto library to use
++if test "x$have_nss" = "xyes"; then
+     AC_MSG_NOTICE([using nss for cryptography])
+     AC_DEFINE([USE_NSS], [1], [Define if using NSS.])
+     AC_SUBST([CRYPTO_CFLAGS], [$NSS_CFLAGS])
+@@ -448,6 +444,19 @@ elif test "x$have_nss" = "xyes"; then
+     #AC_SUBST([CRYPTO_CXXFLAGS], [$NSS_CFLAGS $NSS_CXXFLAGS])
+     AM_CXXFLAGS="${AM_CXXFLAGS} ${NSS_CFLAGS} ${NSS_CXXFLAGS}"
+     AC_SUBST([CRYPTO_LIBS], [$NSS_LIBS])
++    AC_SUBST([SSL_LIBS], [$NSS_LIBS])
++elif test "x$have_cryptopp" = "xyes"; then
++    AC_MSG_NOTICE([using cryptopp for cryptography])
++    AC_DEFINE([USE_CRYPTOPP], [1], [Define if using CryptoPP.])
++    AC_SUBST([CRYPTO_CFLAGS], [$CRYPTOPP_CFLAGS])
++    #AC_SUBST([CRYPTO_CXXFLAGS], [$CRYPTOPP_CXXFLAGS])
++    AM_CXXFLAGS="${AM_CXXFLAGS} ${CRYPTOPP_CXXFLAGS}"
++    AC_SUBST([CRYPTO_LIBS], [$CRYPTOPP_LIBS])
++    # OpenSSL -- defines OPENSSL_{INCLUDES,LIBS,LDFLAGS} on success
++    AX_CHECK_OPENSSL([],
++	[AC_MSG_FAILURE([CryptoPP build selected but OpenSSL not found])])
++    AC_SUBST([SSL_INCLUDES], [$OPENSSL_INCLUDES])
++    AC_SUBST([SSL_LIBS], [$OPENSSL_LIBS])
+ else
+     AC_MSG_FAILURE([no suitable crypto library found])
+ fi
+diff --git a/m4/ax_check_openssl.m4 b/m4/ax_check_openssl.m4
+new file mode 100644
+index 0000000..a87c5a6
+--- /dev/null
++++ b/m4/ax_check_openssl.m4
+@@ -0,0 +1,124 @@
++# ===========================================================================
++#     http://www.gnu.org/software/autoconf-archive/ax_check_openssl.html
++# ===========================================================================
++#
++# SYNOPSIS
++#
++#   AX_CHECK_OPENSSL([action-if-found[, action-if-not-found]])
++#
++# DESCRIPTION
++#
++#   Look for OpenSSL in a number of default spots, or in a user-selected
++#   spot (via --with-openssl).  Sets
++#
++#     OPENSSL_INCLUDES to the include directives required
++#     OPENSSL_LIBS to the -l directives required
++#     OPENSSL_LDFLAGS to the -L or -R flags required
++#
++#   and calls ACTION-IF-FOUND or ACTION-IF-NOT-FOUND appropriately
++#
++#   This macro sets OPENSSL_INCLUDES such that source files should use the
++#   openssl/ directory in include directives:
++#
++#     #include <openssl/hmac.h>
++#
++# LICENSE
++#
++#   Copyright (c) 2009,2010 Zmanda Inc. <http://www.zmanda.com/>
++#   Copyright (c) 2009,2010 Dustin J. Mitchell <dustin@zmanda.com>
++#
++#   Copying and distribution of this file, with or without modification, are
++#   permitted in any medium without royalty provided the copyright notice
++#   and this notice are preserved. This file is offered as-is, without any
++#   warranty.
++
++#serial 8
++
++AU_ALIAS([CHECK_SSL], [AX_CHECK_OPENSSL])
++AC_DEFUN([AX_CHECK_OPENSSL], [
++    found=false
++    AC_ARG_WITH([openssl],
++        [AS_HELP_STRING([--with-openssl=DIR],
++            [root of the OpenSSL directory])],
++        [
++            case "$withval" in
++            "" | y | ye | yes | n | no)
++            AC_MSG_ERROR([Invalid --with-openssl value])
++              ;;
++            *) ssldirs="$withval"
++              ;;
++            esac
++        ], [
++            # if pkg-config is installed and openssl has installed a .pc file,
++            # then use that information and don't search ssldirs
++            AC_PATH_PROG([PKG_CONFIG], [pkg-config])
++            if test x"$PKG_CONFIG" != x""; then
++                OPENSSL_LDFLAGS=`$PKG_CONFIG openssl --libs-only-L 2>/dev/null`
++                if test $? = 0; then
++                    OPENSSL_LIBS=`$PKG_CONFIG openssl --libs-only-l 2>/dev/null`
++                    OPENSSL_INCLUDES=`$PKG_CONFIG openssl --cflags-only-I 2>/dev/null`
++                    found=true
++                fi
++            fi
++
++            # no such luck; use some default ssldirs
++            if ! $found; then
++                ssldirs="/usr/local/ssl /usr/lib/ssl /usr/ssl /usr/pkg /usr/local /usr"
++            fi
++        ]
++        )
++
++
++    # note that we #include <openssl/foo.h>, so the OpenSSL headers have to be in
++    # an 'openssl' subdirectory
++
++    if ! $found; then
++        OPENSSL_INCLUDES=
++        for ssldir in $ssldirs; do
++            AC_MSG_CHECKING([for openssl/ssl.h in $ssldir])
++            if test -f "$ssldir/include/openssl/ssl.h"; then
++                OPENSSL_INCLUDES="-I$ssldir/include"
++                OPENSSL_LDFLAGS="-L$ssldir/lib"
++                OPENSSL_LIBS="-lssl -lcrypto"
++                found=true
++                AC_MSG_RESULT([yes])
++                break
++            else
++                AC_MSG_RESULT([no])
++            fi
++        done
++
++        # if the file wasn't found, well, go ahead and try the link anyway -- maybe
++        # it will just work!
++    fi
++
++    # try the preprocessor and linker with our new flags,
++    # being careful not to pollute the global LIBS, LDFLAGS, and CPPFLAGS
++
++    AC_MSG_CHECKING([whether compiling and linking against OpenSSL works])
++    echo "Trying link with OPENSSL_LDFLAGS=$OPENSSL_LDFLAGS;" \
++        "OPENSSL_LIBS=$OPENSSL_LIBS; OPENSSL_INCLUDES=$OPENSSL_INCLUDES" >&AS_MESSAGE_LOG_FD
++
++    save_LIBS="$LIBS"
++    save_LDFLAGS="$LDFLAGS"
++    save_CPPFLAGS="$CPPFLAGS"
++    LDFLAGS="$LDFLAGS $OPENSSL_LDFLAGS"
++    LIBS="$OPENSSL_LIBS $LIBS"
++    CPPFLAGS="$OPENSSL_INCLUDES $CPPFLAGS"
++    AC_LINK_IFELSE(
++        [AC_LANG_PROGRAM([#include <openssl/ssl.h>], [SSL_new(NULL)])],
++        [
++            AC_MSG_RESULT([yes])
++            $1
++        ], [
++            AC_MSG_RESULT([no])
++            $2
++        ])
++    CPPFLAGS="$save_CPPFLAGS"
++    LDFLAGS="$save_LDFLAGS"
++    LIBS="$save_LIBS"
++
++    AC_SUBST([OPENSSL_INCLUDES])
++    AC_SUBST([OPENSSL_LIBS])
++    AC_SUBST([OPENSSL_LDFLAGS])
++])
+diff --git a/src/rgw/Makefile.am b/src/rgw/Makefile.am
+index c96e8c5..6cc4da7 100644
+--- a/src/rgw/Makefile.am
++++ b/src/rgw/Makefile.am
+@@ -133,8 +133,8 @@ libcivetweb_la_SOURCES =  \
+ 
+ libcivetweb_la_CXXFLAGS = ${CIVETWEB_INCLUDE} -fPIC -Woverloaded-virtual \
+ 	${AM_CXXFLAGS}
+-libcivetweb_la_CFLAGS = -I$(srcdir)/civetweb/include ${CIVETWEB_INCLUDE} -fPIC -DNO_SSL_DL
+-LIBCIVETWEB_DEPS += -lssl -lcrypto
++libcivetweb_la_CFLAGS = -I$(srcdir)/civetweb/include ${CIVETWEB_INCLUDE} ${SSL_INCLUDES} -fPIC -DNO_SSL_DL
++LIBCIVETWEB_DEPS += ${SSL_LIBS}
+ 
+ noinst_LTLIBRARIES += libcivetweb.la
+ 

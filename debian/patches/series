@@ -35,3 +35,4 @@
 0035-rgw-rgw_obj-comparison-also-accounts-for-bucket-id.patch
 0036-rgw-add-obj-tombstone-cache.patch
 0037-rgw-add-pg_ver-to-tombstone_cache.patch
+0038-automake-ssl-real-openssl-detection-fix-ssl-linkage-.patch
