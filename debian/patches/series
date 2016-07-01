@@ -37,3 +37,11 @@
 0037-rgw-add-pg_ver-to-tombstone_cache.patch
 0038-automake-ssl-real-openssl-detection-fix-ssl-linkage-.patch
 0039-rbd-mirror-gracefully-fail-if-object-map-is-unavaila.patch
+0040-rgw-finish-error_repo-cr-in-stop_spawned_services.patch
+0041-rbd-mirror-keep-events-from-different-epochs-indepen.patch
+0042-librbd-failed-assertion-after-shrinking-a-clone-imag.patch
+0043-test-add-a-data-storing-MemWriteback-for-testing-Obj.patch
+0044-test-split-objectcacher-test-into-stress-and-correct.patch
+0045-test-build-a-correctness-test-for-the-ObjectCacher.patch
+0046-osd-provide-some-contents-on-ObjectExtent-usage-in-t.patch
+0047-ObjectCacher-fix-bh_read_finish-offset-logic.patch

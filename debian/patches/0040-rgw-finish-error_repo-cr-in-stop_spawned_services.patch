@@ -1,0 +1,29 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Wed, 29 Jun 2016 14:50:12 -0700
+Subject: rgw: finish error_repo cr in stop_spawned_services()
+
+Fixes: http://tracker.ceph.com/issues/16530
+
+Need to call finish, otherwise drain_all() wouldn't be able to
+drain it.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 492bb608733c83a5d85319cf47c4d86402344376)
+
+Resolves: rhbz#1351137
+---
+ src/rgw/rgw_data_sync.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 474f89b..314feb5 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -1182,6 +1182,7 @@ public:
+   void stop_spawned_services() {
+     lease_cr->go_down();
+     if (error_repo) {
++      error_repo->finish();
+       error_repo->put();
+       error_repo = NULL;
+     }

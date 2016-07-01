@@ -1,0 +1,42 @@
+From: Greg Farnum <gfarnum@redhat.com>
+Date: Mon, 23 May 2016 15:14:21 -0700
+Subject: ObjectCacher: fix bh_read_finish offset logic
+
+If we have an incoming read split across multiple BufferHeads, we want to
+line up the BufferHead's bl with the incoming OSDOp's bl at the right offset. We
+were erroneously using this nonsense calculation (always equal to zero!) when
+a much simpler comparison of the BufferHead's logical object offset to the
+incoming OSDOp's logical offset will do the trick nicely.
+
+Fixes: http://tracker.ceph.com/issues/16002
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 9ec6e7f608608088d51e449c9d375844631dcdde)
+(cherry picked from commit 17f1bffdb891a155532d966b7d3ab4983c9016cf)
+
+Resolves: rhbz#1308433
+---
+ src/osdc/ObjectCacher.cc | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/osdc/ObjectCacher.cc b/src/osdc/ObjectCacher.cc
+index 7e76b3c..8732325 100644
+--- a/src/osdc/ObjectCacher.cc
++++ b/src/osdc/ObjectCacher.cc
+@@ -833,7 +833,6 @@ void ObjectCacher::bh_read_finish(int64_t poolid, sobject_t oid,
+       if (bh->error < 0)
+ 	err = bh->error;
+ 
+-      loff_t oldpos = opos;
+       opos = bh->end();
+ 
+       if (r == -ENOENT) {
+@@ -853,7 +852,7 @@ void ObjectCacher::bh_read_finish(int64_t poolid, sobject_t oid,
+ 	mark_error(bh);
+       } else {
+ 	bh->bl.substr_of(bl,
+-			 oldpos-bh->start(),
++			 bh->start() - start,
+ 			 bh->length());
+ 	mark_clean(bh);
+       }

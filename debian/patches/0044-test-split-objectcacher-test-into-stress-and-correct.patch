@@ -1,0 +1,83 @@
+From: Greg Farnum <gfarnum@redhat.com>
+Date: Tue, 31 May 2016 16:18:19 -0700
+Subject: test: split objectcacher test into 'stress' and 'correctness'
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit cc9aab1b0a22c3f7320046b97f75dccf2b86cc6d)
+(cherry picked from commit b6684914e29fdc375d91be7c80cdf9615d637c8c)
+
+Resolves: rhbz#1308433
+---
+ src/test/osdc/object_cacher_stress.cc | 34 ++++++++++++++++++++++++++++++++--
+ 1 file changed, 32 insertions(+), 2 deletions(-)
+
+diff --git a/src/test/osdc/object_cacher_stress.cc b/src/test/osdc/object_cacher_stress.cc
+index b961f75..ffe84c2 100644
+--- a/src/test/osdc/object_cacher_stress.cc
++++ b/src/test/osdc/object_cacher_stress.cc
+@@ -21,6 +21,7 @@
+ #include "osdc/ObjectCacher.h"
+ 
+ #include "FakeWriteback.h"
++#include "MemWriteback.h"
+ 
+ // XXX: Only tests default namespace
+ struct op_data {
+@@ -173,6 +174,24 @@ int stress_test(uint64_t num_ops, uint64_t num_objs,
+   return EXIT_SUCCESS;
+ }
+ 
++int correctness_test(uint64_t delay_ns)
++{
++  Mutex lock("object_cacher_stress::object_cacher");
++  MemWriteback writeback(g_ceph_context, &lock, delay_ns);
++
++  ObjectCacher obc(g_ceph_context, "test", writeback, lock, NULL, NULL,
++		   g_conf->client_oc_size,
++		   g_conf->client_oc_max_objects,
++		   g_conf->client_oc_max_dirty,
++		   g_conf->client_oc_target_dirty,
++		   g_conf->client_oc_max_dirty_age,
++		   true);
++  obc.start();
++
++  std::cout << "Testing ObjectCacher correctness" << std::endl;
++  return 0;
++}
++
+ int main(int argc, const char **argv)
+ {
+   std::vector<const char*> args;
+@@ -187,6 +206,8 @@ int main(int argc, const char **argv)
+   long long num_objs = 10;
+   float percent_reads = 0.90;
+   int seed = time(0) % 100000;
++  bool stress = false;
++  bool correctness = false;
+   std::ostringstream err;
+   std::vector<const char*>::iterator i;
+   for (i = args.begin(); i != args.end();) {
+@@ -225,12 +246,21 @@ int main(int argc, const char **argv)
+ 	cerr << argv[0] << ": " << err.str() << std::endl;
+ 	return EXIT_FAILURE;
+       }
++    } else if (ceph_argparse_flag(args, i, "--stress-test", NULL)) {
++      stress = true;
++    } else if (ceph_argparse_flag(args, i, "--correctness-test", NULL)) {
++      correctness = true;
+     } else {
+       cerr << "unknown option " << *i << std::endl;
+       return EXIT_FAILURE;
+     }
+   }
+ 
+-  srandom(seed);
+-  return stress_test(num_ops, num_objs, obj_bytes, delay_ns, max_len, percent_reads);
++  if (stress) {
++    srandom(seed);
++    return stress_test(num_ops, num_objs, obj_bytes, delay_ns, max_len, percent_reads);
++  }
++  if (correctness) {
++    return correctness_test(delay_ns);
++  }
+ }

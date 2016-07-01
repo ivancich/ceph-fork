@@ -1,0 +1,85 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 30 Jun 2016 15:00:32 -0400
+Subject: librbd: failed assertion after shrinking a clone image twice
+
+Fixes: http://tracker.ceph.com/issues/16561
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 34d2297eed040f694b4d1c5e2606af04752c9e1a)
+
+Resolves: rhbz#1351590
+---
+ src/librbd/ImageCtx.cc              | 11 -----------
+ src/librbd/ImageCtx.h               |  1 -
+ src/librbd/operation/TrimRequest.cc |  3 +--
+ src/test/librbd/test_internal.cc    |  3 ++-
+ 4 files changed, 3 insertions(+), 15 deletions(-)
+
+diff --git a/src/librbd/ImageCtx.cc b/src/librbd/ImageCtx.cc
+index 5649969..a9aaa14 100644
+--- a/src/librbd/ImageCtx.cc
++++ b/src/librbd/ImageCtx.cc
+@@ -662,17 +662,6 @@ struct C_InvalidateCache : public Context {
+     return -ENOENT;
+   }
+ 
+-  uint64_t ImageCtx::get_copyup_snap_id() const
+-  {
+-    assert(snap_lock.is_locked());
+-    // copyup requires the largest possible parent overlap,
+-    // which is always the oldest snapshot (if any).
+-    if (!snaps.empty()) {
+-      return snaps.back();
+-    }
+-    return CEPH_NOSNAP;
+-  }
+-
+   void ImageCtx::aio_read_from_cache(object_t o, uint64_t object_no,
+ 				     bufferlist *bl, size_t len,
+ 				     uint64_t off, Context *onfinish,
+diff --git a/src/librbd/ImageCtx.h b/src/librbd/ImageCtx.h
+index 076072c..088937e 100644
+--- a/src/librbd/ImageCtx.h
++++ b/src/librbd/ImageCtx.h
+@@ -259,7 +259,6 @@ namespace librbd {
+     uint64_t get_parent_snap_id(librados::snap_t in_snap_id) const;
+     int get_parent_overlap(librados::snap_t in_snap_id,
+ 			   uint64_t *overlap) const;
+-    uint64_t get_copyup_snap_id() const;
+     void aio_read_from_cache(object_t o, uint64_t object_no, bufferlist *bl,
+ 			     size_t len, uint64_t off, Context *onfinish,
+ 			     int fadvise_flags);
+diff --git a/src/librbd/operation/TrimRequest.cc b/src/librbd/operation/TrimRequest.cc
+index 3ed96f7..333dc86 100644
+--- a/src/librbd/operation/TrimRequest.cc
++++ b/src/librbd/operation/TrimRequest.cc
+@@ -195,8 +195,7 @@ void TrimRequest<I>::send_copyup_objects() {
+ 
+     snapc = image_ctx.snapc;
+     has_snapshots = !image_ctx.snaps.empty();
+-    int r = image_ctx.get_parent_overlap(image_ctx.get_copyup_snap_id(),
+-                                           &parent_overlap);
++    int r = image_ctx.get_parent_overlap(CEPH_NOSNAP, &parent_overlap);
+     assert(r == 0);
+   }
+ 
+diff --git a/src/test/librbd/test_internal.cc b/src/test/librbd/test_internal.cc
+index b5c6f6b..580d612 100644
+--- a/src/test/librbd/test_internal.cc
++++ b/src/test/librbd/test_internal.cc
+@@ -601,7 +601,6 @@ TEST_F(TestInternal, ResizeCopyup)
+ 
+   librbd::ImageCtx *ictx2;
+   ASSERT_EQ(0, open_image(clone_name, &ictx2));
+-
+   ASSERT_EQ(0, snap_create(*ictx2, "snap1"));
+ 
+   bufferptr read_ptr(bl.length());
+@@ -612,6 +611,8 @@ TEST_F(TestInternal, ResizeCopyup)
+   librbd::NoOpProgressContext no_op;
+   ASSERT_EQ(0, ictx2->operations->resize(m_image_size - (1 << order) - 32,
+                                          no_op));
++  ASSERT_EQ(0, ictx2->operations->resize(m_image_size - (2 << order) - 32,
++                                         no_op));
+   ASSERT_EQ(0, librbd::snap_set(ictx2, "snap1"));
+ 
+   {

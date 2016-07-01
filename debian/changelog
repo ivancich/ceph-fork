@@ -1,3 +1,22 @@
+ceph (10.2.2-11redhat1) stable; urgency=medium
+
+  * rgw: finish error_repo cr in stop_spawned_services()
+    (rhbz#1351137)
+  * rbd-mirror: keep events from different epochs independent
+    (rhbz#1351590)
+  * librbd: failed assertion after shrinking a clone image twice
+    (rhbz#1351590)
+  * test: add a data-storing MemWriteback for testing ObjectCacher
+    (rhbz#1308433)
+  * test: split objectcacher test into 'stress' and 'correctness'
+    (rhbz#1308433)
+  * test: build a correctness test for the ObjectCacher (rhbz#1308433)
+  * osd: provide some contents on ObjectExtent usage in testing
+    (rhbz#1308433)
+  * ObjectCacher: fix bh_read_finish offset logic (rhbz#1308433)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 30 Jun 2016 23:13:07 -0600
+
 ceph (10.2.2-10redhat1) stable; urgency=medium
 
   * rbd-mirror: gracefully fail if object map is unavailable
