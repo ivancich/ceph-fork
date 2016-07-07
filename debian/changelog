@@ -1,3 +1,10 @@
+ceph (10.2.2-13redhat1) stable; urgency=medium
+
+  * TaskFinisher: cancel all tasks wait until finisher done
+    (rhbz#1353715)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 07 Jul 2016 14:21:10 -0600
+
 ceph (10.2.2-12redhat1) stable; urgency=medium
 
   * mon: Monitor: validate prefix on handle_command() (rhbz#1351264)

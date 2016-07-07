@@ -1,0 +1,90 @@
+From: Haomai Wang <haomai@xsky.com>
+Date: Tue, 14 Jun 2016 11:03:19 +0800
+Subject: TaskFinisher: cancel all tasks wait until finisher done
+
+Otherwise, caller may think pending task won't be executed but actually
+finisher may execute callback which may cause refer to freed object.
+
+Signed-off-by: Haomai Wang <haomai@xsky.com>
+(cherry picked from commit 40c5679ef038375e2bde982f401d78c1f3e05c6c)
+(cherry picked from commit 6b41d76f53337a696523cddb47b53b703cdfa571)
+
+Resolves: rhbz#1353715
+---
+ src/librbd/ImageWatcher.cc | 12 ++++++++----
+ src/librbd/TaskFinisher.h  | 16 ++++++++++------
+ 2 files changed, 18 insertions(+), 10 deletions(-)
+
+diff --git a/src/librbd/ImageWatcher.cc b/src/librbd/ImageWatcher.cc
+index d3d4e70..9cd643c 100644
+--- a/src/librbd/ImageWatcher.cc
++++ b/src/librbd/ImageWatcher.cc
+@@ -31,6 +31,7 @@ namespace librbd {
+ 
+ using namespace image_watcher;
+ using namespace watch_notify;
++using util::create_async_context_callback;
+ using util::create_context_callback;
+ using util::create_rados_safe_callback;
+ 
+@@ -120,7 +121,10 @@ void ImageWatcher::unregister_watch(Context *on_finish) {
+   ldout(m_image_ctx.cct, 10) << this << " unregistering image watcher" << dendl;
+ 
+   cancel_async_requests();
+-  m_task_finisher->cancel_all();
++
++  C_Gather *g = new C_Gather(m_image_ctx.cct, create_async_context_callback(
++          m_image_ctx, on_finish));
++  m_task_finisher->cancel_all(g->new_sub());
+ 
+   {
+     RWLock::WLocker l(m_watch_lock);
+@@ -128,17 +132,17 @@ void ImageWatcher::unregister_watch(Context *on_finish) {
+       m_watch_state = WATCH_STATE_UNREGISTERED;
+ 
+       librados::AioCompletion *aio_comp = create_rados_safe_callback(
+-        new C_UnwatchAndFlush(m_image_ctx.md_ctx, on_finish));
++        new C_UnwatchAndFlush(m_image_ctx.md_ctx, g->new_sub()));
+       int r = m_image_ctx.md_ctx.aio_unwatch(m_watch_handle, aio_comp);
+       assert(r == 0);
+       aio_comp->release();
++      g->activate();
+       return;
+     } else if (m_watch_state == WATCH_STATE_ERROR) {
+       m_watch_state = WATCH_STATE_UNREGISTERED;
+     }
+   }
+-
+-  on_finish->complete(0);
++  g->activate();
+ }
+ 
+ void ImageWatcher::flush(Context *on_finish) {
+diff --git a/src/librbd/TaskFinisher.h b/src/librbd/TaskFinisher.h
+index 466537e..f54681f 100644
+--- a/src/librbd/TaskFinisher.h
++++ b/src/librbd/TaskFinisher.h
+@@ -63,13 +63,17 @@ public:
+     }
+   }
+ 
+-  void cancel_all() {
+-    Mutex::Locker l(*m_lock);
+-    for (typename TaskContexts::iterator it = m_task_contexts.begin();
+-         it != m_task_contexts.end(); ++it) {
+-      delete it->second.first;
++  void cancel_all(Context *comp) {
++    {
++      Mutex::Locker l(*m_lock);
++      for (typename TaskContexts::iterator it = m_task_contexts.begin();
++           it != m_task_contexts.end(); ++it) {
++        delete it->second.first;
++        m_safe_timer->cancel_event(it->second.second);
++      }
++      m_task_contexts.clear();
+     }
+-    m_task_contexts.clear();
++    m_finisher->queue(comp);
+   }
+ 
+   bool add_event_after(const Task& task, double seconds, Context *ctx) {
