@@ -1,3 +1,9 @@
+ceph (10.2.2-12redhat1) stable; urgency=medium
+
+  * mon: Monitor: validate prefix on handle_command() (rhbz#1351264)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 07 Jul 2016 09:48:50 -0600
+
 ceph (10.2.2-11redhat1) stable; urgency=medium
 
   * rgw: finish error_repo cr in stop_spawned_services()
