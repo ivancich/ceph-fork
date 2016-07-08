@@ -1,3 +1,9 @@
+ceph (10.2.2-14redhat1) stable; urgency=medium
+
+  * rgw: fix error_repo segfault in data sync (rhbz#1353972)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 08 Jul 2016 14:19:20 -0600
+
 ceph (10.2.2-13redhat1) stable; urgency=medium
 
   * TaskFinisher: cancel all tasks wait until finisher done

@@ -47,3 +47,4 @@
 0047-ObjectCacher-fix-bh_read_finish-offset-logic.patch
 0048-mon-Monitor-validate-prefix-on-handle_command.patch
 0049-TaskFinisher-cancel-all-tasks-wait-until-finisher-do.patch
+0050-rgw-fix-error_repo-segfault-in-data-sync.patch

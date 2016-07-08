@@ -1,0 +1,50 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 6 Jul 2016 09:15:29 -0400
+Subject: rgw: fix error_repo segfault in data sync
+
+RGWDataSyncShardCR will only allocate an error_repo if it's doing
+incremental sync, so RGWDataSyncSingleEntryCR needs to guard against a
+null error_repo
+
+also, RGWDataSyncShardCR::stop_spawned_services() was dropping the last
+reference to the error_repo before calling drain_all(), which meant that
+RGWDataSyncSingleEntryCR could still be holding a pointer. now uses a
+boost::intrusive_ptr in RGWDataSyncSingleEntryCR to account for its
+reference
+
+Fixes: http://tracker.ceph.com/issues/16603
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 28609029cf1be2fc9f8c8e3f47320636db29014a)
+
+Resolves: rhbz#1353972
+---
+ src/rgw/rgw_data_sync.cc | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 314feb5..65c2e10 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -785,7 +785,7 @@ class RGWDataSyncSingleEntryCR : public RGWCoroutine {
+ 
+   RGWDataSyncShardMarkerTrack *marker_tracker;
+ 
+-  RGWOmapAppend *error_repo;
++  boost::intrusive_ptr<RGWOmapAppend> error_repo;
+   bool remove_from_repo;
+ 
+   set<string> keys;
+@@ -826,10 +826,10 @@ public:
+         if (retcode < 0) {
+           ldout(sync_env->store->ctx(), 0) << "ERROR: failed to log sync failure: retcode=" << retcode << dendl;
+         }
+-        if (!error_repo->append(raw_key)) {
++        if (error_repo && !error_repo->append(raw_key)) {
+           ldout(sync_env->store->ctx(), 0) << "ERROR: failed to log sync failure in error repo: retcode=" << retcode << dendl;
+         }
+-      } else if (remove_from_repo) {
++      } else if (error_repo && remove_from_repo) {
+         keys = {raw_key};
+         yield call(new RGWRadosRemoveOmapKeysCR(sync_env->store, error_repo->get_pool(), error_repo->get_oid(), keys));
+         if (retcode < 0) {
