@@ -1,0 +1,174 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Tue, 5 Jul 2016 09:00:19 -0400
+Subject: rgw: use tenant/ for bucket instance metadata keys
+
+to work around the ambiguity of parsing tenant: and :shard in the same
+bucket instance metadata key, use tenant/ instead
+
+to preserve backward compatibility with existing objects, new helper
+function rgw_bucket_instance_key_to_oid() converts this / back to a :
+before being used as an object name
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit a0befa1e7be3aeb37209bac2e2a7de0edf5d5a95)
+
+Resolves: rhbz#1349355
+---
+ src/rgw/rgw_bucket.cc | 22 ++++++++++++++++------
+ src/rgw/rgw_bucket.h  |  1 +
+ src/rgw/rgw_rados.cc  | 27 +++++++--------------------
+ src/rgw/rgw_rados.h   |  5 ++---
+ 4 files changed, 26 insertions(+), 29 deletions(-)
+
+diff --git a/src/rgw/rgw_bucket.cc b/src/rgw/rgw_bucket.cc
+index 685968c..dc6629c 100644
+--- a/src/rgw/rgw_bucket.cc
++++ b/src/rgw/rgw_bucket.cc
+@@ -298,6 +298,18 @@ int rgw_bucket_instance_remove_entry(RGWRados *store, string& entry, RGWObjVersi
+   return store->meta_mgr->remove_entry(bucket_instance_meta_handler, entry, objv_tracker);
+ }
+ 
++// 'tenant/' is used in bucket instance keys for sync to avoid parsing ambiguity
++// with the existing instance[:shard] format. once we parse the shard, the / is
++// replaced with a : to match the [tenant:]instance format
++void rgw_bucket_instance_key_to_oid(string& key)
++{
++  // replace tenant/ with tenant:
++  auto c = key.find('/');
++  if (c != string::npos) {
++    key[c] = ':';
++  }
++}
++
+ int rgw_bucket_parse_bucket_instance(const string& bucket_instance, string *target_bucket_instance, int *shard_id)
+ {
+   ssize_t pos = bucket_instance.rfind(':');
+@@ -339,13 +351,9 @@ int rgw_bucket_set_attrs(RGWRados *store, RGWBucketInfo& bucket_info,
+       return ret;
+     }
+   }
+-  string oid;
+-  store->get_bucket_meta_oid(bucket, oid);
+-  rgw_obj obj(store->get_zone_params().domain_root, oid);
+ 
+-  string key;
+-  store->get_bucket_instance_entry(bucket, key); /* we want the bucket instance name without
+-						    the oid prefix cruft */
++  /* we want the bucket instance name without the oid prefix cruft */
++  string key = bucket.get_key();
+   bufferlist bl;
+ 
+   ::encode(bucket_info, bl);
+@@ -1903,6 +1911,7 @@ public:
+         ldout(store->ctx(), 0) << "ERROR: select_bucket_placement() returned " << ret << dendl;
+         return ret;
+       }
++      bci.info.bucket.tenant = bucket.tenant;
+       bci.info.bucket.data_pool = bucket.data_pool;
+       bci.info.bucket.index_pool = bucket.index_pool;
+       bci.info.index_type = rule_info.index_type;
+@@ -1956,6 +1965,7 @@ public:
+ 
+   void get_pool_and_oid(RGWRados *store, const string& key, rgw_bucket& bucket, string& oid) {
+     oid = RGW_BUCKET_INSTANCE_MD_PREFIX + key;
++    rgw_bucket_instance_key_to_oid(oid);
+     bucket = store->get_zone_params().domain_root;
+   }
+ 
+diff --git a/src/rgw/rgw_bucket.h b/src/rgw/rgw_bucket.h
+index 8a2c28c..132465a 100644
+--- a/src/rgw/rgw_bucket.h
++++ b/src/rgw/rgw_bucket.h
+@@ -36,6 +36,7 @@ extern int rgw_bucket_instance_store_info(RGWRados *store, string& oid, bufferli
+ extern int rgw_bucket_parse_bucket_instance(const string& bucket_instance, string *target_bucket_instance, int *shard_id);
+ 
+ extern int rgw_bucket_instance_remove_entry(RGWRados *store, string& entry, RGWObjVersionTracker *objv_tracker);
++extern void rgw_bucket_instance_key_to_oid(string& key);
+ 
+ extern int rgw_bucket_delete_bucket_obj(RGWRados *store,
+                                         const string& tenant_name,
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 2f2aee8..71796a5 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -5116,8 +5116,7 @@ int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
+           return r;
+ 
+         /* remove bucket meta instance */
+-        string entry;
+-        get_bucket_instance_entry(bucket, entry);
++        string entry = bucket.get_key();
+         r = rgw_bucket_instance_remove_entry(this, entry, &instance_ver);
+         if (r < 0)
+           return r;
+@@ -7118,8 +7117,7 @@ int RGWRados::delete_bucket(rgw_bucket& bucket, RGWObjVersionTracker& objv_track
+   /* if the bucket is not synced we can remove the meta file */
+   if (!is_syncing_bucket_meta(bucket)) {
+     RGWObjVersionTracker objv_tracker;
+-    string entry;
+-    get_bucket_instance_entry(bucket, entry);
++    string entry = bucket.get_key();
+     r= rgw_bucket_instance_remove_entry(this, entry, &objv_tracker);
+     if (r < 0) {
+       return r;
+@@ -10314,23 +10312,12 @@ int RGWRados::get_user_stats_async(const rgw_user& user, RGWGetUserStats_CB *ctx
+   return 0;
+ }
+ 
+-void RGWRados::get_bucket_instance_entry(rgw_bucket& bucket, string& entry)
++void RGWRados::get_bucket_meta_oid(const rgw_bucket& bucket, string& oid)
+ {
+-  if (bucket.tenant.empty()) {
+-    entry = bucket.name + ":" + bucket.bucket_id;
+-  } else {
+-    entry = bucket.tenant + ":" + bucket.name + ":" + bucket.bucket_id;
+-  }
+-}
+-
+-void RGWRados::get_bucket_meta_oid(rgw_bucket& bucket, string& oid)
+-{
+-  string entry;
+-  get_bucket_instance_entry(bucket, entry);
+-  oid = RGW_BUCKET_INSTANCE_MD_PREFIX + entry;
++  oid = RGW_BUCKET_INSTANCE_MD_PREFIX + bucket.get_key(':');
+ }
+ 
+-void RGWRados::get_bucket_instance_obj(rgw_bucket& bucket, rgw_obj& obj)
++void RGWRados::get_bucket_instance_obj(const rgw_bucket& bucket, rgw_obj& obj)
+ {
+   if (!bucket.oid.empty()) {
+     obj.init(get_zone_params().domain_root, bucket.oid);
+@@ -10349,6 +10336,7 @@ int RGWRados::get_bucket_instance_info(RGWObjectCtx& obj_ctx, const string& meta
+     return -EINVAL;
+   }
+   string oid = RGW_BUCKET_INSTANCE_MD_PREFIX + meta_key;
++  rgw_bucket_instance_key_to_oid(oid);
+ 
+   return get_bucket_instance_from_oid(obj_ctx, oid, info, pmtime, pattrs);
+ }
+@@ -10559,8 +10547,7 @@ int RGWRados::put_bucket_instance_info(RGWBucketInfo& info, bool exclusive,
+ 
+   ::encode(info, bl);
+ 
+-  string key;
+-  get_bucket_instance_entry(info.bucket, key); /* when we go through meta api, we don't use oid directly */
++  string key = info.bucket.get_key(); /* when we go through meta api, we don't use oid directly */
+   int ret = rgw_bucket_instance_store_info(this, key, bl, exclusive, pattrs, &info.objv_tracker, mtime);
+   if (ret == -EEXIST) {
+     /* well, if it's exclusive we shouldn't overwrite it, because we might race with another
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index f151c65..a57e9a1 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -2741,9 +2741,8 @@ public:
+   int get_bucket_stats_async(rgw_bucket& bucket, int shard_id, RGWGetBucketStats_CB *cb);
+   int get_user_stats(const rgw_user& user, RGWStorageStats& stats);
+   int get_user_stats_async(const rgw_user& user, RGWGetUserStats_CB *cb);
+-  void get_bucket_instance_obj(rgw_bucket& bucket, rgw_obj& obj);
+-  void get_bucket_instance_entry(rgw_bucket& bucket, string& entry);
+-  void get_bucket_meta_oid(rgw_bucket& bucket, string& oid);
++  void get_bucket_instance_obj(const rgw_bucket& bucket, rgw_obj& obj);
++  void get_bucket_meta_oid(const rgw_bucket& bucket, string& oid);
+ 
+   int put_bucket_entrypoint_info(const string& tenant_name, const string& bucket_name, RGWBucketEntryPoint& entry_point,
+                                  bool exclusive, RGWObjVersionTracker& objv_tracker, ceph::real_time mtime,

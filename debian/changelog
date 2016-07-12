@@ -1,3 +1,26 @@
+ceph (10.2.2-15redhat1) stable; urgency=medium
+
+  * librbd: flag image as updated after proxying maintenance op
+    (rhbz#1354616)
+  * rgw: add missing master_zone when running with old default region
+    config (rhbz#1352888)
+  * rgw: data sync debug logging (rhbz#1349355)
+  * rgw: add get_key() methods to format rgw_buckets (rhbz#1349355)
+  * rgw: use tenant/ for bucket instance metadata keys (rhbz#1349355)
+  * rgw: convert bucket instance listings back to metadata key format
+    (rhbz#1349355)
+  * rgw: add tenant name to datalog entries (rhbz#1349355)
+  * rgw: add rgw_bucket_parse_bucket_key() (rhbz#1349355)
+  * rgw: add tenant to rgw_bucket json format (rhbz#1349355)
+  * rgw: add tenant to url for RGWRESTStreamWriteRequest
+    (rhbz#1349355)
+  * rgw: carry tenant id with data sync (rhbz#1349355)
+  * rgw: add tenant id to GetBucketInstanceInfo (rhbz#1349355)
+  * rgw: remove datalog keys from error repo on ENOENT (rhbz#1349355)
+  * rgw: fix compilation (rhbz#1349355)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 12 Jul 2016 09:42:34 -0600
+
 ceph (10.2.2-14redhat1) stable; urgency=medium
 
   * rgw: fix error_repo segfault in data sync (rhbz#1353972)

@@ -1,0 +1,25 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Thu, 30 Jun 2016 17:43:40 -0400
+Subject: rgw: add tenant to url for RGWRESTStreamWriteRequest
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 2a1e1a776c58f62fbcb57877d56b92eb1e8933e6)
+
+Resolves: rhbz#1349355
+---
+ src/rgw/rgw_rest_client.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_rest_client.cc b/src/rgw/rgw_rest_client.cc
+index b219e6f..e29b160 100644
+--- a/src/rgw/rgw_rest_client.cc
++++ b/src/rgw/rgw_rest_client.cc
+@@ -607,7 +607,7 @@ int RGWRESTStreamWriteRequest::complete(string& etag, real_time *mtime)
+ int RGWRESTStreamRWRequest::get_obj(RGWAccessKey& key, map<string, string>& extra_headers, rgw_obj& obj)
+ {
+   string urlsafe_bucket, urlsafe_object;
+-  url_encode(obj.bucket.name, urlsafe_bucket);
++  url_encode(obj.bucket.get_key(':', 0), urlsafe_bucket);
+   url_encode(obj.get_orig_obj(), urlsafe_object);
+   string resource = urlsafe_bucket + "/" + urlsafe_object;
+ 

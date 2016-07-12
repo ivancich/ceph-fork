@@ -1,0 +1,27 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 21 Jun 2016 14:56:43 -0400
+Subject: librbd: flag image as updated after proxying maintenance op
+
+Fixes: http://tracker.ceph.com/issues/16404
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 478dd5f173591914b41d87b8c6d035c32cac8d3e)
+(cherry picked from commit b751d4854aa8629f46f0e3dd835aff27b8be709d)
+
+Resolves: rhbz#1354616
+---
+ src/librbd/Operations.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/librbd/Operations.cc b/src/librbd/Operations.cc
+index 7766a12..0fa190b 100644
+--- a/src/librbd/Operations.cc
++++ b/src/librbd/Operations.cc
+@@ -233,6 +233,8 @@ struct C_InvokeAsyncRequest : public Context {
+     ldout(cct, 20) << __func__ << ": r=" << r << dendl;
+ 
+     if (r != -ETIMEDOUT && r != -ERESTART) {
++      image_ctx.state->handle_update_notification();
++
+       complete(r);
+       return;
+     }

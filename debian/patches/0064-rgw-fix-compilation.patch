@@ -1,0 +1,25 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Mon, 11 Jul 2016 17:38:43 -0700
+Subject: rgw: fix compilation
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 874de58024e12d893ae050cd421ef67c9521c753)
+
+Resolves: rhbz#1349355
+---
+ src/rgw/rgw_bucket.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_bucket.cc b/src/rgw/rgw_bucket.cc
+index f0dddfb..a437b96 100644
+--- a/src/rgw/rgw_bucket.cc
++++ b/src/rgw/rgw_bucket.cc
+@@ -1948,7 +1948,7 @@ public:
+ 
+     if (!exists || old_bci.info.bucket.bucket_id != bci.info.bucket.bucket_id) {
+       /* a new bucket, we need to select a new bucket placement for it */
+-      auto key{entry};
++      auto key(entry);
+       rgw_bucket_instance_oid_to_key(key);
+       string tenant_name;
+       string bucket_name;

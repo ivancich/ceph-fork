@@ -1,0 +1,32 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Thu, 30 Jun 2016 17:42:54 -0400
+Subject: rgw: add tenant to rgw_bucket json format
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit fc0df4802b48fa095587b93557c82da5446d9ca3)
+
+Resolves: rhbz#1349355
+---
+ src/rgw/rgw_json_enc.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/rgw/rgw_json_enc.cc b/src/rgw/rgw_json_enc.cc
+index cd4a0f5..4a4e84b 100644
+--- a/src/rgw/rgw_json_enc.cc
++++ b/src/rgw/rgw_json_enc.cc
+@@ -506,6 +506,7 @@ void rgw_bucket::dump(Formatter *f) const
+   encode_json("index_pool", index_pool, f);
+   encode_json("marker", marker, f);
+   encode_json("bucket_id", bucket_id, f);
++  encode_json("tenant", tenant, f);
+ }
+ 
+ void rgw_bucket::decode_json(JSONObj *obj) {
+@@ -515,6 +516,7 @@ void rgw_bucket::decode_json(JSONObj *obj) {
+   JSONDecoder::decode_json("index_pool", index_pool, obj);
+   JSONDecoder::decode_json("marker", marker, obj);
+   JSONDecoder::decode_json("bucket_id", bucket_id, obj);
++  JSONDecoder::decode_json("tenant", tenant, obj);
+ }
+ 
+ void RGWBucketEntryPoint::dump(Formatter *f) const

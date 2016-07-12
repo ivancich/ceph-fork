@@ -48,3 +48,17 @@
 0048-mon-Monitor-validate-prefix-on-handle_command.patch
 0049-TaskFinisher-cancel-all-tasks-wait-until-finisher-do.patch
 0050-rgw-fix-error_repo-segfault-in-data-sync.patch
+0051-librbd-flag-image-as-updated-after-proxying-maintena.patch
+0052-rgw-add-missing-master_zone-when-running-with-old-de.patch
+0053-rgw-data-sync-debug-logging.patch
+0054-rgw-add-get_key-methods-to-format-rgw_buckets.patch
+0055-rgw-use-tenant-for-bucket-instance-metadata-keys.patch
+0056-rgw-convert-bucket-instance-listings-back-to-metadat.patch
+0057-rgw-add-tenant-name-to-datalog-entries.patch
+0058-rgw-add-rgw_bucket_parse_bucket_key.patch
+0059-rgw-add-tenant-to-rgw_bucket-json-format.patch
+0060-rgw-add-tenant-to-url-for-RGWRESTStreamWriteRequest.patch
+0061-rgw-carry-tenant-id-with-data-sync.patch
+0062-rgw-add-tenant-id-to-GetBucketInstanceInfo.patch
+0063-rgw-remove-datalog-keys-from-error-repo-on-ENOENT.patch
+0064-rgw-fix-compilation.patch

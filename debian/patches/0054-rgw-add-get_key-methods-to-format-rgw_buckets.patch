@@ -1,0 +1,82 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Thu, 30 Jun 2016 18:09:03 -0400
+Subject: rgw: add get_key() methods to format rgw_buckets
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 51ff8ef7c6bb7c9f55f3ca8ad059b029a4088cdf)
+
+Resolves: rhbz#1349355
+---
+ src/rgw/rgw_common.cc | 31 +++++++++++++++++++++++++++++++
+ src/rgw/rgw_common.h  |  9 ++++++++-
+ 2 files changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_common.cc b/src/rgw/rgw_common.cc
+index d597339..3537a84 100644
+--- a/src/rgw/rgw_common.cc
++++ b/src/rgw/rgw_common.cc
+@@ -1349,6 +1349,37 @@ bool RGWUserCaps::is_valid_cap_type(const string& tp)
+   return false;
+ }
+ 
++std::string rgw_bucket::get_key(char tenant_delim, char id_delim) const
++{
++  static constexpr size_t shard_len{12}; // ":4294967295\0"
++  const size_t max_len = tenant.size() + sizeof(tenant_delim) +
++      name.size() + sizeof(id_delim) + bucket_id.size() + shard_len;
++
++  std::string key;
++  key.reserve(max_len);
++  if (!tenant.empty() && tenant_delim) {
++    key.append(tenant);
++    key.append(1, tenant_delim);
++  }
++  key.append(name);
++  if (!bucket_id.empty() && id_delim) {
++    key.append(1, id_delim);
++    key.append(bucket_id);
++  }
++  return key;
++}
++
++std::string rgw_bucket_shard::get_key(char tenant_delim, char id_delim,
++                                      char shard_delim) const
++{
++  auto key = bucket.get_key(tenant_delim, id_delim);
++  if (shard_id >= 0 && shard_delim) {
++    key.append(1, shard_delim);
++    key.append(std::to_string(shard_id));
++  }
++  return key;
++}
++
+ static struct rgw_name_to_flag op_type_mapping[] = { {"*",  RGW_OP_TYPE_ALL},
+                   {"read",  RGW_OP_TYPE_READ},
+ 		  {"write", RGW_OP_TYPE_WRITE},
+diff --git a/src/rgw/rgw_common.h b/src/rgw/rgw_common.h
+index a907f44..9649a63 100644
+--- a/src/rgw/rgw_common.h
++++ b/src/rgw/rgw_common.h
+@@ -753,6 +753,10 @@ struct rgw_bucket {
+     DECODE_FINISH(bl);
+   }
+ 
++  // format a key for the bucket/instance. pass delim=0 to skip a field
++  std::string get_key(char tenant_delim = '/',
++                      char id_delim = ':') const;
++
+   const string& get_data_extra_pool() {
+     if (data_extra_pool.empty()) {
+       return data_pool;
+@@ -797,7 +801,10 @@ struct rgw_bucket_shard {
+   int shard_id;
+ 
+   rgw_bucket_shard() : shard_id(-1) {}
+-  rgw_bucket_shard(rgw_bucket& _b, int _sid) : bucket(_b), shard_id(_sid) {}
++  rgw_bucket_shard(const rgw_bucket& _b, int _sid) : bucket(_b), shard_id(_sid) {}
++
++  std::string get_key(char tenant_delim = '/', char id_delim = ':',
++                      char shard_delim = ':') const;
+ 
+   bool operator<(const rgw_bucket_shard& b) const {
+     if (bucket < b.bucket) {

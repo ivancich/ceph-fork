@@ -1,0 +1,91 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Tue, 28 Jun 2016 11:24:46 -0400
+Subject: rgw: add tenant name to datalog entries
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit c8aa668fc3e34a7651ce6e2dda62902ced808541)
+
+Resolves: rhbz#1349355
+---
+ src/rgw/rgw_bucket.cc | 27 ++++++---------------------
+ src/rgw/rgw_bucket.h  |  2 +-
+ 2 files changed, 7 insertions(+), 22 deletions(-)
+
+diff --git a/src/rgw/rgw_bucket.cc b/src/rgw/rgw_bucket.cc
+index 1066159..1294ab5 100644
+--- a/src/rgw/rgw_bucket.cc
++++ b/src/rgw/rgw_bucket.cc
+@@ -1343,8 +1343,6 @@ int RGWDataChangesLog::renew_entries()
+   real_time ut = real_clock::now();
+   for (iter = entries.begin(); iter != entries.end(); ++iter) {
+     const rgw_bucket_shard& bs = iter->first;
+-    const rgw_bucket& bucket = bs.bucket;
+-    int shard_id = bs.shard_id;
+ 
+     int index = choose_oid(bs);
+ 
+@@ -1353,19 +1351,14 @@ int RGWDataChangesLog::renew_entries()
+     rgw_data_change change;
+     bufferlist bl;
+     change.entity_type = ENTITY_TYPE_BUCKET;
+-    change.key = bucket.name + ":" + bucket.bucket_id;
+-    if (shard_id >= 0) {
+-      char buf[16];
+-      snprintf(buf, sizeof(buf), ":%d", shard_id);
+-      change.key += buf;
+-    }
++    change.key = bs.get_key();
+     change.timestamp = ut;
+     ::encode(change, bl);
+ 
+-    store->time_log_prepare_entry(entry, ut, section, bucket.name, bl);
++    store->time_log_prepare_entry(entry, ut, section, change.key, bl);
+ 
+     m[index].first.push_back(bs);
+-    m[index].second.push_back(entry);
++    m[index].second.emplace_back(std::move(entry));
+   }
+ 
+   map<int, pair<list<rgw_bucket_shard>, list<cls_log_entry> > >::iterator miter;
+@@ -1493,12 +1486,7 @@ int RGWDataChangesLog::add_entry(rgw_bucket& bucket, int shard_id) {
+     bufferlist bl;
+     rgw_data_change change;
+     change.entity_type = ENTITY_TYPE_BUCKET;
+-    change.key = bucket.name + ":" + bucket.bucket_id;
+-    if (shard_id >= 0) {
+-      char buf[16];
+-      snprintf(buf, sizeof(buf), ":%d", shard_id);
+-      change.key += buf;
+-    }
++    change.key = bs.get_key();
+     change.timestamp = now;
+     ::encode(change, bl);
+     string section;
+@@ -1675,12 +1663,9 @@ void RGWDataChangesLog::ChangesRenewThread::stop()
+   cond.Signal();
+ }
+ 
+-void RGWDataChangesLog::mark_modified(int shard_id, rgw_bucket_shard& bs)
++void RGWDataChangesLog::mark_modified(int shard_id, const rgw_bucket_shard& bs)
+ {
+-  string key = bs.bucket.name + ":" + bs.bucket.bucket_id;
+-  char buf[16];
+-  snprintf(buf, sizeof(buf), ":%d", bs.shard_id);
+-  key.append(buf);
++  auto key = bs.get_key();
+   modified_lock.get_read();
+   map<int, set<string> >::iterator iter = modified_shards.find(shard_id);
+   if (iter != modified_shards.end()) {
+diff --git a/src/rgw/rgw_bucket.h b/src/rgw/rgw_bucket.h
+index acde2a5..3510144 100644
+--- a/src/rgw/rgw_bucket.h
++++ b/src/rgw/rgw_bucket.h
+@@ -487,7 +487,7 @@ public:
+   int list_entries(const real_time& start_time, const real_time& end_time, int max_entries,
+                list<rgw_data_change_log_entry>& entries, LogMarker& marker, bool *ptruncated);
+ 
+-  void mark_modified(int shard_id, rgw_bucket_shard& bs);
++  void mark_modified(int shard_id, const rgw_bucket_shard& bs);
+   void read_clear_modified(map<int, set<string> > &modified);
+ 
+   bool going_down();
