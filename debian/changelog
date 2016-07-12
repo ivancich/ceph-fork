@@ -1,3 +1,10 @@
+ceph (10.2.2-16redhat1) stable; urgency=medium
+
+  * common: fix value of CINIT_FLAG_DEFER_DROP_PRIVILEGES
+    (rhbz#1352396)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 12 Jul 2016 14:54:28 -0600
+
 ceph (10.2.2-15redhat1) stable; urgency=medium
 
   * librbd: flag image as updated after proxying maintenance op

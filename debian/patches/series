@@ -62,3 +62,4 @@
 0062-rgw-add-tenant-id-to-GetBucketInstanceInfo.patch
 0063-rgw-remove-datalog-keys-from-error-repo-on-ENOENT.patch
 0064-rgw-fix-compilation.patch
+0065-common-fix-value-of-CINIT_FLAG_DEFER_DROP_PRIVILEGES.patch

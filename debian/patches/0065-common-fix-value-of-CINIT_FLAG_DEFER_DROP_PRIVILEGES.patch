@@ -1,0 +1,27 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 27 Apr 2016 16:53:26 -0400
+Subject: common: fix value of CINIT_FLAG_DEFER_DROP_PRIVILEGES
+
+0x16 (binary 10110) was overlapping two other flags
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit dfb897ad576e4861a3cb75d85dffbbeaad5e980e)
+
+Resolves: rhbz#1352396
+---
+ src/common/common_init.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/common/common_init.h b/src/common/common_init.h
+index 1184222..6ef4a90 100644
+--- a/src/common/common_init.h
++++ b/src/common/common_init.h
+@@ -39,7 +39,7 @@ enum common_init_flags_t {
+   CINIT_FLAG_NO_DAEMON_ACTIONS = 0x8,
+ 
+   // don't drop privileges
+-  CINIT_FLAG_DEFER_DROP_PRIVILEGES = 0x16,
++  CINIT_FLAG_DEFER_DROP_PRIVILEGES = 0x10,
+ };
+ 
+ /*
