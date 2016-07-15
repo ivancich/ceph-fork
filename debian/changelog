@@ -1,3 +1,23 @@
+ceph (10.2.2-17redhat1) stable; urgency=medium
+
+  * librbd: optionally block proxied requests with an error code
+    (rhbz#1348968)
+  * rbd-mirror: block proxied ops with -EROFS return code
+    (rhbz#1348968)
+  * librbd: simple duplicate op checks for all maintenance operations
+    (rhbz#1353511)
+  * librbd: record original snap name in snap rename journal event
+    (rhbz#1353511)
+  * librbd: separate journal event decoding and processing
+    (rhbz#1353511)
+  * rbd-mirror: event preprocessor to handle snap rename operations
+    (rhbz#1353511)
+  * rbd-mirror: preprocess journal events prior to applying
+    (rhbz#1353511)
+  * ceph-fuse: link to libtcmalloc or jemalloc (rhbz#1355848)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 15 Jul 2016 08:12:48 -0600
+
 ceph (10.2.2-16redhat1) stable; urgency=medium
 
   * common: fix value of CINIT_FLAG_DEFER_DROP_PRIVILEGES

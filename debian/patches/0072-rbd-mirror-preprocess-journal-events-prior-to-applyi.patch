@@ -1,0 +1,229 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 11 Jul 2016 15:32:45 -0400
+Subject: rbd-mirror: preprocess journal events prior to applying
+
+Fixes: http://tracker.ceph.com/issues/16622
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 68a87f18556814a292867c759e4d408c39439dd1)
+
+Conflicts:
+	src/test/rbd_mirror/test_mock_ImageReplayer.cc: trivial resolution
+
+Resolves: rhbz#1353511
+---
+ src/test/rbd_mirror/test_mock_ImageReplayer.cc | 24 ++++++++++++
+ src/tools/rbd_mirror/ImageReplayer.cc          | 52 ++++++++++++++++++++++----
+ src/tools/rbd_mirror/ImageReplayer.h           |  9 +++++
+ 3 files changed, 77 insertions(+), 8 deletions(-)
+
+diff --git a/src/test/rbd_mirror/test_mock_ImageReplayer.cc b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
+index 0555131..9b23b8f 100644
+--- a/src/test/rbd_mirror/test_mock_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
+@@ -6,6 +6,7 @@
+ #include "tools/rbd_mirror/ImageReplayer.h"
+ #include "tools/rbd_mirror/image_replayer/BootstrapRequest.h"
+ #include "tools/rbd_mirror/image_replayer/CloseImageRequest.h"
++#include "tools/rbd_mirror/image_replayer/EventPreprocessor.h"
+ #include "test/journal/mock/MockJournaler.h"
+ #include "test/librbd/mock/MockImageCtx.h"
+ #include "test/librbd/mock/MockJournal.h"
+@@ -115,6 +116,28 @@ struct CloseImageRequest<librbd::MockTestImageCtx> {
+ };
+ 
+ template<>
++struct EventPreprocessor<librbd::MockTestImageCtx> {
++  static EventPreprocessor *s_instance;
++
++  static EventPreprocessor *create(librbd::MockTestImageCtx &local_image_ctx,
++                                   ::journal::MockJournalerProxy &remote_journaler,
++                                   const std::string &local_mirror_uuid,
++                                   librbd::journal::MirrorPeerClientMeta *client_meta,
++                                   ContextWQ *work_queue) {
++    assert(s_instance != nullptr);
++    return s_instance;
++  }
++
++  EventPreprocessor() {
++    assert(s_instance == nullptr);
++    s_instance = this;
++  }
++
++  MOCK_METHOD1(is_required, bool(const librbd::journal::EventEntry &));
++  MOCK_METHOD2(preprocess, void(librbd::journal::EventEntry *, Context *));
++};
++
++template<>
+ struct ReplayStatusFormatter<librbd::MockTestImageCtx> {
+   static ReplayStatusFormatter* s_instance;
+ 
+@@ -134,6 +157,7 @@ struct ReplayStatusFormatter<librbd::MockTestImageCtx> {
+ 
+ BootstrapRequest<librbd::MockTestImageCtx>* BootstrapRequest<librbd::MockTestImageCtx>::s_instance = nullptr;
+ CloseImageRequest<librbd::MockTestImageCtx>* CloseImageRequest<librbd::MockTestImageCtx>::s_instance = nullptr;
++EventPreprocessor<librbd::MockTestImageCtx>* EventPreprocessor<librbd::MockTestImageCtx>::s_instance = nullptr;
+ ReplayStatusFormatter<librbd::MockTestImageCtx>* ReplayStatusFormatter<librbd::MockTestImageCtx>::s_instance = nullptr;
+ 
+ } // namespace image_replayer
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 8bc1d4b..0492a96 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -22,6 +22,7 @@
+ #include "Threads.h"
+ #include "tools/rbd_mirror/image_replayer/BootstrapRequest.h"
+ #include "tools/rbd_mirror/image_replayer/CloseImageRequest.h"
++#include "tools/rbd_mirror/image_replayer/EventPreprocessor.h"
+ #include "tools/rbd_mirror/image_replayer/ReplayStatusFormatter.h"
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+@@ -275,6 +276,7 @@ ImageReplayer<I>::ImageReplayer(Threads *threads, RadosRef local, RadosRef remot
+ template <typename I>
+ ImageReplayer<I>::~ImageReplayer()
+ {
++  assert(m_event_preprocessor == nullptr);
+   assert(m_replay_status_formatter == nullptr);
+   assert(m_local_image_ctx == nullptr);
+   assert(m_local_replay == nullptr);
+@@ -505,6 +507,9 @@ void ImageReplayer<I>::handle_start_replay(int r) {
+     std::swap(m_on_start_finish, on_finish);
+   }
+ 
++  m_event_preprocessor = EventPreprocessor<I>::create(
++    *m_local_image_ctx, *m_remote_journaler, m_local_mirror_uuid,
++    &m_client_meta, m_threads->work_queue);
+   m_replay_status_formatter =
+     ReplayStatusFormatter<I>::create(m_remote_journaler, m_local_mirror_uuid);
+ 
+@@ -666,7 +671,7 @@ void ImageReplayer<I>::handle_replay_ready()
+   }
+ 
+   if (m_replay_tag_valid && m_replay_tag.tid == m_replay_tag_tid) {
+-    process_entry();
++    preprocess_entry();
+     return;
+   }
+ 
+@@ -941,29 +946,56 @@ void ImageReplayer<I>::handle_allocate_local_tag(int r) {
+     return;
+   }
+ 
+-  process_entry();
++  preprocess_entry();
+ }
+ 
+ template <typename I>
+-void ImageReplayer<I>::process_entry() {
+-  dout(20) << "processing entry tid=" << m_replay_entry.get_commit_tid()
++void ImageReplayer<I>::preprocess_entry() {
++  dout(20) << "preprocessing entry tid=" << m_replay_entry.get_commit_tid()
+            << dendl;
+ 
+   bufferlist data = m_replay_entry.get_data();
+   bufferlist::iterator it = data.begin();
+-
+-  librbd::journal::EventEntry event_entry;
+-  int r = m_local_replay->decode(&it, &event_entry);
++  int r = m_local_replay->decode(&it, &m_event_entry);
+   if (r < 0) {
+     derr << "failed to decode journal event" << dendl;
+     handle_replay_complete(r, "failed to decode journal event");
+     return;
+   }
+ 
++  if (!m_event_preprocessor->is_required(m_event_entry)) {
++    process_entry();
++    return;
++  }
++
++  Context *ctx = create_context_callback<
++    ImageReplayer, &ImageReplayer<I>::handle_preprocess_entry>(this);
++  m_event_preprocessor->preprocess(&m_event_entry, ctx);
++}
++
++template <typename I>
++void ImageReplayer<I>::handle_preprocess_entry(int r) {
++  dout(20) << "r=" << r << dendl;
++
++  if (r < 0) {
++    derr << "failed to preprocess journal event" << dendl;
++    handle_replay_complete(r, "failed to preprocess journal event");
++    return;
++  }
++
++  process_entry();
++}
++
++template <typename I>
++void ImageReplayer<I>::process_entry() {
++  dout(20) << "processing entry tid=" << m_replay_entry.get_commit_tid()
++           << dendl;
++
+   Context *on_ready = create_context_callback<
+     ImageReplayer, &ImageReplayer<I>::handle_process_entry_ready>(this);
+   Context *on_commit = new C_ReplayCommitted(this, std::move(m_replay_entry));
+-  m_local_replay->process(event_entry, on_ready, on_commit);
++  m_local_replay->process(m_event_entry, on_ready, on_commit);
++  m_event_entry = {};
+ }
+ 
+ template <typename I>
+@@ -1261,6 +1293,10 @@ void ImageReplayer<I>::shut_down(int r, Context *on_start) {
+         m_local_journal->stop_external_replay();
+         m_local_journal = nullptr;
+         m_local_replay = nullptr;
++
++        delete m_event_preprocessor;
++        m_event_preprocessor = nullptr;
++
+         ctx->complete(0);
+       });
+     ctx = new FunctionContext([this, ctx](int r) {
+diff --git a/src/tools/rbd_mirror/ImageReplayer.h b/src/tools/rbd_mirror/ImageReplayer.h
+index df84888..7b3ef7a 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.h
++++ b/src/tools/rbd_mirror/ImageReplayer.h
+@@ -44,6 +44,7 @@ namespace mirror {
+ struct Threads;
+ 
+ namespace image_replayer { template <typename> class BootstrapRequest; }
++namespace image_replayer { template <typename> class EventPreprocessor; }
+ namespace image_replayer { template <typename> class ReplayStatusFormatter; }
+ 
+ /**
+@@ -168,6 +169,9 @@ protected:
+    *    |                     ALLOCATE_LOCAL_TAG  * * * * * *
+    *    |                         |                     |   *
+    *    |                         v                 (error) *
++   *    |                     PREPROCESS_ENTRY  * * * * * * *
++   *    |                         |                     |   *
++   *    |                         v                 (error) *
+    *    |                     PROCESS_ENTRY * * * * * * * * *
+    *    |                         |                     |   *
+    *    |                         \---------------------/   *
+@@ -229,6 +233,7 @@ private:
+   int m_last_r = 0;
+   std::string m_state_desc;
+   BootstrapProgressContext m_progress_cxt;
++  image_replayer::EventPreprocessor<ImageCtxT> *m_event_preprocessor = nullptr;
+   image_replayer::ReplayStatusFormatter<ImageCtxT> *m_replay_status_formatter =
+     nullptr;
+   librados::IoCtx m_local_ioctx, m_remote_ioctx;
+@@ -262,6 +267,7 @@ private:
+   uint64_t m_replay_tag_tid = 0;
+   cls::journal::Tag m_replay_tag;
+   librbd::journal::TagData m_replay_tag_data;
++  librbd::journal::EventEntry m_event_entry;
+ 
+   struct C_ReplayCommitted : public Context {
+     ImageReplayer *replayer;
+@@ -318,6 +324,9 @@ private:
+   void allocate_local_tag();
+   void handle_allocate_local_tag(int r);
+ 
++  void preprocess_entry();
++  void handle_preprocess_entry(int r);
++
+   void process_entry();
+   void handle_process_entry_ready(int r);
+   void handle_process_entry_safe(const ReplayEntry& replay_entry, int r);

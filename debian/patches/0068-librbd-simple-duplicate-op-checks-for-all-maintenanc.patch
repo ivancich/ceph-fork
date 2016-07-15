@@ -1,0 +1,473 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Fri, 8 Jul 2016 09:13:07 -0400
+Subject: librbd: simple duplicate op checks for all maintenance operations
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 8a540efaf14edf94e434fff0e31c119aa4aa28a2)
+
+Conflicts:
+	src/librbd/Operations.cc: trivial resolution
+
+Resolves: rhbz#1353511
+---
+ src/librbd/ImageWatcher.cc                  | 12 ++---
+ src/librbd/Operations.cc                    | 70 ++++++++++++++++++++++++-----
+ src/librbd/Operations.h                     | 17 +++----
+ src/librbd/journal/Replay.cc                | 14 +++---
+ src/test/librbd/journal/test_mock_Replay.cc | 15 ++++---
+ src/test/librbd/mock/MockOperations.h       | 22 +++++----
+ 6 files changed, 102 insertions(+), 48 deletions(-)
+
+diff --git a/src/librbd/ImageWatcher.cc b/src/librbd/ImageWatcher.cc
+index 965e22f..8e4cc17 100644
+--- a/src/librbd/ImageWatcher.cc
++++ b/src/librbd/ImageWatcher.cc
+@@ -729,7 +729,7 @@ bool ImageWatcher::handle_payload(const SnapCreatePayload &payload,
+       ldout(m_image_ctx.cct, 10) << this << " remote snap_create request: "
+ 			         << payload.snap_name << dendl;
+ 
+-      m_image_ctx.operations->execute_snap_create(payload.snap_name.c_str(),
++      m_image_ctx.operations->execute_snap_create(payload.snap_name,
+                                                   new C_ResponseMessage(ack_ctx),
+                                                   0, false);
+       return false;
+@@ -751,7 +751,7 @@ bool ImageWatcher::handle_payload(const SnapRenamePayload &payload,
+ 			         << payload.snap_name << dendl;
+ 
+       m_image_ctx.operations->execute_snap_rename(payload.snap_id,
+-                                                  payload.snap_name.c_str(),
++                                                  payload.snap_name,
+                                                   new C_ResponseMessage(ack_ctx));
+       return false;
+     } else if (r < 0) {
+@@ -770,7 +770,7 @@ bool ImageWatcher::handle_payload(const SnapRemovePayload &payload,
+       ldout(m_image_ctx.cct, 10) << this << " remote snap_remove request: "
+ 			         << payload.snap_name << dendl;
+ 
+-      m_image_ctx.operations->execute_snap_remove(payload.snap_name.c_str(),
++      m_image_ctx.operations->execute_snap_remove(payload.snap_name,
+                                                   new C_ResponseMessage(ack_ctx));
+       return false;
+     } else if (r < 0) {
+@@ -789,7 +789,7 @@ bool ImageWatcher::handle_payload(const SnapProtectPayload& payload,
+       ldout(m_image_ctx.cct, 10) << this << " remote snap_protect request: "
+                                  << payload.snap_name << dendl;
+ 
+-      m_image_ctx.operations->execute_snap_protect(payload.snap_name.c_str(),
++      m_image_ctx.operations->execute_snap_protect(payload.snap_name,
+                                                    new C_ResponseMessage(ack_ctx));
+       return false;
+     } else if (r < 0) {
+@@ -808,7 +808,7 @@ bool ImageWatcher::handle_payload(const SnapUnprotectPayload& payload,
+       ldout(m_image_ctx.cct, 10) << this << " remote snap_unprotect request: "
+                                  << payload.snap_name << dendl;
+ 
+-      m_image_ctx.operations->execute_snap_unprotect(payload.snap_name.c_str(),
++      m_image_ctx.operations->execute_snap_unprotect(payload.snap_name,
+                                                      new C_ResponseMessage(ack_ctx));
+       return false;
+     } else if (r < 0) {
+@@ -853,7 +853,7 @@ bool ImageWatcher::handle_payload(const RenamePayload& payload,
+       ldout(m_image_ctx.cct, 10) << this << " remote rename request: "
+                                  << payload.image_name << dendl;
+ 
+-      m_image_ctx.operations->execute_rename(payload.image_name.c_str(),
++      m_image_ctx.operations->execute_rename(payload.image_name,
+                                              new C_ResponseMessage(ack_ctx));
+       return false;
+     } else if (r < 0) {
+diff --git a/src/librbd/Operations.cc b/src/librbd/Operations.cc
+index 28afa4d..45a647d 100644
+--- a/src/librbd/Operations.cc
++++ b/src/librbd/Operations.cc
+@@ -469,22 +469,31 @@ int Operations<I>::rename(const char *dstname) {
+ }
+ 
+ template <typename I>
+-void Operations<I>::execute_rename(const char *dstname, Context *on_finish) {
++void Operations<I>::execute_rename(const std::string &dest_name,
++                                   Context *on_finish) {
+   assert(m_image_ctx.owner_lock.is_locked());
+   if (m_image_ctx.test_features(RBD_FEATURE_JOURNALING)) {
+     assert(m_image_ctx.exclusive_lock == nullptr ||
+            m_image_ctx.exclusive_lock->is_lock_owner());
+   }
+ 
++  m_image_ctx.snap_lock.get_read();
++  if (m_image_ctx.name == dest_name) {
++    m_image_ctx.snap_lock.put_read();
++    on_finish->complete(-EEXIST);
++    return;
++  }
++  m_image_ctx.snap_lock.put_read();
++
+   CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 5) << this << " " << __func__ << ": dest_name=" << dstname
++  ldout(cct, 5) << this << " " << __func__ << ": dest_name=" << dest_name
+                 << dendl;
+ 
+   if (m_image_ctx.old_format) {
+     on_finish = new C_NotifyUpdate<I>(m_image_ctx, on_finish);
+   }
+   operation::RenameRequest<I> *req = new operation::RenameRequest<I>(
+-    m_image_ctx, on_finish, dstname);
++    m_image_ctx, on_finish, dest_name);
+   req->send();
+ }
+ 
+@@ -608,7 +617,7 @@ void Operations<I>::snap_create(const char *snap_name, Context *on_finish) {
+ }
+ 
+ template <typename I>
+-void Operations<I>::execute_snap_create(const char *snap_name,
++void Operations<I>::execute_snap_create(const std::string &snap_name,
+                                         Context *on_finish,
+                                         uint64_t journal_op_tid,
+                                         bool skip_object_map) {
+@@ -686,7 +695,7 @@ int Operations<I>::snap_rollback(const char *snap_name,
+ }
+ 
+ template <typename I>
+-void Operations<I>::execute_snap_rollback(const char *snap_name,
++void Operations<I>::execute_snap_rollback(const std::string &snap_name,
+                                           ProgressContext& prog_ctx,
+                                           Context *on_finish) {
+   assert(m_image_ctx.owner_lock.is_locked());
+@@ -748,6 +757,7 @@ void Operations<I>::snap_remove(const char *snap_name, Context *on_finish) {
+     return;
+   }
+ 
++  // quickly filter out duplicate ops
+   m_image_ctx.snap_lock.get_read();
+   if (m_image_ctx.get_snap_id(snap_name) == CEPH_NOSNAP) {
+     m_image_ctx.snap_lock.put_read();
+@@ -774,7 +784,7 @@ void Operations<I>::snap_remove(const char *snap_name, Context *on_finish) {
+ }
+ 
+ template <typename I>
+-void Operations<I>::execute_snap_remove(const char *snap_name,
++void Operations<I>::execute_snap_remove(const std::string &snap_name,
+                                         Context *on_finish) {
+   assert(m_image_ctx.owner_lock.is_locked());
+   {
+@@ -872,7 +882,7 @@ int Operations<I>::snap_rename(const char *srcname, const char *dstname) {
+ 
+ template <typename I>
+ void Operations<I>::execute_snap_rename(const uint64_t src_snap_id,
+-                                        const char *dst_name,
++                                        const std::string &dest_snap_name,
+                                         Context *on_finish) {
+   assert(m_image_ctx.owner_lock.is_locked());
+   if ((m_image_ctx.features & RBD_FEATURE_JOURNALING) != 0) {
+@@ -880,15 +890,23 @@ void Operations<I>::execute_snap_rename(const uint64_t src_snap_id,
+            m_image_ctx.exclusive_lock->is_lock_owner());
+   }
+ 
++  m_image_ctx.snap_lock.get_read();
++  if (m_image_ctx.get_snap_id(dest_snap_name) != CEPH_NOSNAP) {
++    m_image_ctx.snap_lock.put_read();
++    on_finish->complete(-EEXIST);
++    return;
++  }
++  m_image_ctx.snap_lock.put_read();
++
+   CephContext *cct = m_image_ctx.cct;
+   ldout(cct, 5) << this << " " << __func__ << ": "
+                 << "snap_id=" << src_snap_id << ", "
+-                << "new_snap_name=" << dst_name << dendl;
++                << "new_snap_name=" << dest_snap_name << dendl;
+ 
+   operation::SnapshotRenameRequest<I> *req =
+     new operation::SnapshotRenameRequest<I>(
+       m_image_ctx, new C_NotifyUpdate<I>(m_image_ctx, on_finish), src_snap_id,
+-      dst_name);
++      dest_snap_name);
+   req->send();
+ }
+ 
+@@ -945,7 +963,7 @@ int Operations<I>::snap_protect(const char *snap_name) {
+ }
+ 
+ template <typename I>
+-void Operations<I>::execute_snap_protect(const char *snap_name,
++void Operations<I>::execute_snap_protect(const std::string &snap_name,
+                                          Context *on_finish) {
+   assert(m_image_ctx.owner_lock.is_locked());
+   if (m_image_ctx.test_features(RBD_FEATURE_JOURNALING)) {
+@@ -953,6 +971,21 @@ void Operations<I>::execute_snap_protect(const char *snap_name,
+            m_image_ctx.exclusive_lock->is_lock_owner());
+   }
+ 
++  m_image_ctx.snap_lock.get_read();
++  bool is_protected;
++  int r = m_image_ctx.is_snap_protected(m_image_ctx.get_snap_id(snap_name),
++                                        &is_protected);
++  if (r < 0) {
++    m_image_ctx.snap_lock.put_read();
++    on_finish->complete(r);
++    return;
++  } else if (is_protected) {
++    m_image_ctx.snap_lock.put_read();
++    on_finish->complete(-EBUSY);
++    return;
++  }
++  m_image_ctx.snap_lock.put_read();
++
+   CephContext *cct = m_image_ctx.cct;
+   ldout(cct, 5) << this << " " << __func__ << ": snap_name=" << snap_name
+                 << dendl;
+@@ -1016,7 +1049,7 @@ int Operations<I>::snap_unprotect(const char *snap_name) {
+ }
+ 
+ template <typename I>
+-void Operations<I>::execute_snap_unprotect(const char *snap_name,
++void Operations<I>::execute_snap_unprotect(const std::string &snap_name,
+                                            Context *on_finish) {
+   assert(m_image_ctx.owner_lock.is_locked());
+   if (m_image_ctx.test_features(RBD_FEATURE_JOURNALING)) {
+@@ -1024,6 +1057,21 @@ void Operations<I>::execute_snap_unprotect(const char *snap_name,
+            m_image_ctx.exclusive_lock->is_lock_owner());
+   }
+ 
++  m_image_ctx.snap_lock.get_read();
++  bool is_unprotected;
++  int r = m_image_ctx.is_snap_unprotected(m_image_ctx.get_snap_id(snap_name),
++                                          &is_unprotected);
++  if (r < 0) {
++    m_image_ctx.snap_lock.put_read();
++    on_finish->complete(r);
++    return;
++  } else if (is_unprotected) {
++    m_image_ctx.snap_lock.put_read();
++    on_finish->complete(-EINVAL);
++    return;
++  }
++  m_image_ctx.snap_lock.put_read();
++
+   CephContext *cct = m_image_ctx.cct;
+   ldout(cct, 5) << this << " " << __func__ << ": snap_name=" << snap_name
+                 << dendl;
+diff --git a/src/librbd/Operations.h b/src/librbd/Operations.h
+index 95af4dc..411b4ef 100644
+--- a/src/librbd/Operations.h
++++ b/src/librbd/Operations.h
+@@ -29,7 +29,7 @@ public:
+                                   Context *on_finish);
+ 
+   int rename(const char *dstname);
+-  void execute_rename(const char *dstname, Context *on_finish);
++  void execute_rename(const std::string &dest_name, Context *on_finish);
+ 
+   int resize(uint64_t size, ProgressContext& prog_ctx);
+   void execute_resize(uint64_t size, ProgressContext &prog_ctx,
+@@ -37,26 +37,27 @@ public:
+ 
+   int snap_create(const char *snap_name);
+   void snap_create(const char *snap_name, Context *on_finish);
+-  void execute_snap_create(const char *snap_name, Context *on_finish,
++  void execute_snap_create(const std::string &snap_name, Context *on_finish,
+                            uint64_t journal_op_tid, bool skip_object_map);
+ 
+   int snap_rollback(const char *snap_name, ProgressContext& prog_ctx);
+-  void execute_snap_rollback(const char *snap_name, ProgressContext& prog_ctx,
+-                             Context *on_finish);
++  void execute_snap_rollback(const std::string &snap_name,
++                             ProgressContext& prog_ctx, Context *on_finish);
+ 
+   int snap_remove(const char *snap_name);
+   void snap_remove(const char *snap_name, Context *on_finish);
+-  void execute_snap_remove(const char *snap_name, Context *on_finish);
++  void execute_snap_remove(const std::string &snap_name, Context *on_finish);
+ 
+   int snap_rename(const char *srcname, const char *dstname);
+-  void execute_snap_rename(const uint64_t src_snap_id, const char *dst_name,
++  void execute_snap_rename(const uint64_t src_snap_id,
++                           const std::string &dest_snap_name,
+                            Context *on_finish);
+ 
+   int snap_protect(const char *snap_name);
+-  void execute_snap_protect(const char *snap_name, Context *on_finish);
++  void execute_snap_protect(const std::string &snap_name, Context *on_finish);
+ 
+   int snap_unprotect(const char *snap_name);
+-  void execute_snap_unprotect(const char *snap_name, Context *on_finish);
++  void execute_snap_unprotect(const std::string &snap_name, Context *on_finish);
+ 
+   int prepare_image_update();
+ 
+diff --git a/src/librbd/journal/Replay.cc b/src/librbd/journal/Replay.cc
+index 12c691a..c91012c 100644
+--- a/src/librbd/journal/Replay.cc
++++ b/src/librbd/journal/Replay.cc
+@@ -39,40 +39,40 @@ struct ExecuteOp : public Context {
+   }
+ 
+   void execute(const journal::SnapCreateEvent &_) {
+-    image_ctx.operations->execute_snap_create(event.snap_name.c_str(),
++    image_ctx.operations->execute_snap_create(event.snap_name,
+                                               on_op_complete,
+                                               event.op_tid, false);
+   }
+ 
+   void execute(const journal::SnapRemoveEvent &_) {
+-    image_ctx.operations->execute_snap_remove(event.snap_name.c_str(),
++    image_ctx.operations->execute_snap_remove(event.snap_name,
+                                               on_op_complete);
+   }
+ 
+   void execute(const journal::SnapRenameEvent &_) {
+     image_ctx.operations->execute_snap_rename(event.snap_id,
+-                                              event.snap_name.c_str(),
++                                              event.snap_name,
+                                               on_op_complete);
+   }
+ 
+   void execute(const journal::SnapProtectEvent &_) {
+-    image_ctx.operations->execute_snap_protect(event.snap_name.c_str(),
++    image_ctx.operations->execute_snap_protect(event.snap_name,
+                                                on_op_complete);
+   }
+ 
+   void execute(const journal::SnapUnprotectEvent &_) {
+-    image_ctx.operations->execute_snap_unprotect(event.snap_name.c_str(),
++    image_ctx.operations->execute_snap_unprotect(event.snap_name,
+                                                  on_op_complete);
+   }
+ 
+   void execute(const journal::SnapRollbackEvent &_) {
+-    image_ctx.operations->execute_snap_rollback(event.snap_name.c_str(),
++    image_ctx.operations->execute_snap_rollback(event.snap_name,
+                                                 no_op_progress_callback,
+                                                 on_op_complete);
+   }
+ 
+   void execute(const journal::RenameEvent &_) {
+-    image_ctx.operations->execute_rename(event.image_name.c_str(),
++    image_ctx.operations->execute_rename(event.image_name,
+                                          on_op_complete);
+   }
+ 
+diff --git a/src/test/librbd/journal/test_mock_Replay.cc b/src/test/librbd/journal/test_mock_Replay.cc
+index 8a9c869..0ab7c9d 100644
+--- a/src/test/librbd/journal/test_mock_Replay.cc
++++ b/src/test/librbd/journal/test_mock_Replay.cc
+@@ -65,6 +65,7 @@ using ::testing::DoAll;
+ using ::testing::InSequence;
+ using ::testing::Return;
+ using ::testing::SaveArg;
++using ::testing::StrEq;
+ using ::testing::WithArgs;
+ 
+ MATCHER_P(CStrEq, str, "") {
+@@ -131,7 +132,7 @@ public:
+ 
+   void expect_rename(MockReplayImageCtx &mock_image_ctx, Context **on_finish,
+                      const char *image_name) {
+-    EXPECT_CALL(*mock_image_ctx.operations, execute_rename(CStrEq(image_name), _))
++    EXPECT_CALL(*mock_image_ctx.operations, execute_rename(StrEq(image_name), _))
+                   .WillOnce(DoAll(SaveArg<1>(on_finish),
+                                   NotifyInvoke(&m_invoke_lock, &m_invoke_cond)));
+   }
+@@ -146,7 +147,7 @@ public:
+   void expect_snap_create(MockReplayImageCtx &mock_image_ctx,
+                           Context **on_finish, const char *snap_name,
+                           uint64_t op_tid) {
+-    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_create(CStrEq(snap_name), _,
++    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_create(StrEq(snap_name), _,
+                                                                 op_tid, false))
+                   .WillOnce(DoAll(SaveArg<1>(on_finish),
+                                   NotifyInvoke(&m_invoke_lock, &m_invoke_cond)));
+@@ -154,7 +155,7 @@ public:
+ 
+   void expect_snap_remove(MockReplayImageCtx &mock_image_ctx,
+                           Context **on_finish, const char *snap_name) {
+-    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_remove(CStrEq(snap_name), _))
++    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_remove(StrEq(snap_name), _))
+                   .WillOnce(DoAll(SaveArg<1>(on_finish),
+                                   NotifyInvoke(&m_invoke_lock, &m_invoke_cond)));
+   }
+@@ -162,28 +163,28 @@ public:
+   void expect_snap_rename(MockReplayImageCtx &mock_image_ctx,
+                           Context **on_finish, uint64_t snap_id,
+                           const char *snap_name) {
+-    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_rename(snap_id, CStrEq(snap_name), _))
++    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_rename(snap_id, StrEq(snap_name), _))
+                   .WillOnce(DoAll(SaveArg<2>(on_finish),
+                                   NotifyInvoke(&m_invoke_lock, &m_invoke_cond)));
+   }
+ 
+   void expect_snap_protect(MockReplayImageCtx &mock_image_ctx,
+                            Context **on_finish, const char *snap_name) {
+-    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_protect(CStrEq(snap_name), _))
++    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_protect(StrEq(snap_name), _))
+                   .WillOnce(DoAll(SaveArg<1>(on_finish),
+                                   NotifyInvoke(&m_invoke_lock, &m_invoke_cond)));
+   }
+ 
+   void expect_snap_unprotect(MockReplayImageCtx &mock_image_ctx,
+                              Context **on_finish, const char *snap_name) {
+-    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_unprotect(CStrEq(snap_name), _))
++    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_unprotect(StrEq(snap_name), _))
+                   .WillOnce(DoAll(SaveArg<1>(on_finish),
+                                   NotifyInvoke(&m_invoke_lock, &m_invoke_cond)));
+   }
+ 
+   void expect_snap_rollback(MockReplayImageCtx &mock_image_ctx,
+                             Context **on_finish, const char *snap_name) {
+-    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_rollback(CStrEq(snap_name), _, _))
++    EXPECT_CALL(*mock_image_ctx.operations, execute_snap_rollback(StrEq(snap_name), _, _))
+                   .WillOnce(DoAll(SaveArg<2>(on_finish),
+                                   NotifyInvoke(&m_invoke_lock, &m_invoke_cond)));
+   }
+diff --git a/src/test/librbd/mock/MockOperations.h b/src/test/librbd/mock/MockOperations.h
+index 5bbd9b3..478e763 100644
+--- a/src/test/librbd/mock/MockOperations.h
++++ b/src/test/librbd/mock/MockOperations.h
+@@ -7,6 +7,7 @@
+ #include "include/int_types.h"
+ #include "include/rbd/librbd.hpp"
+ #include "gmock/gmock.h"
++#include <string>
+ 
+ class Context;
+ 
+@@ -17,27 +18,30 @@ struct MockOperations {
+                                      Context *on_finish));
+   MOCK_METHOD2(execute_rebuild_object_map, void(ProgressContext &prog_ctx,
+                                                 Context *on_finish));
+-  MOCK_METHOD2(execute_rename, void(const char *dstname, Context *on_finish));
++  MOCK_METHOD2(execute_rename, void(const std::string &dstname,
++                                    Context *on_finish));
+   MOCK_METHOD4(execute_resize, void(uint64_t size, ProgressContext &prog_ctx,
+                                     Context *on_finish,
+                                     uint64_t journal_op_tid));
+-  MOCK_METHOD2(snap_create, void(const char *snap_name, Context *on_finish));
+-  MOCK_METHOD4(execute_snap_create, void(const char *snap_name,
++  MOCK_METHOD2(snap_create, void(const std::string &snap_name,
++                                 Context *on_finish));
++  MOCK_METHOD4(execute_snap_create, void(const std::string &snap_name,
+                                          Context *on_finish,
+                                          uint64_t journal_op_tid,
+                                          bool skip_object_map));
+-  MOCK_METHOD2(snap_remove, void(const char *snap_name, Context *on_finish));
+-  MOCK_METHOD2(execute_snap_remove, void(const char *snap_name,
++  MOCK_METHOD2(snap_remove, void(const std::string &snap_name,
++                                 Context *on_finish));
++  MOCK_METHOD2(execute_snap_remove, void(const std::string &snap_name,
+                                          Context *on_finish));
+   MOCK_METHOD3(execute_snap_rename, void(uint64_t src_snap_id,
+-                                         const char *snap_name,
++                                         const std::string &snap_name,
+                                          Context *on_finish));
+-  MOCK_METHOD3(execute_snap_rollback, void(const char *snap_name,
++  MOCK_METHOD3(execute_snap_rollback, void(const std::string &snap_name,
+                                            ProgressContext &prog_ctx,
+                                            Context *on_finish));
+-  MOCK_METHOD2(execute_snap_protect, void(const char *snap_name,
++  MOCK_METHOD2(execute_snap_protect, void(const std::string &snap_name,
+                                           Context *on_finish));
+-  MOCK_METHOD2(execute_snap_unprotect, void(const char *snap_name,
++  MOCK_METHOD2(execute_snap_unprotect, void(const std::string &snap_name,
+                                             Context *on_finish));
+ };
+ 

@@ -1,0 +1,161 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Fri, 8 Jul 2016 09:14:58 -0400
+Subject: librbd: record original snap name in snap rename journal event
+
+Remote peers need a key to map snapshot ids between clusters.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit dc818f0ff9dfbd762e32c1452488909a1229b4ad)
+
+Resolves: rhbz#1353511
+---
+ src/librbd/journal/Types.cc                   |  9 +++++++--
+ src/librbd/journal/Types.h                    |  5 ++++-
+ src/librbd/operation/SnapshotRenameRequest.cc | 15 +++++++++++++++
+ src/librbd/operation/SnapshotRenameRequest.h  |  4 +---
+ src/test/librbd/journal/test_Replay.cc        |  3 ++-
+ src/test/librbd/journal/test_mock_Replay.cc   |  4 ++--
+ 6 files changed, 31 insertions(+), 9 deletions(-)
+
+diff --git a/src/librbd/journal/Types.cc b/src/librbd/journal/Types.cc
+index 8f9f942..0b2a54d 100644
+--- a/src/librbd/journal/Types.cc
++++ b/src/librbd/journal/Types.cc
+@@ -157,16 +157,21 @@ void SnapEventBase::dump(Formatter *f) const {
+ void SnapRenameEvent::encode(bufferlist& bl) const {
+   SnapEventBase::encode(bl);
+   ::encode(snap_id, bl);
++  ::encode(src_snap_name, bl);
+ }
+ 
+ void SnapRenameEvent::decode(__u8 version, bufferlist::iterator& it) {
+   SnapEventBase::decode(version, it);
+   ::decode(snap_id, it);
++  if (version >= 2) {
++    ::decode(src_snap_name, it);
++  }
+ }
+ 
+ void SnapRenameEvent::dump(Formatter *f) const {
+   SnapEventBase::dump(f);
+   f->dump_unsigned("src_snap_id", snap_id);
++  f->dump_string("src_snap_name", src_snap_name);
+   f->dump_string("dest_snap_name", snap_name);
+ }
+ 
+@@ -224,7 +229,7 @@ EventType EventEntry::get_event_type() const {
+ }
+ 
+ void EventEntry::encode(bufferlist& bl) const {
+-  ENCODE_START(1, 1, bl);
++  ENCODE_START(2, 1, bl);
+   boost::apply_visitor(EncodeVisitor(bl), event);
+   ENCODE_FINISH(bl);
+ }
+@@ -312,7 +317,7 @@ void EventEntry::generate_test_instances(std::list<EventEntry *> &o) {
+   o.push_back(new EventEntry(SnapRemoveEvent(345, "snap")));
+ 
+   o.push_back(new EventEntry(SnapRenameEvent()));
+-  o.push_back(new EventEntry(SnapRenameEvent(456, 1, "snap")));
++  o.push_back(new EventEntry(SnapRenameEvent(456, 1, "src snap", "dest snap")));
+ 
+   o.push_back(new EventEntry(SnapProtectEvent()));
+   o.push_back(new EventEntry(SnapProtectEvent(567, "snap")));
+diff --git a/src/librbd/journal/Types.h b/src/librbd/journal/Types.h
+index 4008a0f..48c0d3b 100644
+--- a/src/librbd/journal/Types.h
++++ b/src/librbd/journal/Types.h
+@@ -161,12 +161,15 @@ struct SnapRenameEvent : public SnapEventBase {
+   static const EventType TYPE = EVENT_TYPE_SNAP_RENAME;
+ 
+   uint64_t snap_id;
++  std::string src_snap_name;
+ 
+   SnapRenameEvent() : snap_id(CEPH_NOSNAP) {
+   }
+   SnapRenameEvent(uint64_t op_tid, uint64_t src_snap_id,
++                  const std::string &src_snap_name,
+                   const std::string &dest_snap_name)
+-    : SnapEventBase(op_tid, dest_snap_name), snap_id(src_snap_id) {
++    : SnapEventBase(op_tid, dest_snap_name), snap_id(src_snap_id),
++      src_snap_name(src_snap_name) {
+   }
+ 
+   void encode(bufferlist& bl) const;
+diff --git a/src/librbd/operation/SnapshotRenameRequest.cc b/src/librbd/operation/SnapshotRenameRequest.cc
+index ec7eb65..f825d8c 100644
+--- a/src/librbd/operation/SnapshotRenameRequest.cc
++++ b/src/librbd/operation/SnapshotRenameRequest.cc
+@@ -39,6 +39,21 @@ SnapshotRenameRequest<I>::SnapshotRenameRequest(I &image_ctx,
+ }
+ 
+ template <typename I>
++journal::Event SnapshotRenameRequest<I>::create_event(uint64_t op_tid) const {
++  I &image_ctx = this->m_image_ctx;
++  assert(image_ctx.snap_lock.is_locked());
++
++  std::string src_snap_name;
++  auto snap_info_it = image_ctx.snap_info.find(m_snap_id);
++  if (snap_info_it != image_ctx.snap_info.end()) {
++    src_snap_name = snap_info_it->second.name;
++  }
++
++  return journal::SnapRenameEvent(op_tid, m_snap_id, src_snap_name,
++                                  m_snap_name);
++}
++
++template <typename I>
+ void SnapshotRenameRequest<I>::send_op() {
+   send_rename_snap();
+ }
+diff --git a/src/librbd/operation/SnapshotRenameRequest.h b/src/librbd/operation/SnapshotRenameRequest.h
+index 503058d..4528629 100644
+--- a/src/librbd/operation/SnapshotRenameRequest.h
++++ b/src/librbd/operation/SnapshotRenameRequest.h
+@@ -42,9 +42,7 @@ public:
+   SnapshotRenameRequest(ImageCtxT &image_ctx, Context *on_finish,
+                         uint64_t snap_id, const std::string &snap_name);
+ 
+-  virtual journal::Event create_event(uint64_t op_tid) const {
+-    return journal::SnapRenameEvent(op_tid, m_snap_id, m_snap_name);
+-  }
++  virtual journal::Event create_event(uint64_t op_tid) const;
+ 
+ protected:
+   virtual void send_op();
+diff --git a/src/test/librbd/journal/test_Replay.cc b/src/test/librbd/journal/test_Replay.cc
+index cbde9ae..037006e 100644
+--- a/src/test/librbd/journal/test_Replay.cc
++++ b/src/test/librbd/journal/test_Replay.cc
+@@ -452,7 +452,8 @@ TEST_F(TestJournalReplay, SnapRename) {
+   get_journal_commit_position(ictx, &initial_tag, &initial_entry);
+ 
+   // inject snapshot ops into journal
+-  inject_into_journal(ictx, librbd::journal::SnapRenameEvent(1, snap_id, "snap2"));
++  inject_into_journal(ictx, librbd::journal::SnapRenameEvent(1, snap_id, "snap",
++                                                             "snap2"));
+   inject_into_journal(ictx, librbd::journal::OpFinishEvent(1, 0));
+   close_image(ictx);
+ 
+diff --git a/src/test/librbd/journal/test_mock_Replay.cc b/src/test/librbd/journal/test_mock_Replay.cc
+index 0ab7c9d..639ae5a 100644
+--- a/src/test/librbd/journal/test_mock_Replay.cc
++++ b/src/test/librbd/journal/test_mock_Replay.cc
+@@ -829,7 +829,7 @@ TEST_F(TestMockJournalReplay, SnapRenameEvent) {
+   C_SaferCond on_start_ready;
+   C_SaferCond on_start_safe;
+   when_process(mock_journal_replay,
+-               EventEntry{SnapRenameEvent(123, 234, "snap")},
++               EventEntry{SnapRenameEvent(123, 234, "snap1", "snap")},
+                &on_start_ready, &on_start_safe);
+   ASSERT_EQ(0, on_start_ready.wait());
+ 
+@@ -862,7 +862,7 @@ TEST_F(TestMockJournalReplay, SnapRenameEventExists) {
+   C_SaferCond on_start_ready;
+   C_SaferCond on_start_safe;
+   when_process(mock_journal_replay,
+-               EventEntry{SnapRenameEvent(123, 234, "snap")},
++               EventEntry{SnapRenameEvent(123, 234, "snap1", "snap")},
+                &on_start_ready, &on_start_safe);
+   ASSERT_EQ(0, on_start_ready.wait());
+ 

@@ -1,0 +1,32 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 22 Jun 2016 10:14:21 -0400
+Subject: rbd-mirror: block proxied ops with -EROFS return code
+
+When replicating to a local image, the daemon will own the
+exclusive lock and will receive any proxied maintenance ops
+from other clients. Since the image is non-primary, respond
+with -EROFS.
+
+Fixes: http://tracker.ceph.com/issues/16411
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 07b49df24e5f30460ce3ab584a89370ea3ff7cc8)
+
+Resolves: rhbz#1348968
+---
+ src/tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc b/src/tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc
+index 9367ed6..35b6863 100644
+--- a/src/tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/OpenLocalImageRequest.cc
+@@ -141,6 +141,9 @@ void OpenLocalImageRequest<I>::send_lock_image() {
+     return;
+   }
+ 
++  // disallow any proxied maintenance operations before grabbing lock
++  (*m_local_image_ctx)->exclusive_lock->block_requests(-EROFS);
++
+   Context *ctx = create_context_callback<
+     OpenLocalImageRequest<I>, &OpenLocalImageRequest<I>::handle_lock_image>(
+       this);

@@ -1,0 +1,35 @@
+From: "Yan, Zheng" <zyan@redhat.com>
+Date: Tue, 12 Jul 2016 16:07:53 +0800
+Subject: ceph-fuse: link to libtcmalloc or jemalloc
+
+Fixes: http://tracker.ceph.com/issues/16655
+Signed-off-by: Yan, Zheng <zyan@redhat.com>
+(cherry picked from commit e644f6eb64037b1e21ce55d4dcffa43571ac1327)
+
+Resolves: rhbz#1355848
+
+For RH downstream: had to drop the CMakeLists.txt change
+---
+ src/Makefile-env.am | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/Makefile-env.am b/src/Makefile-env.am
+index dcee4a5..d426c37 100644
+--- a/src/Makefile-env.am
++++ b/src/Makefile-env.am
+@@ -249,6 +249,7 @@ LIBMON += -ljemalloc
+ LIBOSD += -ljemalloc
+ LIBMDS += -ljemalloc
+ LIBRGW += -ljemalloc
++LIBCLIENT_FUSE += -ljemalloc
+ endif # WITH_JEMALLOC
+ 
+ if ENABLE_COVERAGE
+@@ -264,6 +265,7 @@ LIBOSD += $(LIBOSDC) $(LIBOS)
+ LIBMON += $(LIBPERFGLUE)
+ LIBOSD += $(LIBPERFGLUE)
+ LIBMDS += $(LIBPERFGLUE)
++LIBCLIENT_FUSE += $(LIBPERFGLUE)
+ 
+ # OSD needs types
+ LIBOSD += $(LIBOSD_TYPES) $(LIBOS_TYPES)
