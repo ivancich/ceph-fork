@@ -1,3 +1,10 @@
+ceph (10.2.2-18redhat1) stable; urgency=medium
+
+  * rgw: collect skips a specific coroutine stack (rhbz#1354156)
+  * rgw: RGWMetaSyncCR holds refs to stacks for wakeup (rhbz#1355641)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 18 Jul 2016 11:53:39 -0600
+
 ceph (10.2.2-17redhat1) stable; urgency=medium
 
   * librbd: optionally block proxied requests with an error code

@@ -71,3 +71,5 @@
 0071-rbd-mirror-event-preprocessor-to-handle-snap-rename-.patch
 0072-rbd-mirror-preprocess-journal-events-prior-to-applyi.patch
 0073-ceph-fuse-link-to-libtcmalloc-or-jemalloc.patch
+0074-rgw-collect-skips-a-specific-coroutine-stack.patch
+0075-rgw-RGWMetaSyncCR-holds-refs-to-stacks-for-wakeup.patch
