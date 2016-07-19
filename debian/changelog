@@ -1,3 +1,11 @@
+ceph (10.2.2-19redhat1) stable; urgency=medium
+
+  * rgw_file: fix rename cases and unify unlink (rhbz#1357896)
+  * rgw_file: refuse partial, out-of-order writes (rhbz#1358024)
+  * rgw_file: implement rgw_setattr (rhbz#1358020)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 19 Jul 2016 15:30:06 -0600
+
 ceph (10.2.2-18redhat1) stable; urgency=medium
 
   * rgw: collect skips a specific coroutine stack (rhbz#1354156)

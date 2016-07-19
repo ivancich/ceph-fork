@@ -1,0 +1,482 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Thu, 14 Apr 2016 19:18:37 -0400
+Subject: rgw_file: implement rgw_setattr
+
+Introduce a new RGWSetattrs RGWOp descendant, to create or replace
+sets of attrs on buckets or objects.
+
+This version of the change uses the standard RGWRADOS::set_attrs op
+(we want attribute changes to (e.g.) sync with other changes).
+
+Previous versions of this changed incorrectly masked the values
+of st->st_ino in RGWFileHandle::stat(), now fixed.
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 4de1c3c260265f821ebee842d49cb35bf49d8e4e)
+
+Resolves rhbz#1358020
+---
+ src/cls/rgw/cls_rgw_ops.h      |   3 +-
+ src/include/rados/librados.hpp |   1 +
+ src/librados/librados.cc       |   8 +++
+ src/rgw/rgw_common.h           |   1 +
+ src/rgw/rgw_file.cc            |  31 ++++++++++--
+ src/rgw/rgw_file.h             |  66 +++++++++++++++++++++++-
+ src/rgw/rgw_op.cc              |  42 +++++++++++++++-
+ src/rgw/rgw_op.h               |  23 +++++++++
+ src/test/librgw_file_nfsns.cc  | 111 +++++++++++++++++++++++++++++++++++++++++
+ 9 files changed, 276 insertions(+), 10 deletions(-)
+
+diff --git a/src/cls/rgw/cls_rgw_ops.h b/src/cls/rgw/cls_rgw_ops.h
+index 7d8ad2d..15a638a 100644
+--- a/src/cls/rgw/cls_rgw_ops.h
++++ b/src/cls/rgw/cls_rgw_ops.h
+@@ -937,5 +937,4 @@ struct cls_rgw_bi_log_list_ret {
+ };
+ WRITE_CLASS_ENCODER(cls_rgw_bi_log_list_ret)
+ 
+-
+-#endif
++#endif /* CEPH_CLS_RGW_OPS_H */
+diff --git a/src/include/rados/librados.hpp b/src/include/rados/librados.hpp
+index 5282fd8..c480c33 100644
+--- a/src/include/rados/librados.hpp
++++ b/src/include/rados/librados.hpp
+@@ -370,6 +370,7 @@ namespace librados
+     void zero(uint64_t off, uint64_t len);
+     void rmxattr(const char *name);
+     void setxattr(const char *name, const bufferlist& bl);
++    void setxattr(const char *name, const buffer::list&& bl);
+     void tmap_update(const bufferlist& cmdbl);
+     void tmap_put(const bufferlist& bl);
+     void clone_range(uint64_t dst_off,
+diff --git a/src/librados/librados.cc b/src/librados/librados.cc
+index 05dfac5..3db601b 100644
+--- a/src/librados/librados.cc
++++ b/src/librados/librados.cc
+@@ -437,6 +437,14 @@ void librados::ObjectWriteOperation::setxattr(const char *name, const bufferlist
+   o->setxattr(name, v);
+ }
+ 
++void librados::ObjectWriteOperation::setxattr(const char *name,
++					      const buffer::list&& v)
++{
++  ::ObjectOperation *o = &impl->o;
++  o->setxattr(name, std::move(v));
++}
++
++
+ void librados::ObjectWriteOperation::omap_set(
+   const map<string, bufferlist> &map)
+ {
+diff --git a/src/rgw/rgw_common.h b/src/rgw/rgw_common.h
+index 9649a63..74fb4c6 100644
+--- a/src/rgw/rgw_common.h
++++ b/src/rgw/rgw_common.h
+@@ -421,6 +421,7 @@ enum RGWOpType {
+   RGW_OP_LIST_BUCKET_MULTIPARTS,
+   RGW_OP_DELETE_MULTI_OBJ,
+   RGW_OP_BULK_DELETE,
++  RGW_OP_SET_ATTRS,
+ 
+   /* rgw specific */
+   RGW_OP_ADMIN_SET_METADATA
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 949432f..66e98a5 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -477,6 +477,27 @@ namespace rgw {
+     return rgw_fh->stat(st);
+   } /* RGWLibFS::getattr */
+ 
++  int RGWLibFS::setattr(RGWFileHandle* rgw_fh, struct stat* st, uint32_t mask,
++			uint32_t flags)
++  {
++    int rc, rc2;
++    buffer::list ux_key, ux_attrs;
++    string obj_name{rgw_fh->relative_object_name()};
++
++    RGWSetAttrsRequest req(cct, get_user(), rgw_fh->bucket_name(), obj_name);
++
++    rgw_fh->create_stat(st, mask);
++    rgw_fh->encode_attrs(ux_key, ux_attrs);
++
++    /* save attrs */
++    req.emplace_attr(RGW_ATTR_UNIX1, std::move(ux_attrs));
++
++    rc = rgwlib.get_fe()->execute_req(&req);
++    rc2 = req.get_ret();
++
++    return (((rc == 0) && (rc2 == 0)) ? 0 : -EIO);
++  } /* RGWLibFS::setattr */
++
+   void RGWLibFS::close()
+   {
+     state.flags |= FLAG_CLOSED;
+@@ -1158,8 +1179,10 @@ int rgw_setattr(struct rgw_fs *rgw_fs,
+ 		struct rgw_file_handle *fh, struct stat *st,
+ 		uint32_t mask, uint32_t flags)
+ {
+-  /* XXX no-op */
+-  return 0;
++  RGWLibFS *fs = static_cast<RGWLibFS*>(rgw_fs->fs_private);
++  RGWFileHandle* rgw_fh = get_rgwfh(fh);
++
++  return fs->setattr(rgw_fh, st, mask, flags);
+ }
+ 
+ /*
+@@ -1347,8 +1370,8 @@ int rgw_readv(struct rgw_fs *rgw_fs,
+ /*
+    write data to file (vector)
+ */
+-  int rgw_writev(struct rgw_fs *rgw_fs, struct rgw_file_handle *fh,
+-		 rgw_uio *uio, uint32_t flags)
++int rgw_writev(struct rgw_fs *rgw_fs, struct rgw_file_handle *fh,
++	      rgw_uio *uio, uint32_t flags)
+ {
+   CephContext* cct = static_cast<CephContext*>(rgw_fs->rgw);
+   RGWLibFS *fs = static_cast<RGWLibFS*>(rgw_fs->fs_private);
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index ddec433..06a0fd9 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -370,11 +370,9 @@ namespace rgw {
+ 
+       switch (fh.fh_type) {
+       case RGW_FS_TYPE_DIRECTORY:
+-	st->st_mode = RGW_RWXMODE|S_IFDIR /* state.unix_mode|S_IFDIR */;
+ 	st->st_nlink = 3;
+ 	break;
+       case RGW_FS_TYPE_FILE:
+-	st->st_mode = RGW_RWMODE|S_IFREG /* state.unix_mode|S_IFREG */;
+ 	st->st_nlink = 1;
+ 	st->st_blksize = 4096;
+ 	st->st_size = state.size;
+@@ -769,6 +767,14 @@ namespace rgw {
+       intrusive_ptr_release(this);
+     }
+ 
++    void release_evict(RGWFileHandle* fh) {
++      /* remove from cache, releases sentinel ref */
++      fh_cache.remove(fh->fh.fh_hk.object, fh,
++		      RGWFileHandle::FHCache::FLAG_NONE);
++      /* release call-path ref */
++      (void) fh_lru.unref(fh, cohort::lru::FLAG_NONE);
++    }
++
+     int authorize(RGWRados* store) {
+       int ret = rgw_get_user_info_by_access_key(store, key.id, user);
+       if (ret == 0) {
+@@ -884,6 +890,9 @@ namespace rgw {
+ 
+     int getattr(RGWFileHandle* rgw_fh, struct stat* st);
+ 
++    int setattr(RGWFileHandle* rgw_fh, struct stat* st, uint32_t mask,
++		uint32_t flags);
++
+     LookupFHResult stat_bucket(RGWFileHandle* parent,
+ 			       const char *path, uint32_t flags);
+ 
+@@ -2071,6 +2080,59 @@ public:
+ 
+ }; /* RGWCopyObjRequest */
+ 
++class RGWSetAttrsRequest : public RGWLibRequest,
++			   public RGWSetAttrs /* RGWOp */
++{
++public:
++  const std::string& bucket_name;
++  const std::string& obj_name;
++
++  RGWSetAttrsRequest(CephContext* _cct, RGWUserInfo *_user,
++		     const std::string& _bname, const std::string& _oname)
++    : RGWLibRequest(_cct, _user), bucket_name(_bname), obj_name(_oname) {
++    op = this;
++  }
++
++  virtual bool only_bucket() { return false; }
++
++  virtual int op_init() {
++    // assign store, s, and dialect_handler
++    RGWObjectCtx* rados_ctx
++      = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
++    // framework promises to call op_init after parent init
++    assert(rados_ctx);
++    RGWOp::init(rados_ctx->store, get_state(), this);
++    op = this; // assign self as op: REQUIRED
++    return 0;
++  }
++
++  virtual int header_init() {
++
++    struct req_state* s = get_state();
++    s->info.method = "PUT";
++    s->op = OP_PUT;
++
++    /* XXX derp derp derp */
++    std::string uri = make_uri(bucket_name, obj_name);
++    s->relative_uri = uri;
++    s->info.request_uri = uri; // XXX
++    s->info.effective_uri = uri;
++    s->info.request_params = "";
++    s->info.domain = ""; /* XXX ? */
++
++    // woo
++    s->user = user;
++
++    return 0;
++  }
++
++  virtual int get_params() {
++    return 0;
++  }
++
++  virtual void send_response() {}
++
++}; /* RGWSetAttrsRequest */
+ 
+ } /* namespace rgw */
+ 
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 3f9212a..2a180b2 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -3344,8 +3344,6 @@ void RGWGetACLs::execute()
+   acls = ss.str();
+ }
+ 
+-
+-
+ int RGWPutACLs::verify_permission()
+ {
+   bool perm;
+@@ -4554,6 +4552,46 @@ void RGWBulkDelete::execute()
+   return;
+ }
+ 
++int RGWSetAttrs::verify_permission()
++{
++  bool perm;
++  if (!s->object.empty()) {
++    perm = verify_object_permission(s, RGW_PERM_WRITE);
++  } else {
++    perm = verify_bucket_permission(s, RGW_PERM_WRITE);
++  }
++  if (!perm)
++    return -EACCES;
++
++  return 0;
++}
++
++void RGWSetAttrs::pre_exec()
++{
++  rgw_bucket_object_pre_exec(s);
++}
++
++void RGWSetAttrs::execute()
++{
++  op_ret = get_params();
++  if (op_ret < 0)
++    return;
++
++  rgw_obj obj(s->bucket, s->object);
++
++  store->set_atomic(s->obj_ctx, obj);
++
++  if (!s->object.empty()) {
++    op_ret = store->set_attrs(s->obj_ctx, obj, attrs, &attrs);
++  } else {
++    for (auto& iter : attrs) {
++      s->bucket_attrs[iter.first] = std::move(iter.second);
++    }
++    op_ret = rgw_bucket_set_attrs(store, s->bucket_info, s->bucket_attrs,
++				  &s->bucket_info.objv_tracker);
++  }
++}
++
+ RGWHandler::~RGWHandler()
+ {
+ }
+diff --git a/src/rgw/rgw_op.h b/src/rgw/rgw_op.h
+index d0884ea..c3c6960 100644
+--- a/src/rgw/rgw_op.h
++++ b/src/rgw/rgw_op.h
+@@ -1509,4 +1509,27 @@ static inline void complete_etag(MD5& hash, string *etag)
+   *etag = etag_buf_str;
+ } /* complete_etag */
+ 
++class RGWSetAttrs : public RGWOp {
++protected:
++  map<string, buffer::list> attrs;
++
++public:
++  RGWSetAttrs() {}
++  virtual ~RGWSetAttrs() {}
++
++  void emplace_attr(std::string&& key, buffer::list&& bl) {
++    attrs.emplace(std::move(key), std::move(bl));
++  }
++
++  int verify_permission();
++  void pre_exec();
++  void execute();
++
++  virtual int get_params() = 0;
++  virtual void send_response() = 0;
++  virtual const string name() { return "set_attrs"; }
++  virtual RGWOpType get_type() { return RGW_OP_SET_ATTRS; }
++  virtual uint32_t op_mask() { return RGW_OP_TYPE_WRITE; }
++};
++
+ #endif /* CEPH_RGW_OP_H */
+diff --git a/src/test/librgw_file_nfsns.cc b/src/test/librgw_file_nfsns.cc
+index de8aa5f..d040d18 100644
+--- a/src/test/librgw_file_nfsns.cc
++++ b/src/test/librgw_file_nfsns.cc
+@@ -46,6 +46,10 @@ namespace {
+ 
+   uint32_t owner_uid = 867;
+   uint32_t owner_gid = 5309;
++
++  uint32_t magic_uid = 1701;
++  uint32_t magic_gid = 9876;
++
+   uint32_t create_mask = RGW_SETATTR_UID | RGW_SETATTR_GID | RGW_SETATTR_MODE;
+ 
+   string bucket_name("nfsroot");
+@@ -75,6 +79,11 @@ namespace {
+       : name(std::move(_name)), fh(_fh), parent_fh(_parent_fh),
+ 	rgw_fh(_rgw_fh) {}
+ 
++    void clear() {
++      fh = nullptr;
++      rgw_fh = nullptr;
++    }
++
+     void sync() {
+       if (fh)
+ 	rgw_fh = get_rgwfh(fh);
+@@ -146,6 +155,7 @@ namespace {
+   bool do_create = false;
+   bool do_delete = false;
+   bool do_rename = false;
++  bool do_setattr = false;
+   bool verbose = false;
+ 
+   string marker_dir("nfs_marker");
+@@ -370,6 +380,104 @@ TEST(LibRGW, SETUP_DIRS1) {
+   } /* dirs1 top-level !exist */
+ }
+ 
++TEST(LibRGW, SETATTR) {
++  if (do_dirs1) {
++    if (do_setattr) {
++
++      int rc;
++      struct stat st;
++
++      st.st_uid = owner_uid;
++      st.st_gid = owner_gid;
++      st.st_mode = 755;
++
++      std::string dname{"dir_0"};
++      obj_rec dir{dname, nullptr, dirs1_b.fh, nullptr};
++
++      /* dir_0 MUST exist and MUST be resident */
++      (void) rgw_lookup(fs, dir.parent_fh, dir.name.c_str(), &dir.fh,
++			RGW_LOOKUP_FLAG_NONE);
++
++      ASSERT_NE(dir.fh, nullptr);
++      dir.sync();
++      ASSERT_NE(dir.rgw_fh, nullptr);
++      ASSERT_TRUE(dir.rgw_fh->is_dir());
++
++      /* child file */
++      std::string sfname{"setattr_file_0"};
++      obj_rec sf{sfname, nullptr, dir.fh, nullptr};
++
++      (void) rgw_lookup(fs, sf.parent_fh, sf.name.c_str(), &sf.fh,
++			RGW_LOOKUP_FLAG_NONE);
++
++      if (! sf.fh) {
++	/* make a new file object (the hard way) */
++	rc = rgw_lookup(fs, sf.parent_fh, sf.name.c_str(), &sf.fh,
++			RGW_LOOKUP_FLAG_CREATE);
++	ASSERT_EQ(rc, 0);
++	sf.sync();
++	ASSERT_TRUE(sf.rgw_fh->is_file());
++
++	/* because we made it the hard way, fixup attributes */
++	st.st_uid = owner_uid;
++	st.st_gid = owner_gid;
++	st.st_mode = 644;
++	sf.rgw_fh->create_stat(&st, create_mask);
++
++	/* open handle */
++	rc = rgw_open(fs, sf.fh, 0 /* flags */);
++	ASSERT_EQ(rc, 0);
++	ASSERT_TRUE(sf.rgw_fh->is_open());
++	/* stage seq write */
++	size_t nbytes;
++	string data = "data for " + sf.name;
++	rc = rgw_write(fs, sf.fh, 0, data.length(), &nbytes,
++		      (void*) data.c_str(), RGW_WRITE_FLAG_NONE);
++	ASSERT_EQ(rc, 0);
++	ASSERT_EQ(nbytes, data.length());
++	/* commit write transaction */
++	rc = rgw_close(fs, sf.fh, 0 /* flags */);
++	ASSERT_EQ(rc, 0);
++      } else {
++	sf.sync();
++	ASSERT_TRUE(sf.rgw_fh->is_file());
++      }
++
++      /* sf MUST now be materialized--now change it's attributes */
++      st.st_uid = magic_uid;
++      st.st_gid = magic_gid;
++
++      rc = rgw_setattr(fs, sf.fh, &st, create_mask, RGW_SETATTR_FLAG_NONE);
++      ASSERT_EQ(rc, 0);
++
++      /* force evict--subsequent lookups must reload */
++      static_cast<RGWLibFS*>(fs->fs_private)->release_evict(sf.rgw_fh);
++
++      sf.clear();
++
++      /* revalidate -- expect magic uid and gid */
++      (void) rgw_lookup(fs, sf.parent_fh, sf.name.c_str(), &sf.fh,
++			RGW_LOOKUP_FLAG_NONE);
++      sf.sync();
++      ASSERT_NE(sf.fh, nullptr);
++
++      memset(&st, 0, sizeof(struct stat)); /* nothing up my sleeve... */
++
++      rc =  rgw_getattr(fs, sf.fh, &st, RGW_GETATTR_FLAG_NONE);
++      ASSERT_EQ(rc, 0);
++
++      ASSERT_EQ(st.st_uid, magic_uid);
++      ASSERT_EQ(st.st_gid, magic_gid);
++
++      /* release 1 ref on sf */
++      rgw_fh_rele(fs, sf.fh, RGW_FH_RELE_FLAG_NONE);
++
++      /* release 1 ref on dir */
++      rgw_fh_rele(fs, dir.fh, RGW_FH_RELE_FLAG_NONE);
++    } /* dirs1 */
++  }
++}
++
+ TEST(LibRGW, RGW_CREATE_DIRS1) {
+   /* verify rgw_create (create [empty] file objects the easy way) */
+   if (do_dirs1) {
+@@ -1042,6 +1150,9 @@ int main(int argc, char *argv[])
+     } else if (ceph_argparse_flag(args, arg_iter, "--marker1",
+ 					    (char*) nullptr)) {
+       do_marker1 = true;
++    } else if (ceph_argparse_flag(args, arg_iter, "--setattr",
++					    (char*) nullptr)) {
++      do_setattr = true;
+     } else if (ceph_argparse_flag(args, arg_iter, "--create",
+ 					    (char*) nullptr)) {
+       do_create = true;

@@ -1,0 +1,136 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Wed, 13 Jul 2016 10:16:59 -0400
+Subject: rgw_file: refuse partial, out-of-order writes
+
+A single file object may be opened only once per gateway
+instance, and writes to that object must be complete, and in-order.
+Enforce this.
+
+If an invalid write is seen, deletes the current write transaction.
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 12aded803e24539266ce9698c678088e2158a82a)
+
+Resolves rhbz#1358024
+---
+ src/rgw/rgw_file.cc | 49 ++++++++++++++++++++++++++++++++++++++++++-------
+ src/rgw/rgw_file.h  |  5 ++++-
+ 2 files changed, 46 insertions(+), 8 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 1e3c32f..949432f 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -633,6 +633,7 @@ namespace rgw {
+ 			   void *buffer)
+   {
+     using std::get;
++
+     lock_guard guard(mtx);
+ 
+     int rc = 0;
+@@ -642,14 +643,34 @@ namespace rgw {
+       return -EISDIR;
+ 
+     if (! f->write_req) {
++      /* guard--we do not support (e.g., COW-backed) partial writes */
++      if (off != 0) {
++	lsubdout(fs->get_context(), rgw, 5)
++	  << __func__
++	  << object_name()
++	  << " non-0 initial write position " << off
++	  << dendl;
++	return -EIO;
++      }
++
+       /* start */
+       std::string object_name = relative_object_name();
+       f->write_req =
+ 	new RGWWriteRequest(fs->get_context(), fs->get_user(), this,
+ 			    bucket_name(), object_name);
+       rc = rgwlib.get_fe()->start_req(f->write_req);
+-      if (rc < 0)
++      if (rc < 0) {
++	lsubdout(fs->get_context(), rgw, 5)
++	  << __func__
++	  << this->object_name()
++	  << " write start failed " << off
++	  << " (" << rc << ")"
++	  << dendl;
++	/* zap failed write transaction */
++	delete f->write_req;
++	f->write_req = nullptr;
+         return -EIO;
++      }
+     }
+ 
+     buffer::list bl;
+@@ -665,9 +686,23 @@ namespace rgw {
+     f->write_req->put_data(off, bl);
+     rc = f->write_req->exec_continue();
+ 
+-    size_t min_size = off + len;
+-    if (min_size > get_size())
+-      set_size(min_size);
++    if (rc == 0) {
++      size_t min_size = off + len;
++      if (min_size > get_size())
++	set_size(min_size);
++    } else {
++      /* continuation failed (e.g., non-contiguous write position) */
++      lsubdout(fs->get_context(), rgw, 5)
++	<< __func__
++	<< object_name()
++	<< " failed write at position " << off
++	<< " (fails write transaction) "
++	<< dendl;
++      /* zap failed write transaction */
++      delete f->write_req;
++      f->write_req = nullptr;
++      rc = -EIO;
++    }
+ 
+     *bytes_written = (rc == 0) ? len : 0;
+     return rc;
+@@ -738,10 +773,10 @@ namespace rgw {
+     struct req_state* s = get_state();
+     op_ret = 0;
+ 
+-#if 0 // TODO: check offsets
+-    if (next_off != last_off)
++    /* check guards (e.g., contig write) */
++    if (eio)
+       return -EIO;
+-#endif
++
+     size_t len = data.length();
+     if (! len)
+       return 0;
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index ca75785..ddec433 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -1882,12 +1882,13 @@ public:
+   off_t next_off;
+   size_t bytes_written;
+   bool multipart;
++  bool eio;
+ 
+   RGWWriteRequest(CephContext* _cct, RGWUserInfo *_user, RGWFileHandle* _fh,
+ 		  const std::string& _bname, const std::string& _oname)
+     : RGWLibContinuedReq(_cct, _user), bucket_name(_bname), obj_name(_oname),
+       rgw_fh(_fh), processor(nullptr), last_off(0), next_off(0),
+-      bytes_written(0), multipart(false) {
++      bytes_written(0), multipart(false), eio(false) {
+ 
+     int ret = header_init();
+     if (ret == 0) {
+@@ -1960,6 +1961,8 @@ public:
+   }
+ 
+   void put_data(off_t off, buffer::list& _bl) {
++    if (off && (off != (ofs+1)))
++      eio = true;
+     ofs = off;
+     data.claim(_bl);
+   }
