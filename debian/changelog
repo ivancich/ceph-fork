@@ -1,3 +1,15 @@
+ceph (10.2.2-20redhat1) stable; urgency=medium
+
+  * rgw: fix upgrade from old multisite to new multisite configuration
+    (rhbz#1358704)
+  * rgw: back off bucket sync on failures, don't store marker
+    (rhbz#1358129)
+  * rgw: collect() stops if error encoutered (rhbz#1358129)
+  * rgw: fix marker tracker completion handling (rhbz#1357641)
+  * rgw: fix collection of object sync errors (rhbz#1358129)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Thu, 21 Jul 2016 22:08:13 -0400
+
 ceph (10.2.2-19redhat1) stable; urgency=medium
 
   * rgw_file: fix rename cases and unify unlink (rhbz#1357896)

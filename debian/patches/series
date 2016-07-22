@@ -76,3 +76,8 @@
 0076-rgw_file-fix-rename-cases-and-unify-unlink.patch
 0077-rgw_file-refuse-partial-out-of-order-writes.patch
 0078-rgw_file-implement-rgw_setattr.patch
+0079-rgw-fix-upgrade-from-old-multisite-to-new-multisite-.patch
+0080-rgw-back-off-bucket-sync-on-failures-don-t-store-mar.patch
+0081-rgw-collect-stops-if-error-encoutered.patch
+0082-rgw-fix-marker-tracker-completion-handling.patch
+0083-rgw-fix-collection-of-object-sync-errors.patch
