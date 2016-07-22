@@ -1,0 +1,64 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 19 Jul 2016 15:42:27 -0400
+Subject: rbd-mirror: fix issues detected when attempting clean shut down
+
+Fixed lockdep issue from status update callback and fixed the
+potential for a stuck status state.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 0275c7ca23b27dc5250cd33f317e2273470a9fe8)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/ImageReplayer.cc | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 7296471..bfa4fc8 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -634,6 +634,7 @@ void ImageReplayer<I>::stop(Context *on_finish, bool manual)
+ {
+   dout(20) << "on_finish=" << on_finish << dendl;
+ 
++  image_replayer::BootstrapRequest<I> *bootstrap_request = nullptr;
+   bool shut_down_replay = false;
+   bool running = true;
+   {
+@@ -645,7 +646,8 @@ void ImageReplayer<I>::stop(Context *on_finish, bool manual)
+ 	if (m_state == STATE_STARTING) {
+ 	  dout(20) << "canceling start" << dendl;
+ 	  if (m_bootstrap_request) {
+-	    m_bootstrap_request->cancel();
++            bootstrap_request = m_bootstrap_request;
++            bootstrap_request->get();
+ 	  }
+ 	} else {
+ 	  dout(20) << "interrupting replay" << dendl;
+@@ -660,6 +662,12 @@ void ImageReplayer<I>::stop(Context *on_finish, bool manual)
+     }
+   }
+ 
++  // avoid holding lock since bootstrap request will update status
++  if (bootstrap_request != nullptr) {
++    bootstrap_request->cancel();
++    bootstrap_request->put();
++  }
++
+   if (!running) {
+     dout(20) << "not running" << dendl;
+     if (on_finish) {
+@@ -1174,9 +1182,12 @@ void ImageReplayer<I>::send_mirror_status_update(const OptionalState &opt_state)
+     {
+       Context *on_req_finish = new FunctionContext(
+         [this](int r) {
++          dout(20) << "replay status ready: r=" << r << dendl;
+           if (r >= 0) {
+-            dout(20) << "replay status ready" << dendl;
+             send_mirror_status_update(boost::none);
++          } else if (r == -EAGAIN) {
++            // decrement in-flight status update counter
++            handle_mirror_status_update(r);
+           }
+         });
+ 

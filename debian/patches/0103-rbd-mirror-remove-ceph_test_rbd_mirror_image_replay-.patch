@@ -1,0 +1,460 @@
+From: Mykola Golub <mgolub@mirantis.com>
+Date: Thu, 30 Jun 2016 16:18:56 +0300
+Subject: rbd-mirror: remove ceph_test_rbd_mirror_image_replay test case
+
+Fixes: http://tracker.ceph.com/issues/16539
+Signed-off-by: Mykola Golub <mgolub@mirantis.com>
+(cherry picked from commit 06a333b116383de4d39c9e098e6e5fa195ceb370)
+
+Conflicts:
+	src/test/rbd_mirror/CMakeLists.txt: no cmake downstream
+
+Resolves: rhbz#1356064
+---
+ src/test/Makefile-client.am               |  16 --
+ src/test/rbd_mirror/image_replay.cc       | 238 ------------------------------
+ src/test/rbd_mirror/test_ImageReplayer.cc |  25 +---
+ src/tools/rbd_mirror/ImageReplayer.cc     |  12 +-
+ src/tools/rbd_mirror/ImageReplayer.h      |  16 +-
+ src/tools/rbd_mirror/Replayer.cc          |   2 +-
+ 6 files changed, 12 insertions(+), 297 deletions(-)
+ delete mode 100644 src/test/rbd_mirror/image_replay.cc
+
+diff --git a/src/test/Makefile-client.am b/src/test/Makefile-client.am
+index f141418..f7ae18a 100644
+--- a/src/test/Makefile-client.am
++++ b/src/test/Makefile-client.am
+@@ -531,22 +531,6 @@ ceph_test_rbd_mirror_random_write_LDADD = \
+ 	$(LIBRBD) $(LIBRADOS) $(CEPH_GLOBAL)
+ bin_DEBUGPROGRAMS += ceph_test_rbd_mirror_random_write
+ 
+-ceph_test_rbd_mirror_image_replay_SOURCES = \
+-	test/rbd_mirror/image_replay.cc
+-ceph_test_rbd_mirror_image_replay_LDADD = \
+-	librbd_mirror_internal.la \
+-	librbd_internal.la \
+-	librbd_api.la \
+-	$(LIBRBD_TYPES) \
+-	libjournal.la \
+-	$(LIBRADOS) $(LIBOSDC) \
+-	librados_internal.la \
+-	libcls_rbd_client.la \
+-	libcls_lock_client.la \
+-	libcls_journal_client.la \
+-	$(CEPH_GLOBAL)
+-bin_DEBUGPROGRAMS += ceph_test_rbd_mirror_image_replay
+-
+ if LINUX
+ ceph_test_librbd_fsx_SOURCES = test/librbd/fsx.cc
+ ceph_test_librbd_fsx_LDADD = \
+diff --git a/src/test/rbd_mirror/image_replay.cc b/src/test/rbd_mirror/image_replay.cc
+deleted file mode 100644
+index d8be73a..0000000
+--- a/src/test/rbd_mirror/image_replay.cc
++++ /dev/null
+@@ -1,238 +0,0 @@
+-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+-// vim: ts=8 sw=2 smarttab
+-
+-#include "common/ceph_argparse.h"
+-#include "common/config.h"
+-#include "common/debug.h"
+-#include "common/errno.h"
+-#include "global/global_init.h"
+-#include "global/signal_handler.h"
+-#include "librbd/ImageCtx.h"
+-#include "librbd/ImageState.h"
+-#include "tools/rbd_mirror/ImageReplayer.h"
+-#include "tools/rbd_mirror/ImageDeleter.h"
+-#include "tools/rbd_mirror/ImageSyncThrottler.h"
+-#include "tools/rbd_mirror/Threads.h"
+-
+-#include <string>
+-#include <vector>
+-
+-#define dout_subsys ceph_subsys_rbd_mirror
+-#undef dout_prefix
+-#define dout_prefix *_dout << "rbd-mirror-image-replay: "
+-
+-rbd::mirror::ImageReplayer<> *replayer = nullptr;
+-
+-void usage() {
+-  std::cout << "usage: ceph_test_rbd_mirror_image_replay [options...] \\" << std::endl;
+-  std::cout << "           <client-id> <local-pool> <remote-pool> <image>" << std::endl;
+-  std::cout << std::endl;
+-  std::cout << "  client-id     client ID to register in remote journal" << std::endl;
+-  std::cout << "  local-pool    local (secondary, destination) pool" << std::endl;
+-  std::cout << "  remote-pool   remote (primary, source) pool" << std::endl;
+-  std::cout << "  image         image to replay (mirror)" << std::endl;
+-  std::cout << std::endl;
+-  std::cout << "options:\n";
+-  std::cout << "  -m monaddress[:port]      connect to specified monitor\n";
+-  std::cout << "  --keyring=<path>          path to keyring for local cluster\n";
+-  std::cout << "  --log-file=<logfile>      file to log debug output\n";
+-  std::cout << "  --debug-rbd-mirror=<log-level>/<memory-level>  set rbd-mirror debug level\n";
+-  generic_server_usage();
+-}
+-
+-static atomic_t g_stopping;
+-
+-static void handle_signal(int signum)
+-{
+-  g_stopping.set(1);
+-}
+-
+-int get_image_id(rbd::mirror::RadosRef cluster, int64_t pool_id,
+-		 const std::string &image_name, std::string *image_id)
+-{
+-  librados::IoCtx ioctx;
+-
+-  int r = cluster->ioctx_create2(pool_id, ioctx);
+-  if (r < 0) {
+-    derr << "error opening ioctx for pool " << pool_id
+-	 << ": " << cpp_strerror(r) << dendl;
+-    return r;
+-  }
+-
+-  librbd::ImageCtx *image_ctx = new librbd::ImageCtx(image_name, "", NULL,
+-						     ioctx, true);
+-  r = image_ctx->state->open();
+-  if (r < 0) {
+-    derr << "error opening remote image " << image_name
+-	 << ": " << cpp_strerror(r) << dendl;
+-    delete image_ctx;
+-    return r;
+-  }
+-
+-  *image_id = image_ctx->id;
+-  image_ctx->state->close();
+-  return 0;
+-}
+-
+-int main(int argc, const char **argv)
+-{
+-  std::vector<const char*> args;
+-  argv_to_vec(argc, argv, args);
+-  env_to_vec(args);
+-
+-  global_init(nullptr, args, CEPH_ENTITY_TYPE_CLIENT,
+-	      CODE_ENVIRONMENT_DAEMON,
+-	      CINIT_FLAG_UNPRIVILEGED_DAEMON_DEFAULTS);
+-
+-  for (auto i = args.begin(); i != args.end(); ++i) {
+-    if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
+-      usage();
+-      return EXIT_SUCCESS;
+-    }
+-  }
+-
+-  if (args.size() < 4) {
+-    usage();
+-    return EXIT_FAILURE;
+-  }
+-
+-  std::string client_id = args[0];
+-  std::string local_pool_name = args[1];
+-  std::string remote_pool_name = args[2];
+-  std::string image_name = args[3];
+-
+-  dout(1) << "client_id=" << client_id << ", local_pool_name="
+-	  << local_pool_name << ", remote_pool_name=" << remote_pool_name
+-	  << ", image_name=" << image_name << dendl;
+-
+-  rbd::mirror::ImageReplayer<>::BootstrapParams bootstap_params(image_name);
+-  int64_t local_pool_id;
+-  int64_t remote_pool_id;
+-  std::string remote_image_id;
+-
+-  if (local_pool_name == remote_pool_name) {
+-    std::cerr << "local and remote pools can't be the same" << std::endl;
+-    return EXIT_FAILURE;
+-  }
+-
+-  if (g_conf->daemonize) {
+-    global_init_daemonize(g_ceph_context);
+-  }
+-  g_ceph_context->enable_perf_counter();
+-
+-  common_init_finish(g_ceph_context);
+-
+-  init_async_signal_handler();
+-  register_async_signal_handler(SIGHUP, sighup_handler);
+-  register_async_signal_handler_oneshot(SIGINT, handle_signal);
+-  register_async_signal_handler_oneshot(SIGTERM, handle_signal);
+-
+-  dout(5) << "connecting to cluster" << dendl;
+-
+-  rbd::mirror::RadosRef local(new librados::Rados());
+-  rbd::mirror::RadosRef remote(new librados::Rados());
+-  rbd::mirror::Threads *threads = nullptr;
+-  std::shared_ptr<rbd::mirror::ImageDeleter> image_deleter;
+-  std::shared_ptr<rbd::mirror::ImageSyncThrottler<>> image_sync_throttler;
+-
+-  C_SaferCond start_cond, stop_cond;
+-
+-  int r = local->init_with_context(g_ceph_context);
+-  if (r < 0) {
+-    derr << "could not initialize rados handle" << dendl;
+-    goto cleanup;
+-  }
+-
+-  r = local->connect();
+-  if (r < 0) {
+-    derr << "error connecting to local cluster" << dendl;
+-    goto cleanup;
+-  }
+-
+-  r = local->pool_lookup(local_pool_name.c_str());
+-  if (r < 0) {
+-    derr << "error finding local pool " << local_pool_name
+-	 << ": " << cpp_strerror(r) << dendl;
+-    goto cleanup;
+-  }
+-  local_pool_id = r;
+-
+-  r = remote->init_with_context(g_ceph_context);
+-  if (r < 0) {
+-    derr << "could not initialize rados handle" << dendl;
+-    goto cleanup;
+-  }
+-
+-  r = remote->connect();
+-  if (r < 0) {
+-    derr << "error connecting to local cluster" << dendl;
+-    goto cleanup;
+-  }
+-
+-  r = remote->pool_lookup(remote_pool_name.c_str());
+-  if (r < 0) {
+-    derr << "error finding remote pool " << remote_pool_name
+-	 << ": " << cpp_strerror(r) << dendl;
+-    goto cleanup;
+-  }
+-  remote_pool_id = r;
+-
+-  r = get_image_id(remote, remote_pool_id, image_name, &remote_image_id);
+-  if (r < 0) {
+-    derr << "error resolving ID for remote image " << image_name
+-	 << ": " << cpp_strerror(r) << dendl;
+-    goto cleanup;
+-  }
+-
+-  dout(5) << "starting replay" << dendl;
+-
+-  threads = new rbd::mirror::Threads(reinterpret_cast<CephContext*>(
+-    local->cct()));
+-
+-  image_deleter.reset(new rbd::mirror::ImageDeleter(local, threads->work_queue,
+-                                                    threads->timer,
+-                                                    &threads->timer_lock));
+-
+-  image_sync_throttler.reset(new rbd::mirror::ImageSyncThrottler<>());
+-
+-  replayer = new rbd::mirror::ImageReplayer<>(threads, image_deleter,
+-                                              image_sync_throttler, local,
+-                                              remote, client_id,
+-					      "remote mirror uuid",
+-                                              local_pool_id, remote_pool_id,
+-                                              remote_image_id,
+-                                              "global image id");
+-
+-  replayer->start(&start_cond, &bootstap_params);
+-  r = start_cond.wait();
+-  if (r < 0) {
+-    derr << "failed to start: " << cpp_strerror(r) << dendl;
+-    goto cleanup;
+-  }
+-
+-  dout(5) << "replay started" << dendl;
+-
+-  while (!g_stopping.read()) {
+-    usleep(200000);
+-  }
+-
+-  dout(1) << "termination signal received, stopping replay" << dendl;
+-
+-  replayer->stop(&stop_cond);
+-  r = stop_cond.wait();
+-  assert(r == 0);
+-
+-  dout(1) << "shutdown" << dendl;
+-
+- cleanup:
+-  unregister_async_signal_handler(SIGHUP, sighup_handler);
+-  unregister_async_signal_handler(SIGINT, handle_signal);
+-  unregister_async_signal_handler(SIGTERM, handle_signal);
+-  shutdown_async_signal_handler();
+-
+-  delete replayer;
+-  delete threads;
+-  g_ceph_context->put();
+-
+-  return r < 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+-}
+diff --git a/src/test/rbd_mirror/test_ImageReplayer.cc b/src/test/rbd_mirror/test_ImageReplayer.cc
+index dd8e367..c7b8951 100644
+--- a/src/test/rbd_mirror/test_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_ImageReplayer.cc
+@@ -138,11 +138,10 @@ public:
+       m_remote_pool_id, m_remote_image_id, "global image id");
+   }
+ 
+-  void start(rbd::mirror::ImageReplayer<>::BootstrapParams *bootstap_params =
+-	     nullptr)
++  void start()
+   {
+     C_SaferCond cond;
+-    m_replayer->start(&cond, bootstap_params);
++    m_replayer->start(&cond);
+     ASSERT_EQ(0, cond.wait());
+ 
+     ASSERT_EQ(0U, m_watch_handle);
+@@ -169,9 +168,7 @@ public:
+   {
+     create_replayer<>();
+ 
+-    rbd::mirror::ImageReplayer<>::BootstrapParams
+-      bootstap_params(m_image_name);
+-    start(&bootstap_params);
++    start();
+     wait_for_replay_complete();
+     stop();
+   }
+@@ -372,10 +369,8 @@ TEST_F(TestImageReplayer, BootstrapErrorLocalImageExists)
+ 			      false, 0, &order, 0, 0));
+ 
+   create_replayer<>();
+-  rbd::mirror::ImageReplayer<>::BootstrapParams
+-    bootstap_params(m_image_name);
+   C_SaferCond cond;
+-  m_replayer->start(&cond, &bootstap_params);
++  m_replayer->start(&cond);
+   ASSERT_EQ(-EEXIST, cond.wait());
+ }
+ 
+@@ -390,20 +385,16 @@ TEST_F(TestImageReplayer, BootstrapErrorNoJournal)
+   close_image(ictx);
+ 
+   create_replayer<>();
+-  rbd::mirror::ImageReplayer<>::BootstrapParams
+-    bootstap_params(m_image_name);
+   C_SaferCond cond;
+-  m_replayer->start(&cond, &bootstap_params);
++  m_replayer->start(&cond);
+   ASSERT_EQ(-ENOENT, cond.wait());
+ }
+ 
+ TEST_F(TestImageReplayer, StartInterrupted)
+ {
+   create_replayer<>();
+-  rbd::mirror::ImageReplayer<>::BootstrapParams
+-    bootstap_params(m_image_name);
+   C_SaferCond start_cond, stop_cond;
+-  m_replayer->start(&start_cond, &bootstap_params);
++  m_replayer->start(&start_cond);
+   m_replayer->stop(&stop_cond);
+   int r = start_cond.wait();
+   printf("start returned %d\n", r);
+@@ -434,10 +425,8 @@ TEST_F(TestImageReplayer, ErrorNoJournal)
+   ASSERT_EQ(0, librbd::update_features(ictx, RBD_FEATURE_JOURNALING, false));
+   close_image(ictx);
+ 
+-  rbd::mirror::ImageReplayer<>::BootstrapParams
+-    bootstap_params(m_image_name);
+   C_SaferCond cond;
+-  m_replayer->start(&cond, &bootstap_params);
++  m_replayer->start(&cond);
+   ASSERT_EQ(-ENOENT, cond.wait());
+ }
+ 
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 7191388..6691502 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -94,7 +94,7 @@ public:
+   explicit StartCommand(ImageReplayer<I> *replayer) : replayer(replayer) {}
+ 
+   bool call(Formatter *f, stringstream *ss) {
+-    replayer->start(nullptr, nullptr, true);
++    replayer->start(nullptr, true);
+     return true;
+   }
+ 
+@@ -321,9 +321,7 @@ void ImageReplayer<I>::set_state_description(int r, const std::string &desc) {
+ }
+ 
+ template <typename I>
+-void ImageReplayer<I>::start(Context *on_finish,
+-			     const BootstrapParams *bootstrap_params,
+-			     bool manual)
++void ImageReplayer<I>::start(Context *on_finish, bool manual)
+ {
+   assert(m_on_start_finish == nullptr);
+   assert(m_on_stop_finish == nullptr);
+@@ -364,10 +362,6 @@ void ImageReplayer<I>::start(Context *on_finish,
+     return;
+   }
+ 
+-  if (bootstrap_params != nullptr && !bootstrap_params->empty()) {
+-    m_local_image_name = bootstrap_params->local_image_name;
+-  }
+-
+   r = m_local->ioctx_create2(m_local_pool_id, m_local_ioctx);
+   if (r < 0) {
+     derr << "error opening ioctx for local pool " << m_local_pool_id
+@@ -729,7 +723,7 @@ void ImageReplayer<I>::restart(Context *on_finish)
+       if (r < 0) {
+ 	// Try start anyway.
+       }
+-      start(on_finish, nullptr, true);
++      start(on_finish, true);
+     });
+   stop(ctx);
+ }
+diff --git a/src/tools/rbd_mirror/ImageReplayer.h b/src/tools/rbd_mirror/ImageReplayer.h
+index f741462..c977718 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.h
++++ b/src/tools/rbd_mirror/ImageReplayer.h
+@@ -65,18 +65,6 @@ public:
+     STATE_STOPPED,
+   };
+ 
+-  struct BootstrapParams {
+-    std::string local_image_name;
+-
+-    BootstrapParams() {}
+-    BootstrapParams(const std::string local_image_name) :
+-      local_image_name(local_image_name) {}
+-
+-    bool empty() const {
+-      return local_image_name.empty();
+-    }
+-  };
+-
+   ImageReplayer(Threads *threads, std::shared_ptr<ImageDeleter> image_deleter,
+                 ImageSyncThrottlerRef<ImageCtxT> image_sync_throttler,
+                 RadosRef local, RadosRef remote,
+@@ -117,9 +105,7 @@ public:
+     return m_local_image_name;
+   }
+ 
+-  void start(Context *on_finish = nullptr,
+-	     const BootstrapParams *bootstrap_params = nullptr,
+-	     bool manual = false);
++  void start(Context *on_finish = nullptr, bool manual = false);
+   void stop(Context *on_finish = nullptr, bool manual = false);
+   void restart(Context *on_finish = nullptr);
+   void flush(Context *on_finish = nullptr);
+diff --git a/src/tools/rbd_mirror/Replayer.cc b/src/tools/rbd_mirror/Replayer.cc
+index 619f07d..5f633aa 100644
+--- a/src/tools/rbd_mirror/Replayer.cc
++++ b/src/tools/rbd_mirror/Replayer.cc
+@@ -476,7 +476,7 @@ void Replayer::start()
+ 
+   for (auto &kv : m_image_replayers) {
+     auto &image_replayer = kv.second;
+-    image_replayer->start(nullptr, nullptr, true);
++    image_replayer->start(nullptr, true);
+   }
+ }
+ 

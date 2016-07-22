@@ -1,0 +1,100 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 20 Jul 2016 08:11:53 -0400
+Subject: librbd: new configuration option to restrict journal payload size
+
+Ensure that, by default, IO journal events are broken up into manageable
+sizes when factoring in that an rbd-mirror daemon might be replaying
+events from thousands of images.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 11d7500b9bcda7b7c1d8756ade3373f404257f32)
+
+Resolves: rhbz#1356064
+---
+ src/common/config_opts.h            | 1 +
+ src/librbd/ImageCtx.cc              | 4 +++-
+ src/librbd/ImageCtx.h               | 1 +
+ src/librbd/Journal.cc               | 1 +
+ src/test/librbd/mock/MockImageCtx.h | 4 +++-
+ 5 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index fb4b0a4..3df9f82 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1209,6 +1209,7 @@ OPTION(rbd_journal_object_flush_interval, OPT_INT, 0) // maximum number of pendi
+ OPTION(rbd_journal_object_flush_bytes, OPT_INT, 0) // maximum number of pending bytes per journal object
+ OPTION(rbd_journal_object_flush_age, OPT_DOUBLE, 0) // maximum age (in seconds) for pending commits
+ OPTION(rbd_journal_pool, OPT_STR, "") // pool for journal objects
++OPTION(rbd_journal_max_payload_bytes, OPT_U32, 16384) // maximum journal payload size before splitting
+ 
+ /**
+  * RBD Mirror options
+diff --git a/src/librbd/ImageCtx.cc b/src/librbd/ImageCtx.cc
+index a9aaa14..580ebc7 100644
+--- a/src/librbd/ImageCtx.cc
++++ b/src/librbd/ImageCtx.cc
+@@ -927,7 +927,8 @@ struct C_InvalidateCache : public Context {
+         "rbd_journal_object_flush_interval", false)(
+         "rbd_journal_object_flush_bytes", false)(
+         "rbd_journal_object_flush_age", false)(
+-        "rbd_journal_pool", false);
++        "rbd_journal_pool", false)(
++        "rbd_journal_max_payload_bytes", false);
+ 
+     md_config_t local_config_t;
+     std::map<std::string, bufferlist> res;
+@@ -982,6 +983,7 @@ struct C_InvalidateCache : public Context {
+     ASSIGN_OPTION(journal_object_flush_bytes);
+     ASSIGN_OPTION(journal_object_flush_age);
+     ASSIGN_OPTION(journal_pool);
++    ASSIGN_OPTION(journal_max_payload_bytes);
+   }
+ 
+   ExclusiveLock<ImageCtx> *ImageCtx::create_exclusive_lock() {
+diff --git a/src/librbd/ImageCtx.h b/src/librbd/ImageCtx.h
+index 088937e..a38da58 100644
+--- a/src/librbd/ImageCtx.h
++++ b/src/librbd/ImageCtx.h
+@@ -185,6 +185,7 @@ namespace librbd {
+     uint64_t journal_object_flush_bytes;
+     double journal_object_flush_age;
+     std::string journal_pool;
++    uint32_t journal_max_payload_bytes;
+ 
+     LibrbdAdminSocketHook *asok_hook;
+ 
+diff --git a/src/librbd/Journal.cc b/src/librbd/Journal.cc
+index cff29bd..fe37fa1 100644
+--- a/src/librbd/Journal.cc
++++ b/src/librbd/Journal.cc
+@@ -1189,6 +1189,7 @@ void Journal<I>::create_journaler() {
+   transition_state(STATE_INITIALIZING, 0);
+   ::journal::Settings settings;
+   settings.commit_interval = m_image_ctx.journal_commit_age;
++  settings.max_payload_bytes = m_image_ctx.journal_max_payload_bytes;
+ 
+   m_journaler = new Journaler(m_work_queue, m_timer, m_timer_lock,
+ 			      m_image_ctx.md_ctx, m_image_ctx.id,
+diff --git a/src/test/librbd/mock/MockImageCtx.h b/src/test/librbd/mock/MockImageCtx.h
+index 034db1c..b7b73c83 100644
+--- a/src/test/librbd/mock/MockImageCtx.h
++++ b/src/test/librbd/mock/MockImageCtx.h
+@@ -86,7 +86,8 @@ struct MockImageCtx {
+       journal_object_flush_interval(image_ctx.journal_object_flush_interval),
+       journal_object_flush_bytes(image_ctx.journal_object_flush_bytes),
+       journal_object_flush_age(image_ctx.journal_object_flush_age),
+-      journal_pool(image_ctx.journal_pool)
++      journal_pool(image_ctx.journal_pool),
++      journal_max_payload_bytes(image_ctx.journal_max_payload_bytes)
+   {
+     md_ctx.dup(image_ctx.md_ctx);
+     data_ctx.dup(image_ctx.data_ctx);
+@@ -240,6 +241,7 @@ struct MockImageCtx {
+   uint64_t journal_object_flush_bytes;
+   double journal_object_flush_age;
+   std::string journal_pool;
++  uint32_t journal_max_payload_bytes;
+ };
+ 
+ } // namespace librbd

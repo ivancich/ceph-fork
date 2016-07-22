@@ -1,0 +1,42 @@
+From: Abhishek Lekshmanan <abhishek@suse.com>
+Date: Fri, 22 Jul 2016 10:57:45 +0200
+Subject: rgw multisite: preserve zone's extra pool
+
+In current multisite scenarios,if a bucket is created in master, we end
+up storing multipart metadata in `$source-zone.rgw.buckets.non-ec` pool
+instead of the zone's own non-ec pool, so we end up additionally
+creating this pool and storing multipart metadata entries in it. Also if
+a bucket is created in a secondary zone, and we initiate a multipart
+upload, before mdlog sync with master, we end up getting errors during
+complete multipart requests as omap entries are partly stored in the
+`$zone.rgw.buckets.non-ec` as well as `$source-zone.rgw.buckets.non-ec`
+pools which leads to total number of parts mismatch.
+
+Fixes: http://tracker.ceph.com/issues/16712
+
+Signed-off-by: Abhishek Lekshmanan <abhishek@suse.com>
+(cherry picked from commit d4ecc956f603a567bd4043c2be39b3e7e3402c75)
+
+Resolves: rhbz#1359267
+---
+ src/rgw/rgw_bucket.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/rgw/rgw_bucket.cc b/src/rgw/rgw_bucket.cc
+index a437b96..daf18f5 100644
+--- a/src/rgw/rgw_bucket.cc
++++ b/src/rgw/rgw_bucket.cc
+@@ -1965,11 +1965,13 @@ public:
+       bci.info.bucket.tenant = bucket.tenant;
+       bci.info.bucket.data_pool = bucket.data_pool;
+       bci.info.bucket.index_pool = bucket.index_pool;
++      bci.info.bucket.data_extra_pool = bucket.data_extra_pool;
+       bci.info.index_type = rule_info.index_type;
+     } else {
+       /* existing bucket, keep its placement pools */
+       bci.info.bucket.data_pool = old_bci.info.bucket.data_pool;
+       bci.info.bucket.index_pool = old_bci.info.bucket.index_pool;
++      bci.info.bucket.data_extra_pool = old_bci.info.bucket.data_extra_pool;
+       bci.info.index_type = old_bci.info.index_type;
+     }
+ 

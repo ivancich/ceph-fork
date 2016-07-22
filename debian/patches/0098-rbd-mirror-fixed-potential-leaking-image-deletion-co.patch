@@ -1,0 +1,42 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 27 Jun 2016 10:58:09 -0400
+Subject: rbd-mirror: fixed potential leaking image deletion context callback
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 9d1cd90c220f95d23d2694b4f1fb6b2fed073ced)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/ImageDeleter.cc | 3 +++
+ src/tools/rbd_mirror/Replayer.cc     | 4 ++++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/src/tools/rbd_mirror/ImageDeleter.cc b/src/tools/rbd_mirror/ImageDeleter.cc
+index d1816b0..9cbc189 100644
+--- a/src/tools/rbd_mirror/ImageDeleter.cc
++++ b/src/tools/rbd_mirror/ImageDeleter.cc
+@@ -229,6 +229,9 @@ void ImageDeleter::wait_for_scheduled_deletion(const std::string& image_name,
+     return;
+   }
+ 
++  if ((*del_info)->on_delete != nullptr) {
++    (*del_info)->on_delete->complete(-ESTALE);
++  }
+   (*del_info)->on_delete = ctx;
+   (*del_info)->notify_on_failed_retry = notify_on_failed_retry;
+ }
+diff --git a/src/tools/rbd_mirror/Replayer.cc b/src/tools/rbd_mirror/Replayer.cc
+index a538a38..2ac6379 100644
+--- a/src/tools/rbd_mirror/Replayer.cc
++++ b/src/tools/rbd_mirror/Replayer.cc
+@@ -681,6 +681,10 @@ void Replayer::start_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer
+   if (image_name) {
+     FunctionContext *ctx = new FunctionContext(
+         [&] (int r) {
++          if (r == -ESTALE) {
++            return;
++          }
++
+           if (r >= 0) {
+             image_replayer->start();
+           } else {

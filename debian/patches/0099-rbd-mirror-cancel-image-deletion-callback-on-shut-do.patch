@@ -1,0 +1,161 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 27 Jun 2016 11:06:57 -0400
+Subject: rbd-mirror: cancel image deletion callback on shut down
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit c3f1cb3a34e1b4d258877d519e683e25bf65c65a)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/ImageDeleter.cc | 13 +++++++++++++
+ src/tools/rbd_mirror/ImageDeleter.h  |  1 +
+ src/tools/rbd_mirror/Replayer.cc     | 35 ++++++++++++++++++++++-------------
+ src/tools/rbd_mirror/Replayer.h      |  1 +
+ 4 files changed, 37 insertions(+), 13 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/ImageDeleter.cc b/src/tools/rbd_mirror/ImageDeleter.cc
+index 9cbc189..c97f64e 100644
+--- a/src/tools/rbd_mirror/ImageDeleter.cc
++++ b/src/tools/rbd_mirror/ImageDeleter.cc
+@@ -236,6 +236,19 @@ void ImageDeleter::wait_for_scheduled_deletion(const std::string& image_name,
+   (*del_info)->notify_on_failed_retry = notify_on_failed_retry;
+ }
+ 
++void ImageDeleter::cancel_waiter(const std::string& image_name) {
++  Mutex::Locker locker(m_delete_lock);
++  auto del_info = find_delete_info(image_name);
++  if (!del_info) {
++    return;
++  }
++
++  if ((*del_info)->on_delete != nullptr) {
++    (*del_info)->on_delete->complete(-ECANCELED);
++    (*del_info)->on_delete = nullptr;
++  }
++}
++
+ bool ImageDeleter::process_image_delete() {
+ 
+   stringstream ss;
+diff --git a/src/tools/rbd_mirror/ImageDeleter.h b/src/tools/rbd_mirror/ImageDeleter.h
+index c750122..33dc6df 100644
+--- a/src/tools/rbd_mirror/ImageDeleter.h
++++ b/src/tools/rbd_mirror/ImageDeleter.h
+@@ -51,6 +51,7 @@ public:
+   void wait_for_scheduled_deletion(const std::string& image_name,
+                                    Context *ctx,
+                                    bool notify_on_failed_retry=true);
++  void cancel_waiter(const std::string& image_name);
+ 
+   void print_status(Formatter *f, std::stringstream *ss);
+ 
+diff --git a/src/tools/rbd_mirror/Replayer.cc b/src/tools/rbd_mirror/Replayer.cc
+index 2ac6379..ae03525 100644
+--- a/src/tools/rbd_mirror/Replayer.cc
++++ b/src/tools/rbd_mirror/Replayer.cc
+@@ -426,8 +426,6 @@ void Replayer::run()
+     m_cond.WaitInterval(g_ceph_context, m_lock, seconds(30));
+   }
+ 
+-  m_image_deleter.reset();
+-
+   ImageIds empty_sources;
+   while (true) {
+     Mutex::Locker l(m_lock);
+@@ -623,7 +621,7 @@ void Replayer::set_sources(const ImageIds &image_ids)
+       dout(20) << "starting image replayer for "
+                << it->second->get_global_image_id() << dendl;
+     }
+-    start_image_replayer(it->second, image_id.name);
++    start_image_replayer(it->second, image_id.id, image_id.name);
+   }
+ }
+ 
+@@ -669,8 +667,10 @@ void Replayer::mirror_image_status_shut_down() {
+ }
+ 
+ void Replayer::start_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer,
++                                    const std::string &image_id,
+                                     const boost::optional<std::string>& image_name)
+ {
++  assert(m_lock.is_locked());
+   dout(20) << "global_image_id=" << image_replayer->get_global_image_id()
+            << dendl;
+ 
+@@ -680,15 +680,22 @@ void Replayer::start_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer
+ 
+   if (image_name) {
+     FunctionContext *ctx = new FunctionContext(
+-        [&] (int r) {
+-          if (r == -ESTALE) {
++        [this, image_id, image_name] (int r) {
++          if (r == -ESTALE || r == -ECANCELED) {
++            return;
++          }
++
++          Mutex::Locker locker(m_lock);
++          auto it = m_image_replayers.find(image_id);
++          if (it == m_image_replayers.end()) {
+             return;
+           }
+ 
++          auto &image_replayer = it->second;
+           if (r >= 0) {
+             image_replayer->start();
+           } else {
+-            start_image_replayer(image_replayer, image_name);
++            start_image_replayer(image_replayer, image_id, image_name);
+           }
+        }
+     );
+@@ -698,11 +705,13 @@ void Replayer::start_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer
+ 
+ bool Replayer::stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer)
+ {
++  assert(m_lock.is_locked());
+   dout(20) << "global_image_id=" << image_replayer->get_global_image_id()
+            << dendl;
+ 
+   if (image_replayer->is_stopped()) {
+-    if (m_image_deleter) {
++    m_image_deleter->cancel_waiter(image_replayer->get_local_image_name());
++    if (!m_stopping.read()) {
+       dout(20) << "scheduling delete" << dendl;
+       m_image_deleter->schedule_image_delete(
+         image_replayer->get_local_pool_id(),
+@@ -714,17 +723,17 @@ bool Replayer::stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer)
+   }
+ 
+   if (image_replayer->is_running()) {
+-    if (m_image_deleter) {
++    if (!m_stopping.read()) {
+       dout(20) << "scheduling delete after image replayer stopped" << dendl;
+     }
+     FunctionContext *ctx = new FunctionContext(
+         [&image_replayer, this] (int r) {
+-          if (m_image_deleter) {
++          if (!m_stopping.read()) {
+             m_image_deleter->schedule_image_delete(
+-                          image_replayer->get_local_pool_id(),
+-                          image_replayer->get_local_image_id(),
+-                          image_replayer->get_local_image_name(),
+-                          image_replayer->get_global_image_id());
++              image_replayer->get_local_pool_id(),
++              image_replayer->get_local_image_id(),
++              image_replayer->get_local_image_name(),
++              image_replayer->get_global_image_id());
+           }
+         }
+     );
+diff --git a/src/tools/rbd_mirror/Replayer.h b/src/tools/rbd_mirror/Replayer.h
+index 8c042a4..a39c8fb 100644
+--- a/src/tools/rbd_mirror/Replayer.h
++++ b/src/tools/rbd_mirror/Replayer.h
+@@ -58,6 +58,7 @@ private:
+   void set_sources(const ImageIds &image_ids);
+ 
+   void start_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer,
++                            const std::string &image_id,
+                             const boost::optional<std::string>& image_name);
+   bool stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer);
+ 

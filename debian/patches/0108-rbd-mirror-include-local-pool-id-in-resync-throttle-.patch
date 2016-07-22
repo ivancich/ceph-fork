@@ -1,0 +1,269 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 11 Jul 2016 21:58:45 -0400
+Subject: rbd-mirror: include local pool id in resync throttle unique key
+
+Fixes: http://tracker.ceph.com/issues/16536
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 8ad36cab7cbf3492bfa972b43e4a5f75a110bfe6)
+
+Resolves: rhbz#1356064
+---
+ .../image_replayer/test_mock_BootstrapRequest.cc   |  3 +-
+ .../rbd_mirror/test_mock_ImageSyncThrottler.cc     |  2 +-
+ src/tools/rbd_mirror/ImageSyncThrottler.cc         | 78 ++++++++++++----------
+ src/tools/rbd_mirror/ImageSyncThrottler.h          | 18 +++--
+ .../rbd_mirror/image_replayer/BootstrapRequest.cc  |  2 +-
+ 5 files changed, 59 insertions(+), 44 deletions(-)
+
+diff --git a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+index 3aae98a..7d2e37e 100644
+--- a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
++++ b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+@@ -81,7 +81,8 @@ struct ImageSyncThrottler<librbd::MockTestImageCtx> {
+                                  librbd::journal::MirrorPeerClientMeta *client_meta,
+                                  ContextWQ *work_queue, Context *on_finish,
+                                  ProgressContext *progress_ctx));
+-  MOCK_METHOD1(cancel_sync, void(const std::string& mirror_uuid));
++  MOCK_METHOD2(cancel_sync, void(librados::IoCtx &local_io_ctx,
++                                 const std::string& mirror_uuid));
+ };
+ 
+ namespace image_replayer {
+diff --git a/src/test/rbd_mirror/test_mock_ImageSyncThrottler.cc b/src/test/rbd_mirror/test_mock_ImageSyncThrottler.cc
+index 01f875c..e624ed9 100644
+--- a/src/test/rbd_mirror/test_mock_ImageSyncThrottler.cc
++++ b/src/test/rbd_mirror/test_mock_ImageSyncThrottler.cc
+@@ -159,7 +159,7 @@ public:
+     } else {
+       EXPECT_CALL(*sync, cancel()).Times(0);
+     }
+-    mock_sync_throttler->cancel_sync(mirror_uuid);
++    mock_sync_throttler->cancel_sync(m_local_io_ctx, mirror_uuid);
+   }
+ 
+   librbd::ImageCtx *m_remote_image_ctx;
+diff --git a/src/tools/rbd_mirror/ImageSyncThrottler.cc b/src/tools/rbd_mirror/ImageSyncThrottler.cc
+index fd759ac..2a22b35 100644
+--- a/src/tools/rbd_mirror/ImageSyncThrottler.cc
++++ b/src/tools/rbd_mirror/ImageSyncThrottler.cc
+@@ -49,24 +49,26 @@ ImageSyncThrottler<I>::~ImageSyncThrottler() {
+ }
+ 
+ template <typename I>
+-void ImageSyncThrottler<I>::start_sync(
+-                            I *local_image_ctx, I *remote_image_ctx,
+-                            SafeTimer *timer, Mutex *timer_lock,
+-                            const std::string &mirror_uuid,
+-                            Journaler *journaler,
+-                            MirrorPeerClientMeta *client_meta,
+-                            ContextWQ *work_queue, Context *on_finish,
+-                            ProgressContext *progress_ctx) {
++void ImageSyncThrottler<I>::start_sync(I *local_image_ctx, I *remote_image_ctx,
++                                       SafeTimer *timer, Mutex *timer_lock,
++                                       const std::string &mirror_uuid,
++                                       Journaler *journaler,
++                                       MirrorPeerClientMeta *client_meta,
++                                       ContextWQ *work_queue,
++                                       Context *on_finish,
++                                       ProgressContext *progress_ctx) {
+   dout(20) << dendl;
+ 
+-  C_SyncHolder *sync_holder_ctx = new C_SyncHolder(this, local_image_ctx->id,
++  PoolImageId pool_image_id(local_image_ctx->md_ctx.get_id(),
++                            local_image_ctx->id);
++  C_SyncHolder *sync_holder_ctx = new C_SyncHolder(this, pool_image_id,
+                                                    on_finish);
+   sync_holder_ctx->m_sync = ImageSync<I>::create(local_image_ctx,
+-                                         remote_image_ctx, timer,
+-                                         timer_lock, mirror_uuid,
+-                                         journaler, client_meta,
+-                                         work_queue, sync_holder_ctx,
+-	                                 progress_ctx);
++                                                 remote_image_ctx, timer,
++                                                 timer_lock, mirror_uuid,
++                                                 journaler, client_meta,
++                                                 work_queue, sync_holder_ctx,
++                                                 progress_ctx);
+   sync_holder_ctx->m_sync->get();
+ 
+   bool start = false;
+@@ -74,8 +76,8 @@ void ImageSyncThrottler<I>::start_sync(
+     Mutex::Locker l(m_lock);
+ 
+     if (m_inflight_syncs.size() < m_max_concurrent_syncs) {
+-      m_inflight_syncs.insert(std::make_pair(local_image_ctx->id,
+-                                             sync_holder_ctx));
++      assert(m_inflight_syncs.count(pool_image_id) == 0);
++      m_inflight_syncs[pool_image_id] = sync_holder_ctx;
+       start = true;
+       dout(10) << "ready to start image sync for local_image_id "
+                << local_image_ctx->id << " [" << m_inflight_syncs.size() << "/"
+@@ -88,12 +90,13 @@ void ImageSyncThrottler<I>::start_sync(
+   }
+ 
+   if (start) {
+-      sync_holder_ctx->m_sync->send();
++    sync_holder_ctx->m_sync->send();
+   }
+ }
+ 
+ template <typename I>
+-void ImageSyncThrottler<I>::cancel_sync(const std::string& local_image_id) {
++void ImageSyncThrottler<I>::cancel_sync(librados::IoCtx &local_io_ctx,
++                                        const std::string local_image_id) {
+   dout(20) << dendl;
+ 
+   C_SyncHolder *sync_holder = nullptr;
+@@ -101,20 +104,21 @@ void ImageSyncThrottler<I>::cancel_sync(const std::string& local_image_id) {
+ 
+   {
+     Mutex::Locker l(m_lock);
+-
+     if (m_inflight_syncs.empty()) {
+       // no image sync currently running and neither waiting
+       return;
+     }
+ 
+-    auto it = m_inflight_syncs.find(local_image_id);
++    PoolImageId local_pool_image_id(local_io_ctx.get_id(),
++                                    local_image_id);
++    auto it = m_inflight_syncs.find(local_pool_image_id);
+     if (it != m_inflight_syncs.end()) {
+       sync_holder = it->second;
+     }
+ 
+     if (!sync_holder) {
+-      for (auto it=m_sync_queue.begin(); it != m_sync_queue.end(); ++it) {
+-        if ((*it)->m_local_image_id == local_image_id) {
++      for (auto it = m_sync_queue.begin(); it != m_sync_queue.end(); ++it) {
++        if ((*it)->m_local_pool_image_id == local_pool_image_id) {
+           sync_holder = (*it);
+           m_sync_queue.erase(it);
+           running_sync = false;
+@@ -127,11 +131,11 @@ void ImageSyncThrottler<I>::cancel_sync(const std::string& local_image_id) {
+   if (sync_holder) {
+     if (running_sync) {
+       dout(10) << "canceled running image sync for local_image_id "
+-               << sync_holder->m_local_image_id << dendl;
++               << sync_holder->m_local_pool_image_id.second << dendl;
+       sync_holder->m_sync->cancel();
+     } else {
+       dout(10) << "canceled waiting image sync for local_image_id "
+-               << sync_holder->m_local_image_id << dendl;
++               << sync_holder->m_local_pool_image_id.second << dendl;
+       sync_holder->m_on_finish->complete(-ECANCELED);
+       sync_holder->m_sync->put();
+       delete sync_holder;
+@@ -147,17 +151,19 @@ void ImageSyncThrottler<I>::handle_sync_finished(C_SyncHolder *sync_holder) {
+ 
+   {
+     Mutex::Locker l(m_lock);
++    m_inflight_syncs.erase(sync_holder->m_local_pool_image_id);
+ 
+-    m_inflight_syncs.erase(sync_holder->m_local_image_id);
+-
+-    if (m_inflight_syncs.size() < m_max_concurrent_syncs
+-        && !m_sync_queue.empty()) {
++    if (m_inflight_syncs.size() < m_max_concurrent_syncs &&
++        !m_sync_queue.empty()) {
+       next_sync_holder = m_sync_queue.back();
+       m_sync_queue.pop_back();
+-      m_inflight_syncs.insert(std::make_pair(next_sync_holder->m_local_image_id,
+-                                             next_sync_holder));
++
++      assert(
++        m_inflight_syncs.count(next_sync_holder->m_local_pool_image_id) == 0);
++      m_inflight_syncs[next_sync_holder->m_local_pool_image_id] =
++        next_sync_holder;
+       dout(10) << "ready to start image sync for local_image_id "
+-               << next_sync_holder->m_local_image_id
++               << next_sync_holder->m_local_pool_image_id.second
+                << " [" << m_inflight_syncs.size() << "/"
+                << m_max_concurrent_syncs << "]" << dendl;
+     }
+@@ -188,10 +194,14 @@ void ImageSyncThrottler<I>::set_max_concurrent_syncs(uint32_t max) {
+         C_SyncHolder *next_sync_holder = m_sync_queue.back();
+         next_sync_holders.push_back(next_sync_holder);
+         m_sync_queue.pop_back();
+-        m_inflight_syncs.insert(std::make_pair(next_sync_holder->m_local_image_id,
+-                                               next_sync_holder));
++
++        assert(
++          m_inflight_syncs.count(next_sync_holder->m_local_pool_image_id) == 0);
++        m_inflight_syncs[next_sync_holder->m_local_pool_image_id] =
++          next_sync_holder;
++
+         dout(10) << "ready to start image sync for local_image_id "
+-                 << next_sync_holder->m_local_image_id
++                 << next_sync_holder->m_local_pool_image_id.second
+                  << " [" << m_inflight_syncs.size() << "/"
+                  << m_max_concurrent_syncs << "]" << dendl;
+     }
+diff --git a/src/tools/rbd_mirror/ImageSyncThrottler.h b/src/tools/rbd_mirror/ImageSyncThrottler.h
+index 6c7fbf3..6c3edf1 100644
+--- a/src/tools/rbd_mirror/ImageSyncThrottler.h
++++ b/src/tools/rbd_mirror/ImageSyncThrottler.h
+@@ -17,6 +17,7 @@
+ 
+ #include <list>
+ #include <map>
++#include <utility>
+ #include "common/Mutex.h"
+ #include "librbd/ImageCtx.h"
+ #include "include/Context.h"
+@@ -59,24 +60,27 @@ public:
+                   ContextWQ *work_queue, Context *on_finish,
+                   ProgressContext *progress_ctx = nullptr);
+ 
+-  void cancel_sync(const std::string& mirror_uuid);
++  void cancel_sync(librados::IoCtx &local_io_ctx,
++                   const std::string local_image_id);
+ 
+   void set_max_concurrent_syncs(uint32_t max);
+ 
+   void print_status(Formatter *f, std::stringstream *ss);
+ 
+ private:
++  typedef std::pair<int64_t, std::string> PoolImageId;
+ 
+   struct C_SyncHolder : public Context {
+     ImageSyncThrottler<ImageCtxT> *m_sync_throttler;
+-    std::string m_local_image_id;
+-    ImageSync<ImageCtxT> *m_sync;
++    PoolImageId m_local_pool_image_id;
++    ImageSync<ImageCtxT> *m_sync = nullptr;
+     Context *m_on_finish;
+ 
+     C_SyncHolder(ImageSyncThrottler<ImageCtxT> *sync_throttler,
+-                 const std::string& local_image_id, Context *on_finish)
+-      : m_sync_throttler(sync_throttler), m_local_image_id(local_image_id),
+-        m_sync(nullptr), m_on_finish(on_finish) {}
++                 const PoolImageId &local_pool_image_id, Context *on_finish)
++      : m_sync_throttler(sync_throttler),
++        m_local_pool_image_id(local_pool_image_id), m_on_finish(on_finish) {
++    }
+ 
+     virtual void finish(int r) {
+       m_sync_throttler->handle_sync_finished(this);
+@@ -93,7 +97,7 @@ private:
+   uint32_t m_max_concurrent_syncs;
+   Mutex m_lock;
+   std::list<C_SyncHolder *> m_sync_queue;
+-  std::map<std::string, C_SyncHolder *> m_inflight_syncs;
++  std::map<PoolImageId, C_SyncHolder *> m_inflight_syncs;
+ 
+ };
+ 
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+index 9c2879c..f471626 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+@@ -82,7 +82,7 @@ void BootstrapRequest<I>::cancel() {
+   Mutex::Locker locker(m_lock);
+   m_canceled = true;
+ 
+-  m_image_sync_throttler->cancel_sync(m_local_image_id);
++  m_image_sync_throttler->cancel_sync(m_local_io_ctx, m_local_image_id);
+ }
+ 
+ template <typename I>

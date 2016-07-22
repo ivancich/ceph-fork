@@ -1,0 +1,526 @@
+From: Ricardo Dias <rdias@suse.com>
+Date: Wed, 8 Jun 2016 16:38:01 +0100
+Subject: rbd-mirror: Usage of image-sync throttler in BootstrapRequest
+
+Fixes: http://tracker.ceph.com/issues/15239
+
+Signed-off-by: Ricardo Dias <rdias@suse.com>
+(cherry picked from commit 6a91146255d84229688bd8b378732be5975a778b)
+
+Conflicts:
+	src/test/rbd_mirror/test_mock_ImageReplayer.cc: trivial resolution
+
+Resolves: rhbz#1356064
+---
+ src/test/rbd_mirror/image_replay.cc                |  7 ++-
+ src/test/rbd_mirror/test_ImageReplayer.cc          |  7 ++-
+ src/test/rbd_mirror/test_mock_ImageReplayer.cc     | 28 +++++-----
+ src/tools/rbd_mirror/ImageReplayer.cc              | 12 +++--
+ src/tools/rbd_mirror/ImageReplayer.h               |  2 +
+ src/tools/rbd_mirror/Mirror.cc                     | 11 ++++
+ src/tools/rbd_mirror/Mirror.h                      |  1 +
+ src/tools/rbd_mirror/Replayer.cc                   |  8 +--
+ src/tools/rbd_mirror/Replayer.h                    |  2 +
+ .../rbd_mirror/image_replayer/BootstrapRequest.cc  | 61 +++++++++-------------
+ .../rbd_mirror/image_replayer/BootstrapRequest.h   | 38 ++++++++------
+ src/tools/rbd_mirror/types.h                       |  4 ++
+ 12 files changed, 105 insertions(+), 76 deletions(-)
+
+diff --git a/src/test/rbd_mirror/image_replay.cc b/src/test/rbd_mirror/image_replay.cc
+index a2cb004..05dfbce 100644
+--- a/src/test/rbd_mirror/image_replay.cc
++++ b/src/test/rbd_mirror/image_replay.cc
+@@ -11,6 +11,7 @@
+ #include "librbd/ImageState.h"
+ #include "tools/rbd_mirror/ImageReplayer.h"
+ #include "tools/rbd_mirror/ImageDeleter.h"
++#include "tools/rbd_mirror/ImageSyncThrottler.h"
+ #include "tools/rbd_mirror/Threads.h"
+ 
+ #include <string>
+@@ -132,6 +133,7 @@ int main(int argc, const char **argv)
+   rbd::mirror::RadosRef remote(new librados::Rados());
+   rbd::mirror::Threads *threads = nullptr;
+   std::shared_ptr<rbd::mirror::ImageDeleter> image_deleter;
++  std::shared_ptr<rbd::mirror::ImageSyncThrottler<>> image_sync_throttler;
+ 
+   C_SaferCond start_cond, stop_cond;
+ 
+@@ -190,7 +192,10 @@ int main(int argc, const char **argv)
+   image_deleter.reset(new rbd::mirror::ImageDeleter(local, threads->timer,
+                                                     &threads->timer_lock));
+ 
+-  replayer = new rbd::mirror::ImageReplayer<>(threads, image_deleter, local,
++  image_sync_throttler.reset(new rbd::mirror::ImageSyncThrottler<>());
++
++  replayer = new rbd::mirror::ImageReplayer<>(threads, image_deleter,
++                                              image_sync_throttler, local,
+                                               remote, client_id,
+ 					      "remote mirror uuid",
+                                               local_pool_id, remote_pool_id,
+diff --git a/src/test/rbd_mirror/test_ImageReplayer.cc b/src/test/rbd_mirror/test_ImageReplayer.cc
+index ed33e1c..95fcb20 100644
+--- a/src/test/rbd_mirror/test_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_ImageReplayer.cc
+@@ -30,6 +30,7 @@
+ #include "librbd/internal.h"
+ #include "tools/rbd_mirror/types.h"
+ #include "tools/rbd_mirror/ImageReplayer.h"
++#include "tools/rbd_mirror/ImageSyncThrottler.h"
+ #include "tools/rbd_mirror/Threads.h"
+ #include "tools/rbd_mirror/ImageDeleter.h"
+ 
+@@ -104,9 +105,12 @@ public:
+ 
+     m_threads = new rbd::mirror::Threads(reinterpret_cast<CephContext*>(
+       m_local_ioctx.cct()));
++
+     m_image_deleter.reset(new rbd::mirror::ImageDeleter(m_local_cluster,
+                                                       m_threads->timer,
+                                                       &m_threads->timer_lock));
++
++    m_image_sync_throttler.reset(new rbd::mirror::ImageSyncThrottler<>());
+   }
+ 
+   ~TestImageReplayer()
+@@ -127,7 +131,7 @@ public:
+ 
+   template <typename ImageReplayerT = rbd::mirror::ImageReplayer<> >
+   void create_replayer() {
+-    m_replayer = new ImageReplayerT(m_threads, m_image_deleter,
++    m_replayer = new ImageReplayerT(m_threads, m_image_deleter, m_image_sync_throttler,
+       rbd::mirror::RadosRef(new librados::Rados(m_local_ioctx)),
+       rbd::mirror::RadosRef(new librados::Rados(m_remote_ioctx)),
+       m_local_mirror_uuid, m_remote_mirror_uuid, m_local_ioctx.get_id(),
+@@ -340,6 +344,7 @@ public:
+   std::shared_ptr<rbd::mirror::ImageDeleter> m_image_deleter;
+   std::shared_ptr<librados::Rados> m_local_cluster;
+   librados::Rados m_remote_cluster;
++  std::shared_ptr<rbd::mirror::ImageSyncThrottler<>> m_image_sync_throttler;
+   std::string m_local_mirror_uuid = "local mirror uuid";
+   std::string m_remote_mirror_uuid = "remote mirror uuid";
+   std::string m_local_pool_name, m_remote_pool_name;
+diff --git a/src/test/rbd_mirror/test_mock_ImageReplayer.cc b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
+index 9b23b8f..b6417f4 100644
+--- a/src/test/rbd_mirror/test_mock_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
+@@ -4,6 +4,7 @@
+ #include "test/rbd_mirror/test_mock_fixture.h"
+ #include "librbd/journal/Replay.h"
+ #include "tools/rbd_mirror/ImageReplayer.h"
++#include "tools/rbd_mirror/ImageSyncThrottler.h"
+ #include "tools/rbd_mirror/image_replayer/BootstrapRequest.h"
+ #include "tools/rbd_mirror/image_replayer/CloseImageRequest.h"
+ #include "tools/rbd_mirror/image_replayer/EventPreprocessor.h"
+@@ -61,19 +62,20 @@ struct BootstrapRequest<librbd::MockTestImageCtx> {
+   Context *on_finish = nullptr;
+ 
+   static BootstrapRequest* create(librados::IoCtx &local_io_ctx,
+-                                  librados::IoCtx &remote_io_ctx,
+-                                  librbd::MockTestImageCtx **local_image_ctx,
+-                                  const std::string &local_image_name,
+-                                  const std::string &remote_image_id,
+-                                  const std::string &global_image_id,
+-                                  ContextWQ *work_queue, SafeTimer *timer,
+-                                  Mutex *timer_lock,
+-                                  const std::string &local_mirror_uuid,
+-                                  const std::string &remote_mirror_uuid,
+-                                  ::journal::MockJournalerProxy *journaler,
+-                                  librbd::journal::MirrorPeerClientMeta *client_meta,
+-                                  Context *on_finish,
+-                                  rbd::mirror::ProgressContext *progress_ctx = nullptr) {
++        librados::IoCtx &remote_io_ctx,
++        rbd::mirror::ImageSyncThrottlerRef<librbd::MockTestImageCtx> image_sync_throttler,
++        librbd::MockTestImageCtx **local_image_ctx,
++        const std::string &local_image_name,
++        const std::string &remote_image_id,
++        const std::string &global_image_id,
++        ContextWQ *work_queue, SafeTimer *timer,
++        Mutex *timer_lock,
++        const std::string &local_mirror_uuid,
++        const std::string &remote_mirror_uuid,
++        ::journal::MockJournalerProxy *journaler,
++        librbd::journal::MirrorPeerClientMeta *client_meta,
++        Context *on_finish,
++        rbd::mirror::ProgressContext *progress_ctx = nullptr) {
+     assert(s_instance != nullptr);
+     s_instance->on_finish = on_finish;
+     return s_instance;
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 11cd5e9..6eb9a30 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -251,6 +251,7 @@ void ImageReplayer<I>::BootstrapProgressContext::update_progress(
+ template <typename I>
+ ImageReplayer<I>::ImageReplayer(Threads *threads,
+                              shared_ptr<ImageDeleter> image_deleter,
++                             ImageSyncThrottlerRef<I> image_sync_throttler,
+                              RadosRef local, RadosRef remote,
+ 			     const std::string &local_mirror_uuid,
+ 			     const std::string &remote_mirror_uuid,
+@@ -260,6 +261,7 @@ ImageReplayer<I>::ImageReplayer(Threads *threads,
+                              const std::string &global_image_id) :
+   m_threads(threads),
+   m_image_deleter(image_deleter),
++  m_image_sync_throttler(image_sync_throttler),
+   m_local(local),
+   m_remote(remote),
+   m_local_mirror_uuid(local_mirror_uuid),
+@@ -393,11 +395,11 @@ void ImageReplayer<I>::bootstrap() {
+     ImageReplayer, &ImageReplayer<I>::handle_bootstrap>(this);
+ 
+   BootstrapRequest<I> *request = BootstrapRequest<I>::create(
+-    m_local_ioctx, m_remote_ioctx, &m_local_image_ctx,
+-    m_local_image_name, m_remote_image_id, m_global_image_id,
+-    m_threads->work_queue, m_threads->timer, &m_threads->timer_lock,
+-    m_local_mirror_uuid, m_remote_mirror_uuid, m_remote_journaler,
+-    &m_client_meta, ctx, &m_progress_cxt);
++    m_local_ioctx, m_remote_ioctx, m_image_sync_throttler,
++    &m_local_image_ctx, m_local_image_name, m_remote_image_id,
++    m_global_image_id, m_threads->work_queue, m_threads->timer,
++    &m_threads->timer_lock, m_local_mirror_uuid, m_remote_mirror_uuid,
++    m_remote_journaler, &m_client_meta, ctx, &m_progress_cxt);
+ 
+   {
+     Mutex::Locker locker(m_lock);
+diff --git a/src/tools/rbd_mirror/ImageReplayer.h b/src/tools/rbd_mirror/ImageReplayer.h
+index 2e8c5fb..f741462 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.h
++++ b/src/tools/rbd_mirror/ImageReplayer.h
+@@ -78,6 +78,7 @@ public:
+   };
+ 
+   ImageReplayer(Threads *threads, std::shared_ptr<ImageDeleter> image_deleter,
++                ImageSyncThrottlerRef<ImageCtxT> image_sync_throttler,
+                 RadosRef local, RadosRef remote,
+                 const std::string &local_mirror_uuid,
+                 const std::string &remote_mirror_uuid, int64_t local_pool_id,
+@@ -227,6 +228,7 @@ private:
+ 
+   Threads *m_threads;
+   std::shared_ptr<ImageDeleter> m_image_deleter;
++  ImageSyncThrottlerRef<ImageCtxT> m_image_sync_throttler;
+   RadosRef m_local, m_remote;
+   std::string m_local_mirror_uuid;
+   std::string m_remote_mirror_uuid;
+diff --git a/src/tools/rbd_mirror/Mirror.cc b/src/tools/rbd_mirror/Mirror.cc
+index 71e64ed..2d002fd 100644
+--- a/src/tools/rbd_mirror/Mirror.cc
++++ b/src/tools/rbd_mirror/Mirror.cc
+@@ -9,6 +9,7 @@
+ #include "common/errno.h"
+ #include "Mirror.h"
+ #include "Threads.h"
++#include "ImageSync.h"
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+@@ -220,6 +221,8 @@ int Mirror::init()
+   m_image_deleter.reset(new ImageDeleter(m_local, m_threads->timer,
+                                          &m_threads->timer_lock));
+ 
++  m_image_sync_throttler.reset(new ImageSyncThrottler<>());
++
+   return r;
+ }
+ 
+@@ -267,6 +270,13 @@ void Mirror::print_status(Formatter *f, stringstream *ss)
+ 
+   if (f) {
+     f->close_section();
++    f->open_object_section("sync_throttler");
++  }
++
++  m_image_sync_throttler->print_status(f, ss);
++
++  if (f) {
++    f->close_section();
+     f->close_section();
+     f->flush(*ss);
+   }
+@@ -363,6 +373,7 @@ void Mirror::update_replayers(const PoolPeers &pool_peers)
+       if (m_replayers.find(pool_peer) == m_replayers.end()) {
+         dout(20) << "starting replayer for " << peer << dendl;
+         unique_ptr<Replayer> replayer(new Replayer(m_threads, m_image_deleter,
++                                                   m_image_sync_throttler,
+                                                    m_local, kv.first, peer,
+                                                    m_args));
+         // TODO: make async, and retry connecting within replayer
+diff --git a/src/tools/rbd_mirror/Mirror.h b/src/tools/rbd_mirror/Mirror.h
+index 88f0669..f7a4d02 100644
+--- a/src/tools/rbd_mirror/Mirror.h
++++ b/src/tools/rbd_mirror/Mirror.h
+@@ -62,6 +62,7 @@ private:
+   // monitor local cluster for config changes in peers
+   std::unique_ptr<ClusterWatcher> m_local_cluster_watcher;
+   std::shared_ptr<ImageDeleter> m_image_deleter;
++  ImageSyncThrottlerRef<> m_image_sync_throttler;
+   std::map<PoolPeer, std::unique_ptr<Replayer> > m_replayers;
+   atomic_t m_stopping;
+   bool m_manual_stop = false;
+diff --git a/src/tools/rbd_mirror/Replayer.cc b/src/tools/rbd_mirror/Replayer.cc
+index 5a64e5f..a538a38 100644
+--- a/src/tools/rbd_mirror/Replayer.cc
++++ b/src/tools/rbd_mirror/Replayer.cc
+@@ -229,10 +229,12 @@ private:
+ };
+ 
+ Replayer::Replayer(Threads *threads, std::shared_ptr<ImageDeleter> image_deleter,
++                   ImageSyncThrottlerRef<> image_sync_throttler,
+                    RadosRef local_cluster, int64_t local_pool_id,
+                    const peer_t &peer, const std::vector<const char*> &args) :
+   m_threads(threads),
+   m_image_deleter(image_deleter),
++  m_image_sync_throttler(image_sync_throttler),
+   m_lock(stringify("rbd::mirror::Replayer ") + stringify(peer)),
+   m_peer(peer),
+   m_args(args),
+@@ -611,9 +613,9 @@ void Replayer::set_sources(const ImageIds &image_ids)
+     auto it = m_image_replayers.find(image_id.id);
+     if (it == m_image_replayers.end()) {
+       unique_ptr<ImageReplayer<> > image_replayer(new ImageReplayer<>(
+-        m_threads, m_image_deleter, m_local, m_remote, local_mirror_uuid,
+-        remote_mirror_uuid, m_local_pool_id, m_remote_pool_id, image_id.id,
+-        image_id.global_id));
++        m_threads, m_image_deleter, m_image_sync_throttler, m_local, m_remote,
++        local_mirror_uuid, remote_mirror_uuid, m_local_pool_id,
++        m_remote_pool_id, image_id.id, image_id.global_id));
+       it = m_image_replayers.insert(
+         std::make_pair(image_id.id, std::move(image_replayer))).first;
+     }
+diff --git a/src/tools/rbd_mirror/Replayer.h b/src/tools/rbd_mirror/Replayer.h
+index cd8efa8..8c042a4 100644
+--- a/src/tools/rbd_mirror/Replayer.h
++++ b/src/tools/rbd_mirror/Replayer.h
+@@ -34,6 +34,7 @@ class MirrorStatusWatchCtx;
+ class Replayer {
+ public:
+   Replayer(Threads *threads, std::shared_ptr<ImageDeleter> image_deleter,
++           ImageSyncThrottlerRef<> image_sync_throttler,
+            RadosRef local_cluster, int64_t local_pool_id, const peer_t &peer,
+            const std::vector<const char*> &args);
+   ~Replayer();
+@@ -65,6 +66,7 @@ private:
+ 
+   Threads *m_threads;
+   std::shared_ptr<ImageDeleter> m_image_deleter;
++  ImageSyncThrottlerRef<> m_image_sync_throttler;
+   Mutex m_lock;
+   Cond m_cond;
+   atomic_t m_stopping;
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+index 9299cee..9c2879c 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+@@ -20,6 +20,7 @@
+ #include "librbd/journal/Types.h"
+ #include "tools/rbd_mirror/ImageSync.h"
+ #include "tools/rbd_mirror/ProgressContext.h"
++#include "tools/rbd_mirror/ImageSyncThrottler.h"
+ 
+ #define dout_subsys ceph_subsys_rbd_mirror
+ #undef dout_prefix
+@@ -35,23 +36,26 @@ using librbd::util::create_rados_ack_callback;
+ using librbd::util::unique_lock_name;
+ 
+ template <typename I>
+-BootstrapRequest<I>::BootstrapRequest(librados::IoCtx &local_io_ctx,
+-                                      librados::IoCtx &remote_io_ctx,
+-                                      I **local_image_ctx,
+-                                      const std::string &local_image_name,
+-                                      const std::string &remote_image_id,
+-                                      const std::string &global_image_id,
+-                                      ContextWQ *work_queue, SafeTimer *timer,
+-                                      Mutex *timer_lock,
+-                                      const std::string &local_mirror_uuid,
+-                                      const std::string &remote_mirror_uuid,
+-                                      Journaler *journaler,
+-                                      MirrorPeerClientMeta *client_meta,
+-                                      Context *on_finish,
+-				      rbd::mirror::ProgressContext *progress_ctx)
++BootstrapRequest<I>::BootstrapRequest(
++        librados::IoCtx &local_io_ctx,
++        librados::IoCtx &remote_io_ctx,
++        std::shared_ptr<ImageSyncThrottler<I>> image_sync_throttler,
++        I **local_image_ctx,
++        const std::string &local_image_name,
++        const std::string &remote_image_id,
++        const std::string &global_image_id,
++        ContextWQ *work_queue, SafeTimer *timer,
++        Mutex *timer_lock,
++        const std::string &local_mirror_uuid,
++        const std::string &remote_mirror_uuid,
++        Journaler *journaler,
++        MirrorPeerClientMeta *client_meta,
++        Context *on_finish,
++        rbd::mirror::ProgressContext *progress_ctx)
+   : BaseRequest("rbd::mirror::image_replayer::BootstrapRequest",
+ 		reinterpret_cast<CephContext*>(local_io_ctx.cct()), on_finish),
+     m_local_io_ctx(local_io_ctx), m_remote_io_ctx(remote_io_ctx),
++    m_image_sync_throttler(image_sync_throttler),
+     m_local_image_ctx(local_image_ctx), m_local_image_name(local_image_name),
+     m_remote_image_id(remote_image_id), m_global_image_id(global_image_id),
+     m_work_queue(work_queue), m_timer(timer), m_timer_lock(timer_lock),
+@@ -63,7 +67,6 @@ BootstrapRequest<I>::BootstrapRequest(librados::IoCtx &local_io_ctx,
+ 
+ template <typename I>
+ BootstrapRequest<I>::~BootstrapRequest() {
+-  assert(m_image_sync_request == nullptr);
+   assert(m_remote_image_ctx == nullptr);
+ }
+ 
+@@ -79,9 +82,7 @@ void BootstrapRequest<I>::cancel() {
+   Mutex::Locker locker(m_lock);
+   m_canceled = true;
+ 
+-  if (m_image_sync_request) {
+-    m_image_sync_request->cancel();
+-  }
++  m_image_sync_throttler->cancel_sync(m_local_image_id);
+ }
+ 
+ template <typename I>
+@@ -547,31 +548,19 @@ void BootstrapRequest<I>::image_sync() {
+   Context *ctx = create_context_callback<
+     BootstrapRequest<I>, &BootstrapRequest<I>::handle_image_sync>(
+       this);
+-  ImageSync<I> *request = ImageSync<I>::create(*m_local_image_ctx,
+-                                               m_remote_image_ctx, m_timer,
+-                                               m_timer_lock,
+-                                               m_local_mirror_uuid, m_journaler,
+-                                               m_client_meta, m_work_queue, ctx,
+-					       m_progress_ctx);
+-  {
+-    Mutex::Locker locker(m_lock);
+-    request->get();
+-    m_image_sync_request = request;
+-  }
+ 
+-  request->send();
++  m_image_sync_throttler->start_sync(*m_local_image_ctx,
++                                     m_remote_image_ctx, m_timer,
++                                     m_timer_lock,
++                                     m_local_mirror_uuid, m_journaler,
++                                     m_client_meta, m_work_queue, ctx,
++                                     m_progress_ctx);
+ }
+ 
+ template <typename I>
+ void BootstrapRequest<I>::handle_image_sync(int r) {
+   dout(20) << ": r=" << r << dendl;
+ 
+-  {
+-    Mutex::Locker locker(m_lock);
+-    m_image_sync_request->put();
+-    m_image_sync_request = nullptr;
+-  }
+-
+   if (m_canceled) {
+     dout(10) << ": request canceled" << dendl;
+     m_ret_val = -ECANCELED;
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h
+index 35ca883..e7ef050 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h
+@@ -10,6 +10,7 @@
+ #include "cls/journal/cls_journal_types.h"
+ #include "librbd/journal/TypeTraits.h"
+ #include "tools/rbd_mirror/BaseRequest.h"
++#include "tools/rbd_mirror/types.h"
+ #include <list>
+ #include <string>
+ 
+@@ -24,7 +25,6 @@ namespace librbd { namespace journal { struct MirrorPeerClientMeta; } }
+ namespace rbd {
+ namespace mirror {
+ 
+-template <typename> class ImageSync;
+ class ProgressContext;
+ 
+ namespace image_replayer {
+@@ -37,21 +37,24 @@ public:
+   typedef librbd::journal::MirrorPeerClientMeta MirrorPeerClientMeta;
+   typedef rbd::mirror::ProgressContext ProgressContext;
+ 
+-  static BootstrapRequest* create(librados::IoCtx &local_io_ctx,
+-                                  librados::IoCtx &remote_io_ctx,
+-                                  ImageCtxT **local_image_ctx,
+-                                  const std::string &local_image_name,
+-                                  const std::string &remote_image_id,
+-                                  const std::string &global_image_id,
+-                                  ContextWQ *work_queue, SafeTimer *timer,
+-                                  Mutex *timer_lock,
+-                                  const std::string &local_mirror_uuid,
+-                                  const std::string &remote_mirror_uuid,
+-                                  Journaler *journaler,
+-                                  MirrorPeerClientMeta *client_meta,
+-                                  Context *on_finish,
+-				  ProgressContext *progress_ctx = nullptr) {
+-    return new BootstrapRequest(local_io_ctx, remote_io_ctx, local_image_ctx,
++  static BootstrapRequest* create(
++        librados::IoCtx &local_io_ctx,
++        librados::IoCtx &remote_io_ctx,
++        ImageSyncThrottlerRef<ImageCtxT> image_sync_throttler,
++        ImageCtxT **local_image_ctx,
++        const std::string &local_image_name,
++        const std::string &remote_image_id,
++        const std::string &global_image_id,
++        ContextWQ *work_queue, SafeTimer *timer,
++        Mutex *timer_lock,
++        const std::string &local_mirror_uuid,
++        const std::string &remote_mirror_uuid,
++        Journaler *journaler,
++        MirrorPeerClientMeta *client_meta,
++        Context *on_finish,
++        ProgressContext *progress_ctx = nullptr) {
++    return new BootstrapRequest(local_io_ctx, remote_io_ctx,
++                                image_sync_throttler, local_image_ctx,
+                                 local_image_name, remote_image_id,
+                                 global_image_id, work_queue, timer, timer_lock,
+                                 local_mirror_uuid, remote_mirror_uuid,
+@@ -61,6 +64,7 @@ public:
+ 
+   BootstrapRequest(librados::IoCtx &local_io_ctx,
+                    librados::IoCtx &remote_io_ctx,
++                   ImageSyncThrottlerRef<ImageCtxT> image_sync_throttler,
+                    ImageCtxT **local_image_ctx,
+                    const std::string &local_image_name,
+                    const std::string &remote_image_id,
+@@ -134,6 +138,7 @@ private:
+ 
+   librados::IoCtx &m_local_io_ctx;
+   librados::IoCtx &m_remote_io_ctx;
++  ImageSyncThrottlerRef<ImageCtxT> m_image_sync_throttler;
+   ImageCtxT **m_local_image_ctx;
+   std::string m_local_image_name;
+   std::string m_local_image_id;
+@@ -148,7 +153,6 @@ private:
+   MirrorPeerClientMeta *m_client_meta;
+   ProgressContext *m_progress_ctx;
+   Mutex m_lock;
+-  ImageSync<ImageCtxT> *m_image_sync_request = nullptr;
+   bool m_canceled = false;
+ 
+   Tags m_remote_tags;
+diff --git a/src/tools/rbd_mirror/types.h b/src/tools/rbd_mirror/types.h
+index c45b963..9c0bea2 100644
+--- a/src/tools/rbd_mirror/types.h
++++ b/src/tools/rbd_mirror/types.h
+@@ -10,6 +10,7 @@
+ #include <vector>
+ 
+ #include "include/rbd/librbd.hpp"
++#include "ImageSyncThrottler.h"
+ 
+ namespace rbd {
+ namespace mirror {
+@@ -18,6 +19,9 @@ typedef shared_ptr<librados::Rados> RadosRef;
+ typedef shared_ptr<librados::IoCtx> IoCtxRef;
+ typedef shared_ptr<librbd::Image> ImageRef;
+ 
++template <typename I = librbd::ImageCtx>
++using ImageSyncThrottlerRef = std::shared_ptr<ImageSyncThrottler<I>>;
++
+ struct peer_t {
+   peer_t() = default;
+   peer_t(const std::string &uuid, const std::string &cluster_name,

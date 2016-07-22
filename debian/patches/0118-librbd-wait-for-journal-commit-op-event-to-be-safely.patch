@@ -1,0 +1,596 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 19 Jul 2016 00:42:16 -0400
+Subject: librbd: wait for journal commit op event to be safely recorded
+
+Operation request op finish events should not be fire and forget.
+Instead, ensure the event is committed to the journal before
+completing the op. This will avoid several possible split-brain
+events during mirroring.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 47e0fbf231e52d00069c97b72c57c3158445bcf0)
+
+Conflicts:
+	src/test/librbd/operation/test_mock_ResizeRequest.cc: trivial resolution
+
+Resolves: rhbz#1356064
+---
+ src/librbd/AsyncRequest.h                          |  9 ++-
+ src/librbd/Journal.cc                              |  9 +--
+ src/librbd/Journal.h                               | 12 ++--
+ src/librbd/operation/Request.cc                    | 64 +++++++++++++++++++---
+ src/librbd/operation/Request.h                     | 26 ++++++---
+ src/librbd/operation/ResizeRequest.cc              | 26 ++++-----
+ src/librbd/operation/SnapshotCreateRequest.cc      | 30 +++-------
+ src/librbd/operation/SnapshotCreateRequest.h       |  1 -
+ src/librbd/operation/SnapshotRollbackRequest.cc    | 12 ++--
+ src/test/librbd/mock/MockJournal.h                 |  2 +-
+ .../librbd/operation/test_mock_ResizeRequest.cc    |  4 +-
+ src/test/librbd/test_mock_fixture.cc               |  3 +-
+ 12 files changed, 123 insertions(+), 75 deletions(-)
+
+diff --git a/src/librbd/AsyncRequest.h b/src/librbd/AsyncRequest.h
+index 8ca84f5..3a1eb00 100644
+--- a/src/librbd/AsyncRequest.h
++++ b/src/librbd/AsyncRequest.h
+@@ -23,8 +23,7 @@ public:
+   void complete(int r) {
+     if (should_complete(r)) {
+       r = filter_return_code(r);
+-      finish(r);
+-      delete this;
++      finish_and_destroy(r);
+     }
+   }
+ 
+@@ -51,6 +50,12 @@ protected:
+     return r;
+   }
+ 
++  // NOTE: temporary until converted to new state machine format
++  virtual void finish_and_destroy(int r) {
++    finish(r);
++    delete this;
++  }
++
+   virtual void finish(int r) {
+     finish_request();
+     m_on_finish->complete(r);
+diff --git a/src/librbd/Journal.cc b/src/librbd/Journal.cc
+index c8c5c35..cff29bd 100644
+--- a/src/librbd/Journal.cc
++++ b/src/librbd/Journal.cc
+@@ -1006,7 +1006,7 @@ void Journal<I>::append_op_event(uint64_t op_tid,
+ }
+ 
+ template <typename I>
+-void Journal<I>::commit_op_event(uint64_t op_tid, int r) {
++void Journal<I>::commit_op_event(uint64_t op_tid, int r, Context *on_safe) {
+   CephContext *cct = m_image_ctx.cct;
+   ldout(cct, 10) << this << " " << __func__ << ": op_tid=" << op_tid << ", "
+                  << "r=" << r << dendl;
+@@ -1033,7 +1033,7 @@ void Journal<I>::commit_op_event(uint64_t op_tid, int r) {
+ 
+   op_finish_future.flush(create_async_context_callback(
+     m_image_ctx, new C_OpEventSafe(this, op_tid, op_start_future,
+-                                   op_finish_future)));
++                                   op_finish_future, on_safe)));
+ }
+ 
+ template <typename I>
+@@ -1645,7 +1645,8 @@ void Journal<I>::handle_io_event_safe(int r, uint64_t tid) {
+ template <typename I>
+ void Journal<I>::handle_op_event_safe(int r, uint64_t tid,
+                                       const Future &op_start_future,
+-                                      const Future &op_finish_future) {
++                                      const Future &op_finish_future,
++                                      Context *on_safe) {
+   CephContext *cct = m_image_ctx.cct;
+   ldout(cct, 20) << this << " " << __func__ << ": r=" << r << ", "
+                  << "tid=" << tid << dendl;
+@@ -1661,7 +1662,7 @@ void Journal<I>::handle_op_event_safe(int r, uint64_t tid,
+   m_journaler->committed(op_finish_future);
+ 
+   // reduce the replay window after committing an op event
+-  m_journaler->flush_commit_position(nullptr);
++  m_journaler->flush_commit_position(on_safe);
+ }
+ 
+ template <typename I>
+diff --git a/src/librbd/Journal.h b/src/librbd/Journal.h
+index 7f085df..76671ff 100644
+--- a/src/librbd/Journal.h
++++ b/src/librbd/Journal.h
+@@ -143,7 +143,7 @@ public:
+ 
+   void append_op_event(uint64_t op_tid, journal::EventEntry &&event_entry,
+                        Context *on_safe);
+-  void commit_op_event(uint64_t tid, int r);
++  void commit_op_event(uint64_t tid, int r, Context *on_safe);
+   void replay_op_ready(uint64_t op_tid, Context *on_resume);
+ 
+   void flush_event(uint64_t tid, Context *on_safe);
+@@ -221,15 +221,17 @@ private:
+     uint64_t tid;
+     Future op_start_future;
+     Future op_finish_future;
++    Context *on_safe;
+ 
+     C_OpEventSafe(Journal *journal, uint64_t tid, const Future &op_start_future,
+-                  const Future &op_finish_future)
++                  const Future &op_finish_future, Context *on_safe)
+       : journal(journal), tid(tid), op_start_future(op_start_future),
+-        op_finish_future(op_finish_future) {
++        op_finish_future(op_finish_future), on_safe(on_safe) {
+     }
+ 
+     virtual void finish(int r) {
+-      journal->handle_op_event_safe(r, tid, op_start_future, op_finish_future);
++      journal->handle_op_event_safe(r, tid, op_start_future, op_finish_future,
++                                    on_safe);
+     }
+   };
+ 
+@@ -348,7 +350,7 @@ private:
+ 
+   void handle_io_event_safe(int r, uint64_t tid);
+   void handle_op_event_safe(int r, uint64_t tid, const Future &op_start_future,
+-                            const Future &op_finish_future);
++                            const Future &op_finish_future, Context *on_safe);
+ 
+   void stop_recording();
+ 
+diff --git a/src/librbd/operation/Request.cc b/src/librbd/operation/Request.cc
+index 216da1a..32391a9 100644
+--- a/src/librbd/operation/Request.cc
++++ b/src/librbd/operation/Request.cc
+@@ -34,13 +34,40 @@ void Request<I>::send() {
+ }
+ 
+ template <typename I>
+-void Request<I>::finish(int r) {
+-  // automatically commit the event if we don't need to worry
+-  // about affecting concurrent IO ops
+-  if (r < 0 || !can_affect_io()) {
+-    commit_op_event(r);
++Context *Request<I>::create_context_finisher(int r) {
++  // automatically commit the event if required (delete after commit)
++  if (m_appended_op_event && !m_committed_op_event &&
++      commit_op_event(r)) {
++    return nullptr;
+   }
+ 
++  I &image_ctx = this->m_image_ctx;
++  CephContext *cct = image_ctx.cct;
++  ldout(cct, 10) << this << " " << __func__ << dendl;
++  return util::create_context_callback<Request<I>, &Request<I>::finish>(this);
++}
++
++template <typename I>
++void Request<I>::finish_and_destroy(int r) {
++  I &image_ctx = this->m_image_ctx;
++  CephContext *cct = image_ctx.cct;
++  ldout(cct, 10) << this << " " << __func__ << ": r=" << r << dendl;
++
++  // automatically commit the event if required (delete after commit)
++  if (m_appended_op_event && !m_committed_op_event &&
++      commit_op_event(r)) {
++    return;
++  }
++
++  AsyncRequest<I>::finish_and_destroy(r);
++}
++
++template <typename I>
++void Request<I>::finish(int r) {
++  I &image_ctx = this->m_image_ctx;
++  CephContext *cct = image_ctx.cct;
++  ldout(cct, 10) << this << " " << __func__ << ": r=" << r << dendl;
++
+   assert(!m_appended_op_event || m_committed_op_event);
+   AsyncRequest<I>::finish(r);
+ }
+@@ -61,12 +88,12 @@ bool Request<I>::append_op_event() {
+ }
+ 
+ template <typename I>
+-void Request<I>::commit_op_event(int r) {
++bool Request<I>::commit_op_event(int r) {
+   I &image_ctx = this->m_image_ctx;
+   RWLock::RLocker snap_locker(image_ctx.snap_lock);
+ 
+   if (!m_appended_op_event) {
+-    return;
++    return false;
+   }
+ 
+   assert(m_op_tid != 0);
+@@ -80,8 +107,27 @@ void Request<I>::commit_op_event(int r) {
+ 
+     // ops will be canceled / completed before closing journal
+     assert(image_ctx.journal->is_journal_ready());
+-    image_ctx.journal->commit_op_event(m_op_tid, r);
++    image_ctx.journal->commit_op_event(m_op_tid, r,
++                                       new C_CommitOpEvent(this, r));
++    return true;
++  }
++  return false;
++}
++
++template <typename I>
++void Request<I>::handle_commit_op_event(int r, int original_ret_val) {
++  I &image_ctx = this->m_image_ctx;
++  CephContext *cct = image_ctx.cct;
++  ldout(cct, 10) << this << " " << __func__ << ": r=" << r << dendl;
++
++  if (r < 0) {
++    lderr(cct) << "failed to commit op event to journal: " << cpp_strerror(r)
++               << dendl;
++  }
++  if (original_ret_val < 0) {
++    r = original_ret_val;
+   }
++  finish(r);
+ }
+ 
+ template <typename I>
+@@ -108,7 +154,7 @@ void Request<I>::append_op_event(Context *on_safe) {
+   m_op_tid = image_ctx.journal->allocate_op_tid();
+   image_ctx.journal->append_op_event(
+     m_op_tid, journal::EventEntry{create_event(m_op_tid)},
+-    new C_OpEventSafe(this, on_safe));
++    new C_AppendOpEvent(this, on_safe));
+ }
+ 
+ template <typename I>
+diff --git a/src/librbd/operation/Request.h b/src/librbd/operation/Request.h
+index be4d174..77a8712 100644
+--- a/src/librbd/operation/Request.h
++++ b/src/librbd/operation/Request.h
+@@ -54,19 +54,16 @@ protected:
+   }
+ 
+   bool append_op_event();
+-  void commit_op_event(int r);
+ 
+   // NOTE: temporary until converted to new state machine format
+-  Context *create_context_finisher() {
+-    return util::create_context_callback<
+-      Request<ImageCtxT>, &Request<ImageCtxT>::finish>(this);
+-  }
++  Context *create_context_finisher(int r);
++  virtual void finish_and_destroy(int r) override;
+ 
+ private:
+-  struct C_OpEventSafe : public Context {
++  struct C_AppendOpEvent : public Context {
+     Request *request;
+     Context *on_safe;
+-    C_OpEventSafe(Request *request, Context *on_safe)
++    C_AppendOpEvent(Request *request, Context *on_safe)
+       : request(request), on_safe(on_safe) {
+     }
+     virtual void finish(int r) override {
+@@ -77,6 +74,18 @@ private:
+     }
+   };
+ 
++  struct C_CommitOpEvent : public Context {
++    Request *request;
++    int ret_val;
++    C_CommitOpEvent(Request *request, int ret_val)
++      : request(request), ret_val(ret_val) {
++    }
++    virtual void finish(int r) override {
++      request->handle_commit_op_event(r, ret_val);
++      delete request;
++    }
++  };
++
+   uint64_t m_op_tid = 0;
+   bool m_appended_op_event = false;
+   bool m_committed_op_event = false;
+@@ -85,6 +94,9 @@ private:
+   void append_op_event(Context *on_safe);
+   void handle_op_event_safe(int r);
+ 
++  bool commit_op_event(int r);
++  void handle_commit_op_event(int r, int original_ret_val);
++
+ };
+ 
+ } // namespace operation
+diff --git a/src/librbd/operation/ResizeRequest.cc b/src/librbd/operation/ResizeRequest.cc
+index a2ee7b0..a0687eb 100644
+--- a/src/librbd/operation/ResizeRequest.cc
++++ b/src/librbd/operation/ResizeRequest.cc
+@@ -106,7 +106,7 @@ Context *ResizeRequest<I>::handle_pre_block_writes(int *result) {
+   if (*result < 0) {
+     lderr(cct) << "failed to block writes: " << cpp_strerror(*result) << dendl;
+     image_ctx.aio_work_queue->unblock_writes();
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   return send_append_op_event();
+@@ -135,7 +135,7 @@ Context *ResizeRequest<I>::handle_append_op_event(int *result) {
+     lderr(cct) << "failed to commit journal entry: " << cpp_strerror(*result)
+                << dendl;
+     image_ctx.aio_work_queue->unblock_writes();
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   return send_grow_object_map();
+@@ -163,10 +163,10 @@ Context *ResizeRequest<I>::handle_trim_image(int *result) {
+ 
+   if (*result == -ERESTART) {
+     ldout(cct, 5) << "resize operation interrupted" << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   } else if (*result < 0) {
+     lderr(cct) << "failed to trim image: " << cpp_strerror(*result) << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_invalidate_cache();
+@@ -196,7 +196,7 @@ Context *ResizeRequest<I>::handle_invalidate_cache(int *result) {
+   if (*result < 0) {
+     lderr(cct) << "failed to invalidate cache: " << cpp_strerror(*result)
+                << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_post_block_writes();
+@@ -214,10 +214,7 @@ Context *ResizeRequest<I>::send_grow_object_map() {
+   image_ctx.aio_work_queue->unblock_writes();
+ 
+   if (m_original_size == m_new_size) {
+-    if (!m_disable_journal) {
+-      this->commit_op_event(0);
+-    }
+-    return this->create_context_finisher();
++    return this->create_context_finisher(0);
+   } else if (m_new_size < m_original_size) {
+     send_trim_image();
+     return nullptr;
+@@ -270,7 +267,7 @@ Context *ResizeRequest<I>::send_shrink_object_map() {
+     image_ctx.owner_lock.put_read();
+ 
+     update_size_and_overlap();
+-    return this->create_context_finisher();
++    return this->create_context_finisher(0);
+   }
+ 
+   CephContext *cct = image_ctx.cct;
+@@ -298,7 +295,7 @@ Context *ResizeRequest<I>::handle_shrink_object_map(int *result) {
+ 
+   update_size_and_overlap();
+   assert(*result == 0);
+-  return this->create_context_finisher();
++  return this->create_context_finisher(0);
+ }
+ 
+ template <typename I>
+@@ -322,7 +319,7 @@ Context *ResizeRequest<I>::handle_post_block_writes(int *result) {
+     image_ctx.aio_work_queue->unblock_writes();
+     lderr(cct) << "failed to block writes prior to header update: "
+                << cpp_strerror(*result) << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_update_header();
+@@ -374,12 +371,9 @@ Context *ResizeRequest<I>::handle_update_header(int *result) {
+     lderr(cct) << "failed to update image header: " << cpp_strerror(*result)
+                << dendl;
+     image_ctx.aio_work_queue->unblock_writes();
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+-  if (!m_disable_journal) {
+-    this->commit_op_event(0);
+-  }
+   return send_shrink_object_map();
+ }
+ 
+diff --git a/src/librbd/operation/SnapshotCreateRequest.cc b/src/librbd/operation/SnapshotCreateRequest.cc
+index cb92c6c..c3dde26 100644
+--- a/src/librbd/operation/SnapshotCreateRequest.cc
++++ b/src/librbd/operation/SnapshotCreateRequest.cc
+@@ -116,7 +116,7 @@ Context *SnapshotCreateRequest<I>::handle_suspend_aio(int *result) {
+   if (*result < 0) {
+     lderr(cct) << "failed to block writes: " << cpp_strerror(*result) << dendl;
+     image_ctx.aio_work_queue->unblock_writes();
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_append_op_event();
+@@ -147,7 +147,7 @@ Context *SnapshotCreateRequest<I>::handle_append_op_event(int *result) {
+     image_ctx.aio_work_queue->unblock_writes();
+     lderr(cct) << "failed to commit journal entry: " << cpp_strerror(*result)
+                << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_allocate_snap_id();
+@@ -176,10 +176,10 @@ Context *SnapshotCreateRequest<I>::handle_allocate_snap_id(int *result) {
+ 
+   if (*result < 0) {
+     save_result(result);
+-    finalize(*result);
++    image_ctx.aio_work_queue->unblock_writes();
+     lderr(cct) << "failed to allocate snapshot id: " << cpp_strerror(*result)
+                << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_create_snap();
+@@ -251,8 +251,8 @@ Context *SnapshotCreateRequest<I>::send_create_object_map() {
+   if (image_ctx.object_map == nullptr || m_skip_object_map) {
+     image_ctx.snap_lock.put_read();
+ 
+-    finalize(0);
+-    return this->create_context_finisher();
++    image_ctx.aio_work_queue->unblock_writes();
++    return this->create_context_finisher(0);
+   }
+ 
+   CephContext *cct = image_ctx.cct;
+@@ -277,8 +277,8 @@ Context *SnapshotCreateRequest<I>::handle_create_object_map(int *result) {
+ 
+   assert(*result == 0);
+ 
+-  finalize(0);
+-  return this->create_context_finisher();
++  image_ctx.aio_work_queue->unblock_writes();
++  return this->create_context_finisher(0);
+ }
+ 
+ template <typename I>
+@@ -305,20 +305,8 @@ Context *SnapshotCreateRequest<I>::handle_release_snap_id(int *result) {
+   assert(m_ret_val < 0);
+   *result = m_ret_val;
+ 
+-  finalize(m_ret_val);
+-  return this->create_context_finisher();
+-}
+-
+-template <typename I>
+-void SnapshotCreateRequest<I>::finalize(int r) {
+-  I &image_ctx = this->m_image_ctx;
+-  CephContext *cct = image_ctx.cct;
+-  ldout(cct, 5) << this << " " << __func__ << ": r=" << r << dendl;
+-
+-  if (r == 0) {
+-    this->commit_op_event(0);
+-  }
+   image_ctx.aio_work_queue->unblock_writes();
++  return this->create_context_finisher(m_ret_val);
+ }
+ 
+ template <typename I>
+diff --git a/src/librbd/operation/SnapshotCreateRequest.h b/src/librbd/operation/SnapshotCreateRequest.h
+index 35f8b53..62256bb 100644
+--- a/src/librbd/operation/SnapshotCreateRequest.h
++++ b/src/librbd/operation/SnapshotCreateRequest.h
+@@ -106,7 +106,6 @@ private:
+   void send_release_snap_id();
+   Context *handle_release_snap_id(int *result);
+ 
+-  void finalize(int r);
+   void update_snap_context();
+ 
+   void save_result(int *result) {
+diff --git a/src/librbd/operation/SnapshotRollbackRequest.cc b/src/librbd/operation/SnapshotRollbackRequest.cc
+index 6dcf3a7..3335b36 100644
+--- a/src/librbd/operation/SnapshotRollbackRequest.cc
++++ b/src/librbd/operation/SnapshotRollbackRequest.cc
+@@ -107,7 +107,7 @@ Context *SnapshotRollbackRequest<I>::handle_block_writes(int *result) {
+ 
+   if (*result < 0) {
+     lderr(cct) << "failed to block writes: " << cpp_strerror(*result) << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_resize_image();
+@@ -150,7 +150,7 @@ Context *SnapshotRollbackRequest<I>::handle_resize_image(int *result) {
+   if (*result < 0) {
+     lderr(cct) << "failed to resize image for rollback: "
+                << cpp_strerror(*result) << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   send_rollback_object_map();
+@@ -224,11 +224,11 @@ Context *SnapshotRollbackRequest<I>::handle_rollback_objects(int *result) {
+ 
+   if (*result == -ERESTART) {
+     ldout(cct, 5) << "snapshot rollback operation interrupted" << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   } else if (*result < 0) {
+     lderr(cct) << "failed to rollback objects: " << cpp_strerror(*result)
+                << dendl;
+-    return this->create_context_finisher();
++    return this->create_context_finisher(*result);
+   }
+ 
+   return send_refresh_object_map();
+@@ -276,7 +276,7 @@ Context *SnapshotRollbackRequest<I>::send_invalidate_cache() {
+ 
+   apply();
+   if (image_ctx.object_cacher == NULL) {
+-    return this->create_context_finisher();
++    return this->create_context_finisher(0);
+   }
+ 
+   CephContext *cct = image_ctx.cct;
+@@ -300,7 +300,7 @@ Context *SnapshotRollbackRequest<I>::handle_invalidate_cache(int *result) {
+     lderr(cct) << "failed to invalidate cache: " << cpp_strerror(*result)
+                << dendl;
+   }
+-  return this->create_context_finisher();
++  return this->create_context_finisher(*result);
+ }
+ 
+ template <typename I>
+diff --git a/src/test/librbd/mock/MockJournal.h b/src/test/librbd/mock/MockJournal.h
+index f8ef75a..cfcb12c 100644
+--- a/src/test/librbd/mock/MockJournal.h
++++ b/src/test/librbd/mock/MockJournal.h
+@@ -55,7 +55,7 @@ struct MockJournal {
+     append_op_event_mock(op_tid, event_entry, on_safe);
+   }
+ 
+-  MOCK_METHOD2(commit_op_event, void(uint64_t, int));
++  MOCK_METHOD3(commit_op_event, void(uint64_t, int, Context *));
+   MOCK_METHOD2(replay_op_ready, void(uint64_t, Context *));
+ 
+   MOCK_METHOD2(add_listener, void(journal::ListenerType,
+diff --git a/src/test/librbd/operation/test_mock_ResizeRequest.cc b/src/test/librbd/operation/test_mock_ResizeRequest.cc
+index 34b0deb..6147217 100644
+--- a/src/test/librbd/operation/test_mock_ResizeRequest.cc
++++ b/src/test/librbd/operation/test_mock_ResizeRequest.cc
+@@ -180,8 +180,8 @@ TEST_F(TestMockOperationResizeRequest, GrowSuccess) {
+   expect_grow_object_map(mock_image_ctx);
+   expect_block_writes(mock_image_ctx, 0);
+   expect_update_header(mock_image_ctx, 0);
+-  expect_commit_op_event(mock_image_ctx, 0);
+   expect_unblock_writes(mock_image_ctx);
++  expect_commit_op_event(mock_image_ctx, 0);
+   ASSERT_EQ(0, when_resize(mock_image_ctx, ictx->size * 2, 0, false));
+ }
+ 
+@@ -206,9 +206,9 @@ TEST_F(TestMockOperationResizeRequest, ShrinkSuccess) {
+   expect_invalidate_cache(mock_image_ctx, 0);
+   expect_block_writes(mock_image_ctx, 0);
+   expect_update_header(mock_image_ctx, 0);
+-  expect_commit_op_event(mock_image_ctx, 0);
+   expect_shrink_object_map(mock_image_ctx);
+   expect_unblock_writes(mock_image_ctx);
++  expect_commit_op_event(mock_image_ctx, 0);
+   ASSERT_EQ(0, when_resize(mock_image_ctx, ictx->size / 2, 0, false));
+ }
+ 
+diff --git a/src/test/librbd/test_mock_fixture.cc b/src/test/librbd/test_mock_fixture.cc
+index 4cc940c..c2644eb 100644
+--- a/src/test/librbd/test_mock_fixture.cc
++++ b/src/test/librbd/test_mock_fixture.cc
+@@ -112,7 +112,8 @@ void TestMockFixture::expect_commit_op_event(librbd::MockImageCtx &mock_image_ct
+   if (mock_image_ctx.journal != nullptr) {
+     expect_is_journal_replaying(*mock_image_ctx.journal);
+     expect_is_journal_ready(*mock_image_ctx.journal);
+-    EXPECT_CALL(*mock_image_ctx.journal, commit_op_event(1U, r));
++    EXPECT_CALL(*mock_image_ctx.journal, commit_op_event(1U, r, _))
++                  .WillOnce(WithArg<2>(CompleteContext(r, mock_image_ctx.image_ctx->op_work_queue)));
+   }
+ }
+ 

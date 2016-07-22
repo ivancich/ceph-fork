@@ -1,0 +1,178 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 27 Jun 2016 09:21:05 -0400
+Subject: rbd-mirror: use async callback when deletion not in-progress
+
+Fixes: http://tracker.ceph.com/issues/16491
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit c136f443366fe804057a9c1f8c01c3f0a33a4d63)
+
+Resolves: rhbz#1356064
+---
+ src/test/rbd_mirror/image_replay.cc       |  3 ++-
+ src/test/rbd_mirror/test_ImageDeleter.cc  |  2 +-
+ src/test/rbd_mirror/test_ImageReplayer.cc |  6 +++---
+ src/tools/rbd_mirror/ImageDeleter.cc      | 32 ++++++++++++++++++-------------
+ src/tools/rbd_mirror/ImageDeleter.h       |  7 ++++++-
+ src/tools/rbd_mirror/Mirror.cc            |  3 ++-
+ 6 files changed, 33 insertions(+), 20 deletions(-)
+
+diff --git a/src/test/rbd_mirror/image_replay.cc b/src/test/rbd_mirror/image_replay.cc
+index 05dfbce..d8be73a 100644
+--- a/src/test/rbd_mirror/image_replay.cc
++++ b/src/test/rbd_mirror/image_replay.cc
+@@ -189,7 +189,8 @@ int main(int argc, const char **argv)
+   threads = new rbd::mirror::Threads(reinterpret_cast<CephContext*>(
+     local->cct()));
+ 
+-  image_deleter.reset(new rbd::mirror::ImageDeleter(local, threads->timer,
++  image_deleter.reset(new rbd::mirror::ImageDeleter(local, threads->work_queue,
++                                                    threads->timer,
+                                                     &threads->timer_lock));
+ 
+   image_sync_throttler.reset(new rbd::mirror::ImageSyncThrottler<>());
+diff --git a/src/test/rbd_mirror/test_ImageDeleter.cc b/src/test/rbd_mirror/test_ImageDeleter.cc
+index 1386977..a903368 100644
+--- a/src/test/rbd_mirror/test_ImageDeleter.cc
++++ b/src/test/rbd_mirror/test_ImageDeleter.cc
+@@ -63,7 +63,7 @@ public:
+     librbd::mirror_mode_set(m_local_io_ctx, RBD_MIRROR_MODE_IMAGE);
+ 
+     m_deleter = new rbd::mirror::ImageDeleter(_rados,
+-        m_threads->timer, &m_threads->timer_lock);
++        m_threads->work_queue, m_threads->timer, &m_threads->timer_lock);
+ 
+     EXPECT_EQ(0, create_image(rbd, m_local_io_ctx, m_image_name, 1 << 20));
+     ImageCtx *ictx = new ImageCtx(m_image_name, "", "", m_local_io_ctx,
+diff --git a/src/test/rbd_mirror/test_ImageReplayer.cc b/src/test/rbd_mirror/test_ImageReplayer.cc
+index 95fcb20..1877ded 100644
+--- a/src/test/rbd_mirror/test_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_ImageReplayer.cc
+@@ -107,9 +107,9 @@ public:
+       m_local_ioctx.cct()));
+ 
+     m_image_deleter.reset(new rbd::mirror::ImageDeleter(m_local_cluster,
+-                                                      m_threads->timer,
+-                                                      &m_threads->timer_lock));
+-
++                                                        m_threads->work_queue,
++                                                        m_threads->timer,
++                                                        &m_threads->timer_lock));
+     m_image_sync_throttler.reset(new rbd::mirror::ImageSyncThrottler<>());
+   }
+ 
+diff --git a/src/tools/rbd_mirror/ImageDeleter.cc b/src/tools/rbd_mirror/ImageDeleter.cc
+index 528c985..d1816b0 100644
+--- a/src/tools/rbd_mirror/ImageDeleter.cc
++++ b/src/tools/rbd_mirror/ImageDeleter.cc
+@@ -21,6 +21,7 @@
+ #include "common/admin_socket.h"
+ #include "common/debug.h"
+ #include "common/errno.h"
++#include "common/WorkQueue.h"
+ #include "librbd/internal.h"
+ #include "librbd/ImageCtx.h"
+ #include "librbd/ImageState.h"
+@@ -126,10 +127,11 @@ private:
+   Commands commands;
+ };
+ 
+-ImageDeleter::ImageDeleter(RadosRef local_cluster, SafeTimer *timer,
+-                           Mutex *timer_lock)
++ImageDeleter::ImageDeleter(RadosRef local_cluster, ContextWQ *work_queue,
++                           SafeTimer *timer, Mutex *timer_lock)
+   : m_local(local_cluster),
+     m_running(1),
++    m_work_queue(work_queue),
+     m_delete_lock("rbd::mirror::ImageDeleter::Delete"),
+     m_image_deleter_thread(this),
+     m_failed_timer(timer),
+@@ -214,19 +216,21 @@ void ImageDeleter::schedule_image_delete(uint64_t local_pool_id,
+ void ImageDeleter::wait_for_scheduled_deletion(const std::string& image_name,
+                                                Context *ctx,
+                                                bool notify_on_failed_retry) {
+-  {
+-    Mutex::Locker l(m_delete_lock);
+ 
+-    auto del_info = find_delete_info(image_name);
+-    if (del_info) {
+-      (*del_info)->on_delete = ctx;
+-      (*del_info)->notify_on_failed_retry = notify_on_failed_retry;
+-      return;
+-    }
++  ctx = new FunctionContext([this, ctx](int r) {
++      m_work_queue->queue(ctx, r);
++    });
++
++  Mutex::Locker l(m_delete_lock);
++  auto del_info = find_delete_info(image_name);
++  if (!del_info) {
++    // image not scheduled for deletion
++    ctx->complete(0);
++    return;
+   }
+ 
+-  // image not scheduled for deletion
+-  ctx->complete(0);
++  (*del_info)->on_delete = ctx;
++  (*del_info)->notify_on_failed_retry = notify_on_failed_retry;
+ }
+ 
+ bool ImageDeleter::process_image_delete() {
+@@ -510,8 +514,10 @@ void ImageDeleter::print_status(Formatter *f, stringstream *ss) {
+ void ImageDeleter::DeleteInfo::notify(int r) {
+   if (on_delete) {
+     dout(20) << "executing image deletion handler r=" << r << dendl;
+-    on_delete->complete(r);
++
++    Context *ctx = on_delete;
+     on_delete = nullptr;
++    ctx->complete(r);
+   }
+ }
+ 
+diff --git a/src/tools/rbd_mirror/ImageDeleter.h b/src/tools/rbd_mirror/ImageDeleter.h
+index 591f71a..c750122 100644
+--- a/src/tools/rbd_mirror/ImageDeleter.h
++++ b/src/tools/rbd_mirror/ImageDeleter.h
+@@ -24,6 +24,8 @@
+ #include "common/Timer.h"
+ #include "types.h"
+ 
++class ContextWQ;
++
+ namespace rbd {
+ namespace mirror {
+ 
+@@ -36,7 +38,8 @@ class ImageDeleter {
+ public:
+   static const int EISPRM = 1000;
+ 
+-  ImageDeleter(RadosRef local_cluster, SafeTimer *timer, Mutex *timer_lock);
++  ImageDeleter(RadosRef local_cluster, ContextWQ *work_queue,
++               SafeTimer *timer, Mutex *timer_lock);
+   ~ImageDeleter();
+   ImageDeleter(const ImageDeleter&) = delete;
+   ImageDeleter& operator=(const ImageDeleter&) = delete;
+@@ -100,6 +103,8 @@ private:
+   RadosRef m_local;
+   atomic_t m_running;
+ 
++  ContextWQ *m_work_queue;
++
+   std::deque<std::unique_ptr<DeleteInfo> > m_delete_queue;
+   Mutex m_delete_lock;
+   Cond m_delete_queue_cond;
+diff --git a/src/tools/rbd_mirror/Mirror.cc b/src/tools/rbd_mirror/Mirror.cc
+index 2d002fd..666f622 100644
+--- a/src/tools/rbd_mirror/Mirror.cc
++++ b/src/tools/rbd_mirror/Mirror.cc
+@@ -218,7 +218,8 @@ int Mirror::init()
+   // TODO: make interval configurable
+   m_local_cluster_watcher.reset(new ClusterWatcher(m_local, m_lock));
+ 
+-  m_image_deleter.reset(new ImageDeleter(m_local, m_threads->timer,
++  m_image_deleter.reset(new ImageDeleter(m_local, m_threads->work_queue,
++                                         m_threads->timer,
+                                          &m_threads->timer_lock));
+ 
+   m_image_sync_throttler.reset(new ImageSyncThrottler<>());

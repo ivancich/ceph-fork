@@ -1,0 +1,49 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 19 Jul 2016 15:46:49 -0400
+Subject: rbd-mirror: potential memory leak when attempting to cancel image
+ sync
+
+The cancel request could race with the actual scheduling of the image
+sync operation.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit e6cdf955bad500561ddada2791641eba5fb27762)
+
+Resolves: rhbz#1356064
+---
+ .../rbd_mirror/image_replayer/BootstrapRequest.cc  | 22 ++++++++++++++++------
+ 1 file changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+index f471626..0028dcc 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+@@ -549,12 +549,22 @@ void BootstrapRequest<I>::image_sync() {
+     BootstrapRequest<I>, &BootstrapRequest<I>::handle_image_sync>(
+       this);
+ 
+-  m_image_sync_throttler->start_sync(*m_local_image_ctx,
+-                                     m_remote_image_ctx, m_timer,
+-                                     m_timer_lock,
+-                                     m_local_mirror_uuid, m_journaler,
+-                                     m_client_meta, m_work_queue, ctx,
+-                                     m_progress_ctx);
++  {
++    Mutex::Locker locker(m_lock);
++    if (!m_canceled) {
++      m_image_sync_throttler->start_sync(*m_local_image_ctx,
++                                         m_remote_image_ctx, m_timer,
++                                         m_timer_lock,
++                                         m_local_mirror_uuid, m_journaler,
++                                         m_client_meta, m_work_queue, ctx,
++                                         m_progress_ctx);
++      return;
++    }
++  }
++
++  dout(10) << ": request canceled" << dendl;
++  m_ret_val = -ECANCELED;
++  close_remote_image();
+ }
+ 
+ template <typename I>

@@ -1,0 +1,77 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 27 Jun 2016 09:45:25 -0400
+Subject: rbd-mirror: ImageReplayer doesn't need image deleted callback
+
+The Replayer will detect that the ImageReplayer is stopped and will
+schedule the "wait for deleted" callback before attempting to
+restart the ImageReplayer.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 7e5afc71dfd3ec3e7b0ddaca96f92ac6e0414006)
+
+Resolves: rhbz#1356064
+---
+ src/test/rbd_mirror/test_ImageReplayer.cc | 15 +++++++++++++++
+ src/tools/rbd_mirror/ImageReplayer.cc     |  9 ---------
+ 2 files changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/src/test/rbd_mirror/test_ImageReplayer.cc b/src/test/rbd_mirror/test_ImageReplayer.cc
+index 1877ded..dd8e367 100644
+--- a/src/test/rbd_mirror/test_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_ImageReplayer.cc
+@@ -576,6 +576,11 @@ TEST_F(TestImageReplayer, Resync)
+   m_replayer->resync_image(&ctx);
+   ASSERT_EQ(0, ctx.wait());
+ 
++  C_SaferCond delete_ctx;
++  m_image_deleter->wait_for_scheduled_deletion(
++    m_replayer->get_local_image_name(), &delete_ctx);
++  EXPECT_EQ(0, delete_ctx.wait());
++
+   C_SaferCond cond;
+   m_replayer->start(&cond);
+   ASSERT_EQ(0, cond.wait());
+@@ -636,6 +641,11 @@ TEST_F(TestImageReplayer, Resync_While_Stop)
+ 
+   ASSERT_TRUE(m_replayer->is_stopped());
+ 
++  C_SaferCond delete_ctx;
++  m_image_deleter->wait_for_scheduled_deletion(
++    m_replayer->get_local_image_name(), &delete_ctx);
++  EXPECT_EQ(0, delete_ctx.wait());
++
+   C_SaferCond cond3;
+   m_replayer->start(&cond3);
+   ASSERT_EQ(0, cond3.wait());
+@@ -672,6 +682,11 @@ TEST_F(TestImageReplayer, Resync_StartInterrupted)
+ 
+   ASSERT_TRUE(m_replayer->is_stopped());
+ 
++  C_SaferCond delete_ctx;
++  m_image_deleter->wait_for_scheduled_deletion(
++    m_replayer->get_local_image_name(), &delete_ctx);
++  EXPECT_EQ(0, delete_ctx.wait());
++
+   C_SaferCond cond2;
+   m_replayer->start(&cond2);
+   ASSERT_EQ(0, cond2.wait());
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 6eb9a30..7191388 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -1393,15 +1393,6 @@ void ImageReplayer<I>::handle_shut_down(int r, Context *on_start) {
+                                              m_local_image_name,
+                                              m_global_image_id);
+       m_stopping_for_resync = false;
+-
+-      FunctionContext *ctx = new FunctionContext(
+-          [this, r, on_start] (int r) {
+-            handle_shut_down(r, on_start);
+-          }
+-      );
+-      m_image_deleter->wait_for_scheduled_deletion(m_local_image_name,
+-                                                   ctx, false);
+-      return;
+     }
+   }
+ 

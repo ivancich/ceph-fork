@@ -1,0 +1,25 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 23 Jun 2016 20:28:02 -0400
+Subject: rbd-mirror: do not clear image replayer error code after shut down
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 1fc27545c2092c178293ed636b6aadb11bc8cbd3)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/ImageReplayer.cc | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 1baf23b..b568dbc 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -1406,8 +1406,6 @@ void ImageReplayer<I>::handle_shut_down(int r, Context *on_start) {
+     m_stop_requested = false;
+     assert(m_state == STATE_STOPPING);
+     m_state = STATE_STOPPED;
+-    m_state_desc.clear();
+-    m_last_r = 0;
+   }
+ 
+   if (on_start != nullptr) {

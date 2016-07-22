@@ -1,3 +1,83 @@
+ceph (10.2.2-21redhat1) stable; urgency=medium
+
+  * rbd-mirror: fix error messages formatting (rhbz#1356064)
+  * journal: Support for registering metadata listeners in the
+    Journaler (rhbz#1356064)
+  * rbd: journal: Support for listening updates on client metadata
+    (rhbz#1356064)
+  * rbd-mirror: image-replayer: Implementation of resync operation
+    (rhbz#1356064)
+  * rbd-mirror: resync: Added unit tests (rhbz#1356064)
+  * librbd: fix lockdep issue when duplicate event detected
+    (rhbz#1356064)
+  * rbd-mirror: image-replayer: Fix bug in resync listener remotion
+    (rhbz#1356064)
+  * rbd-mirror: image-sync: Periodically update sync point object
+    number (rhbz#1356064)
+  * rbd-mirror: tests: Support for inflight image sync point update
+    (rhbz#1356064)
+  * rbd-mirror: Implementation of image-sync throttler (rhbz#1356064)
+  * rbd-mirror: Usage of image-sync throttler in BootstrapRequest
+    (rhbz#1356064)
+  * rbd-mirror: tests: ImageSyncThrottler unit tests (rhbz#1356064)
+  * rbd-mirror: use async callback when deletion not in-progress
+    (rhbz#1356064)
+  * rbd-mirror: ImageReplayer doesn't need image deleted callback
+    (rhbz#1356064)
+  * rbd-mirror: fixed potential leaking image deletion context
+    callback (rhbz#1356064)
+  * rbd-mirror: cancel image deletion callback on shut down
+    (rhbz#1356064)
+  * rbd-mirror: fix potential image replayer state transition race
+    (rhbz#1356064)
+  * test: missing template specialization for unittest_rbd_mirror
+    (rhbz#1356064)
+  * test: ensure unique template specializations per test case
+    (rhbz#1356064)
+  * rbd-mirror: remove ceph_test_rbd_mirror_image_replay test case
+    (rhbz#1356064)
+  * rbd-mirror: each pool replayer should use its own librados
+    connection (rhbz#1356064)
+  * rbd-mirror: image deleter should use provided librados connection
+    (rhbz#1356064)
+  * rbd-mirror: do not clear image replayer error code after shut down
+    (rhbz#1356064)
+  * rbd-mirror: gracefully restart pool replayer when blacklisted
+    (rhbz#1356064)
+  * rbd-mirror: include local pool id in resync throttle unique key
+    (rhbz#1356064)
+  * librbd: improve journaling debug log messages (rhbz#1356064)
+  * journal: helper class for organizing optional settings
+    (rhbz#1356064)
+  * journal: optionally fetch entries in small chunks during replay
+    (rhbz#1356064)
+  * journal: optionally restrict maximum entry payload size
+    (rhbz#1356064)
+  * journal: replay should only read from a single object set
+    (rhbz#1356064)
+  * journal: support streaming entry playback (rhbz#1356064)
+  * journal: improve debug log messages (rhbz#1356064)
+  * journal: possible deadlock during flush of journal entries
+    (rhbz#1356064)
+  * journal: optimize speed of live replay journal pruning
+    (rhbz#1356064)
+  * librbd: wait for journal commit op event to be safely recorded
+    (rhbz#1356064)
+  * librbd: new configuration option to restrict journal payload size
+    (rhbz#1356064)
+  * rbd-mirror: configuration options to control replay throttling
+    (rhbz#1356064)
+  * rbd-mirror: shut down image replayers in parallel (rhbz#1356064)
+  * rbd-mirror: fix issues detected when attempting clean shut down
+    (rhbz#1356064)
+  * rbd-mirror: potential memory leak when attempting to cancel image
+    sync (rhbz#1356064)
+  * rbd-mirror: do not cancel maintenance ops with missing finish
+    events (rhbz#1356064)
+  * rgw multisite: preserve zone's extra pool (rhbz#1359267)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Fri, 22 Jul 2016 15:41:07 -0400
+
 ceph (10.2.2-20redhat1) stable; urgency=medium
 
   * rgw: fix upgrade from old multisite to new multisite configuration

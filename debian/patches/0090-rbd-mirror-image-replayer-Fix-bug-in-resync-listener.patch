@@ -1,0 +1,27 @@
+From: Ricardo Dias <rdias@suse.com>
+Date: Mon, 27 Jun 2016 11:07:41 +0100
+Subject: rbd-mirror: image-replayer: Fix bug in resync listener remotion
+
+Fixes: http://tracker.ceph.com/issues/16488
+
+Signed-off-by: Ricardo Dias <rdias@suse.com>
+(cherry picked from commit 11a5851e90bca2c1813156bf12dda0192965db37)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/ImageReplayer.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 7d73c7b..11cd5e9 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -1348,7 +1348,7 @@ void ImageReplayer<I>::shut_down(int r, Context *on_start) {
+         ctx->complete(0);
+       });
+     ctx = new FunctionContext([this, ctx](int r) {
+-        m_local_image_ctx->journal->remove_listener(
++        m_local_journal->remove_listener(
+             librbd::journal::ListenerType::RESYNC, m_resync_listener);
+         m_local_replay->shut_down(true, ctx);
+       });

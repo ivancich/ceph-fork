@@ -1,0 +1,44 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 27 Jun 2016 11:13:29 -0400
+Subject: rbd-mirror: fix potential image replayer state transition race
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 3e224c6c03a6a5de0e179bd788387cfa3ff49e9d)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/Replayer.cc | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/Replayer.cc b/src/tools/rbd_mirror/Replayer.cc
+index ae03525..619f07d 100644
+--- a/src/tools/rbd_mirror/Replayer.cc
++++ b/src/tools/rbd_mirror/Replayer.cc
+@@ -709,6 +709,7 @@ bool Replayer::stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer)
+   dout(20) << "global_image_id=" << image_replayer->get_global_image_id()
+            << dendl;
+ 
++  // TODO: check how long it is stopping and alert if it is too long.
+   if (image_replayer->is_stopped()) {
+     m_image_deleter->cancel_waiter(image_replayer->get_local_image_name());
+     if (!m_stopping.read()) {
+@@ -720,9 +721,7 @@ bool Replayer::stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer)
+         image_replayer->get_global_image_id());
+     }
+     return true;
+-  }
+-
+-  if (image_replayer->is_running()) {
++  } else {
+     if (!m_stopping.read()) {
+       dout(20) << "scheduling delete after image replayer stopped" << dendl;
+     }
+@@ -738,8 +737,6 @@ bool Replayer::stop_image_replayer(unique_ptr<ImageReplayer<> > &image_replayer)
+         }
+     );
+     image_replayer->stop(ctx);
+-  } else {
+-    // TODO: checkhow long it is stopping and alert if it is too long.
+   }
+ 
+   return false;

@@ -1,0 +1,70 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 19 Jul 2016 00:50:14 -0400
+Subject: rbd-mirror: configuration options to control replay throttling
+
+Fixes: http://tracker.ceph.com/issues/16223
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 24883e0605907d1f9bcd1206c8a95c3bde30d5dc)
+
+Resolves: rhbz#1356064
+---
+ src/common/config_opts.h                  | 3 +++
+ src/test/rbd_mirror/test_ImageReplayer.cc | 1 +
+ src/tools/rbd_mirror/ImageReplayer.cc     | 9 ++++++---
+ 3 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 3df9f82..10d767b 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1214,6 +1214,9 @@ OPTION(rbd_journal_max_payload_bytes, OPT_U32, 16384) // maximum journal payload
+ /**
+  * RBD Mirror options
+  */
++OPTION(rbd_mirror_journal_commit_age, OPT_DOUBLE, 5) // commit time interval, seconds
++OPTION(rbd_mirror_journal_poll_age, OPT_DOUBLE, 5) // maximum age (in seconds) between successive journal polls
++OPTION(rbd_mirror_journal_max_fetch_bytes, OPT_U32, 32768) // maximum bytes to read from each journal data object per fetch
+ OPTION(rbd_mirror_sync_point_update_age, OPT_DOUBLE, 30) // number of seconds between each update of the image sync point object number
+ OPTION(rbd_mirror_concurrent_image_syncs, OPT_U32, 5) // maximum number of image syncs in parallel
+ 
+diff --git a/src/test/rbd_mirror/test_ImageReplayer.cc b/src/test/rbd_mirror/test_ImageReplayer.cc
+index ca60340..4e85be9 100644
+--- a/src/test/rbd_mirror/test_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_ImageReplayer.cc
+@@ -78,6 +78,7 @@ public:
+   {
+     EXPECT_EQ("", connect_cluster_pp(*m_local_cluster.get()));
+     EXPECT_EQ(0, m_local_cluster->conf_set("rbd_cache", "false"));
++    EXPECT_EQ(0, m_local_cluster->conf_set("rbd_mirror_journal_poll_age", "1"));
+ 
+     m_local_pool_name = get_temp_pool_name();
+     EXPECT_EQ(0, m_local_cluster->pool_create(m_local_pool_name.c_str()));
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index f981481..7110f4f 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -374,7 +374,8 @@ void ImageReplayer<I>::start(Context *on_finish, bool manual)
+ 
+   CephContext *cct = static_cast<CephContext *>(m_local->cct());
+   journal::Settings settings;
+-  settings.commit_interval = cct->_conf->rbd_journal_commit_age;
++  settings.commit_interval = cct->_conf->rbd_mirror_journal_commit_age;
++  settings.max_fetch_bytes = cct->_conf->rbd_mirror_journal_max_fetch_bytes;
+ 
+   m_remote_journaler = new Journaler(m_threads->work_queue,
+                                      m_threads->timer,
+@@ -565,10 +566,12 @@ void ImageReplayer<I>::handle_start_replay(int r) {
+   }
+ 
+   {
++    CephContext *cct = static_cast<CephContext *>(m_local->cct());
++    double poll_seconds = cct->_conf->rbd_mirror_journal_poll_age;
++
+     Mutex::Locker locker(m_lock);
+     m_replay_handler = new ReplayHandler<I>(this);
+-    m_remote_journaler->start_live_replay(m_replay_handler,
+-                                          1 /* TODO: configurable */);
++    m_remote_journaler->start_live_replay(m_replay_handler, poll_seconds);
+ 
+     dout(20) << "m_remote_journaler=" << *m_remote_journaler << dendl;
+   }

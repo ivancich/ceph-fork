@@ -1,0 +1,28 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 21 Jul 2016 07:28:54 -0400
+Subject: rbd-mirror: do not cancel maintenance ops with missing finish events
+
+librbd will replay these ops when opening an image, so rbd-mirror
+should also ensure these ops are replayed.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 862e581553fff510286b58135a1fd69705c06096)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/ImageReplayer.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index bfa4fc8..2aa6cd5 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -896,7 +896,7 @@ void ImageReplayer<I>::replay_flush() {
+         ImageReplayer, &ImageReplayer<I>::handle_stop_replay_request>(this);
+       m_local_journal->start_external_replay(&m_local_replay, ctx, stop_ctx);
+     });
+-  m_local_replay->shut_down(true, ctx);
++  m_local_replay->shut_down(false, ctx);
+ }
+ 
+ template <typename I>

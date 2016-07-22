@@ -1,0 +1,561 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 18 Jul 2016 09:31:40 -0400
+Subject: journal: helper class for organizing optional settings
+
+Additional runtime configuration settings will be needed. The
+new class will avoid the need to expand the constructor.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit dad8328f2d502d18923c35f7b86a0cc2ccec133a)
+
+Resolves: rhbz#1356064
+---
+ src/journal/JournalMetadata.cc          |  9 +++++----
+ src/journal/JournalMetadata.h           |  5 +++--
+ src/journal/Journaler.cc                | 13 +++++++------
+ src/journal/Journaler.h                 |  7 ++++---
+ src/journal/Makefile.am                 |  1 +
+ src/journal/Settings.h                  | 17 +++++++++++++++++
+ src/librbd/Journal.cc                   | 24 +++++++++++-------------
+ src/test/journal/RadosTestFixture.cc    |  9 ++++++---
+ src/test/journal/mock/MockJournaler.h   |  5 +++--
+ src/test/journal/test_Journaler.cc      |  9 +++++----
+ src/test/librbd/fsx.cc                  |  9 +++++----
+ src/test/librbd/journal/test_Entries.cc |  3 ++-
+ src/test/librbd/test_mirroring.cc       |  3 ++-
+ src/test/rbd_mirror/test_ImageSync.cc   |  3 ++-
+ src/tools/rbd/action/Journal.cc         |  3 ++-
+ src/tools/rbd_mirror/ImageReplayer.cc   |  7 +++++--
+ 16 files changed, 80 insertions(+), 47 deletions(-)
+ create mode 100644 src/journal/Settings.h
+
+diff --git a/src/journal/JournalMetadata.cc b/src/journal/JournalMetadata.cc
+index 8fc5634..63c67f2 100644
+--- a/src/journal/JournalMetadata.cc
++++ b/src/journal/JournalMetadata.cc
+@@ -402,9 +402,9 @@ JournalMetadata::JournalMetadata(ContextWQ *work_queue, SafeTimer *timer,
+                                  Mutex *timer_lock, librados::IoCtx &ioctx,
+                                  const std::string &oid,
+                                  const std::string &client_id,
+-                                 double commit_interval)
++                                 const Settings &settings)
+     : RefCountedObject(NULL, 0), m_cct(NULL), m_oid(oid),
+-      m_client_id(client_id), m_commit_interval(commit_interval), m_order(0),
++      m_client_id(client_id), m_settings(settings), m_order(0),
+       m_splay_width(0), m_pool_id(-1), m_initialized(false),
+       m_work_queue(work_queue), m_timer(timer), m_timer_lock(timer_lock),
+       m_lock("JournalMetadata::m_lock"), m_commit_tid(0), m_watch_ctx(this),
+@@ -795,7 +795,8 @@ void JournalMetadata::schedule_commit_task() {
+   assert(m_commit_position_ctx != nullptr);
+   if (m_commit_position_task_ctx == NULL) {
+     m_commit_position_task_ctx = new C_CommitPositionTask(this);
+-    m_timer->add_event_after(m_commit_interval, m_commit_position_task_ctx);
++    m_timer->add_event_after(m_settings.commit_interval,
++                             m_commit_position_task_ctx);
+   }
+ }
+ 
+@@ -1045,7 +1046,7 @@ std::ostream &operator<<(std::ostream &os,
+      << "active_set=" << jm.m_active_set << ", "
+      << "client_id=" << jm.m_client_id << ", "
+      << "commit_tid=" << jm.m_commit_tid << ", "
+-     << "commit_interval=" << jm.m_commit_interval << ", "
++     << "commit_interval=" << jm.m_settings.commit_interval << ", "
+      << "commit_position=" << jm.m_commit_position << ", "
+      << "registered_clients=" << jm.m_registered_clients << "]";
+   return os;
+diff --git a/src/journal/JournalMetadata.h b/src/journal/JournalMetadata.h
+index c2fa711..046e77d 100644
+--- a/src/journal/JournalMetadata.h
++++ b/src/journal/JournalMetadata.h
+@@ -14,6 +14,7 @@
+ #include "cls/journal/cls_journal_types.h"
+ #include "journal/AsyncOpTracker.h"
+ #include "journal/JournalMetadataListener.h"
++#include "journal/Settings.h"
+ #include <boost/intrusive_ptr.hpp>
+ #include <boost/noncopyable.hpp>
+ #include <boost/optional.hpp>
+@@ -44,7 +45,7 @@ public:
+ 
+   JournalMetadata(ContextWQ *work_queue, SafeTimer *timer, Mutex *timer_lock,
+                   librados::IoCtx &ioctx, const std::string &oid,
+-                  const std::string &client_id, double commit_interval);
++                  const std::string &client_id, const Settings &settings);
+   ~JournalMetadata();
+ 
+   void init(Context *on_init);
+@@ -287,7 +288,7 @@ private:
+   CephContext *m_cct;
+   std::string m_oid;
+   std::string m_client_id;
+-  double m_commit_interval;
++  Settings m_settings;
+ 
+   uint8_t m_order;
+   uint8_t m_splay_width;
+diff --git a/src/journal/Journaler.cc b/src/journal/Journaler.cc
+index 7bfbbe9..05d8069 100644
+--- a/src/journal/Journaler.cc
++++ b/src/journal/Journaler.cc
+@@ -68,25 +68,26 @@ Journaler::Threads::~Threads() {
+ 
+ Journaler::Journaler(librados::IoCtx &header_ioctx,
+                      const std::string &journal_id,
+-                     const std::string &client_id, double commit_interval)
++                     const std::string &client_id, const Settings &settings)
+     : m_threads(new Threads(reinterpret_cast<CephContext*>(header_ioctx.cct()))),
+       m_client_id(client_id) {
+   set_up(m_threads->work_queue, m_threads->timer, &m_threads->timer_lock,
+-         header_ioctx, journal_id, commit_interval);
++         header_ioctx, journal_id, settings);
+ }
+ 
+ Journaler::Journaler(ContextWQ *work_queue, SafeTimer *timer,
+                      Mutex *timer_lock, librados::IoCtx &header_ioctx,
+ 		     const std::string &journal_id,
+-		     const std::string &client_id, double commit_interval)
++		     const std::string &client_id, const Settings &settings)
+     : m_client_id(client_id) {
+   set_up(work_queue, timer, timer_lock, header_ioctx, journal_id,
+-         commit_interval);
++         settings);
+ }
+ 
+ void Journaler::set_up(ContextWQ *work_queue, SafeTimer *timer,
+                        Mutex *timer_lock, librados::IoCtx &header_ioctx,
+-                       const std::string &journal_id, double commit_interval) {
++                       const std::string &journal_id,
++                       const Settings &settings) {
+   m_header_ioctx.dup(header_ioctx);
+   m_cct = reinterpret_cast<CephContext *>(m_header_ioctx.cct());
+ 
+@@ -95,7 +96,7 @@ void Journaler::set_up(ContextWQ *work_queue, SafeTimer *timer,
+ 
+   m_metadata = new JournalMetadata(work_queue, timer, timer_lock,
+                                    m_header_ioctx, m_header_oid, m_client_id,
+-                                   commit_interval);
++                                   settings);
+   m_metadata->get();
+ }
+ 
+diff --git a/src/journal/Journaler.h b/src/journal/Journaler.h
+index afa3c88..93a89bb 100644
+--- a/src/journal/Journaler.h
++++ b/src/journal/Journaler.h
+@@ -28,6 +28,7 @@ class JournalRecorder;
+ class JournalTrimmer;
+ class ReplayEntry;
+ class ReplayHandler;
++class Settings;
+ 
+ class Journaler {
+ public:
+@@ -51,10 +52,10 @@ public:
+ 				       const std::string &journal_id);
+ 
+   Journaler(librados::IoCtx &header_ioctx, const std::string &journal_id,
+-	    const std::string &client_id, double commit_interval);
++	    const std::string &client_id, const Settings &settings);
+   Journaler(ContextWQ *work_queue, SafeTimer *timer, Mutex *timer_lock,
+             librados::IoCtx &header_ioctx, const std::string &journal_id,
+-	    const std::string &client_id, double commit_interval);
++	    const std::string &client_id, const Settings &settings);
+   ~Journaler();
+ 
+   int exists(bool *header_exists) const;
+@@ -145,7 +146,7 @@ private:
+ 
+   void set_up(ContextWQ *work_queue, SafeTimer *timer, Mutex *timer_lock,
+               librados::IoCtx &header_ioctx, const std::string &journal_id,
+-              double commit_interval);
++              const Settings &settings);
+ 
+   int init_complete();
+   void create_player(ReplayHandler *replay_handler);
+diff --git a/src/journal/Makefile.am b/src/journal/Makefile.am
+index 8e222d9..ad4d54d 100644
+--- a/src/journal/Makefile.am
++++ b/src/journal/Makefile.am
+@@ -31,6 +31,7 @@ noinst_HEADERS += \
+ 	journal/ObjectRecorder.h \
+ 	journal/ReplayEntry.h \
+ 	journal/ReplayHandler.h \
++	journal/Settings.h \
+ 	journal/Utils.h
+ DENCODER_DEPS += libjournal.la
+ 
+diff --git a/src/journal/Settings.h b/src/journal/Settings.h
+new file mode 100644
+index 0000000..9580734
+--- /dev/null
++++ b/src/journal/Settings.h
+@@ -0,0 +1,17 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#ifndef CEPH_JOURNAL_SETTINGS_H
++#define CEPH_JOURNAL_SETTINGS_H
++
++#include "include/int_types.h"
++
++namespace journal {
++
++struct Settings {
++  double commit_interval = 5;         ///< commit position throttle (in secs)
++};
++
++} // namespace journal
++
++#endif // # CEPH_JOURNAL_SETTINGS_H
+diff --git a/src/librbd/Journal.cc b/src/librbd/Journal.cc
+index ef327ed..c8c5c35 100644
+--- a/src/librbd/Journal.cc
++++ b/src/librbd/Journal.cc
+@@ -11,6 +11,7 @@
+ #include "cls/journal/cls_journal_types.h"
+ #include "journal/Journaler.h"
+ #include "journal/ReplayEntry.h"
++#include "journal/Settings.h"
+ #include "common/errno.h"
+ #include "common/Timer.h"
+ #include "common/WorkQueue.h"
+@@ -372,8 +373,7 @@ int Journal<I>::create(librados::IoCtx &io_ctx, const std::string &image_id,
+     pool_id = data_io_ctx.get_id();
+   }
+ 
+-  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID,
+-                      cct->_conf->rbd_journal_commit_age);
++  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID, {});
+ 
+   int r = journaler.create(order, splay_width, pool_id);
+   if (r < 0) {
+@@ -411,8 +411,7 @@ int Journal<I>::remove(librados::IoCtx &io_ctx, const std::string &image_id) {
+   CephContext *cct = reinterpret_cast<CephContext *>(io_ctx.cct());
+   ldout(cct, 5) << __func__ << ": image=" << image_id << dendl;
+ 
+-  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID,
+-                      cct->_conf->rbd_journal_commit_age);
++  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID, {});
+ 
+   bool journal_exists;
+   int r = journaler.exists(&journal_exists);
+@@ -453,8 +452,7 @@ int Journal<I>::reset(librados::IoCtx &io_ctx, const std::string &image_id) {
+   CephContext *cct = reinterpret_cast<CephContext *>(io_ctx.cct());
+   ldout(cct, 5) << __func__ << ": image=" << image_id << dendl;
+ 
+-  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID,
+-                      cct->_conf->rbd_journal_commit_age);
++  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID, {});
+ 
+   C_SaferCond cond;
+   journaler.init(&cond);
+@@ -531,8 +529,7 @@ int Journal<I>::get_tag_owner(IoCtx& io_ctx, std::string& image_id,
+   CephContext *cct = (CephContext *)io_ctx.cct();
+   ldout(cct, 20) << __func__ << dendl;
+ 
+-  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID,
+-                      cct->_conf->rbd_journal_commit_age);
++  Journaler journaler(io_ctx, image_id, IMAGE_CLIENT_ID, {});
+ 
+   cls::journal::Client client;
+   journal::ImageClientMeta client_meta;
+@@ -551,8 +548,7 @@ int Journal<I>::request_resync(I *image_ctx) {
+   CephContext *cct = image_ctx->cct;
+   ldout(cct, 20) << __func__ << dendl;
+ 
+-  Journaler journaler(image_ctx->md_ctx, image_ctx->id, IMAGE_CLIENT_ID,
+-                      image_ctx->cct->_conf->rbd_journal_commit_age);
++  Journaler journaler(image_ctx->md_ctx, image_ctx->id, IMAGE_CLIENT_ID, {});
+ 
+   cls::journal::Client client;
+   journal::ImageClientMeta client_meta;
+@@ -590,8 +586,7 @@ int Journal<I>::promote(I *image_ctx) {
+   CephContext *cct = image_ctx->cct;
+   ldout(cct, 20) << __func__ << dendl;
+ 
+-  Journaler journaler(image_ctx->md_ctx, image_ctx->id, IMAGE_CLIENT_ID,
+-                      image_ctx->cct->_conf->rbd_journal_commit_age);
++  Journaler journaler(image_ctx->md_ctx, image_ctx->id, IMAGE_CLIENT_ID, {});
+ 
+   cls::journal::Client client;
+   journal::ImageClientMeta client_meta;
+@@ -1192,9 +1187,12 @@ void Journal<I>::create_journaler() {
+   assert(m_journaler == NULL);
+ 
+   transition_state(STATE_INITIALIZING, 0);
++  ::journal::Settings settings;
++  settings.commit_interval = m_image_ctx.journal_commit_age;
++
+   m_journaler = new Journaler(m_work_queue, m_timer, m_timer_lock,
+ 			      m_image_ctx.md_ctx, m_image_ctx.id,
+-			      IMAGE_CLIENT_ID, m_image_ctx.journal_commit_age);
++			      IMAGE_CLIENT_ID, settings);
+   m_journaler->init(create_async_context_callback(
+     m_image_ctx, create_context_callback<
+       Journal<I>, &Journal<I>::handle_initialized>(this)));
+diff --git a/src/test/journal/RadosTestFixture.cc b/src/test/journal/RadosTestFixture.cc
+index f57e5ae..40ff485 100644
+--- a/src/test/journal/RadosTestFixture.cc
++++ b/src/test/journal/RadosTestFixture.cc
+@@ -5,6 +5,7 @@
+ #include "cls/journal/cls_journal_client.h"
+ #include "include/stringify.h"
+ #include "common/WorkQueue.h"
++#include "journal/Settings.h"
+ 
+ RadosTestFixture::RadosTestFixture()
+   : m_timer_lock("m_timer_lock"), m_timer(NULL), m_listener(this) {
+@@ -67,10 +68,12 @@ int RadosTestFixture::create(const std::string &oid, uint8_t order,
+ 
+ journal::JournalMetadataPtr RadosTestFixture::create_metadata(
+     const std::string &oid, const std::string &client_id,
+-    double commit_internal) {
++    double commit_interval) {
++  journal::Settings settings;
++  settings.commit_interval = commit_interval;
++
+   journal::JournalMetadataPtr metadata(new journal::JournalMetadata(
+-    m_work_queue, m_timer, &m_timer_lock, m_ioctx, oid, client_id,
+-    commit_internal));
++    m_work_queue, m_timer, &m_timer_lock, m_ioctx, oid, client_id, settings));
+   m_metadatas.push_back(metadata);
+   return metadata;
+ }
+diff --git a/src/test/journal/mock/MockJournaler.h b/src/test/journal/mock/MockJournaler.h
+index aab3ec1..e1998ff 100644
+--- a/src/test/journal/mock/MockJournaler.h
++++ b/src/test/journal/mock/MockJournaler.h
+@@ -20,6 +20,7 @@ class SafeTimer;
+ namespace journal {
+ 
+ struct ReplayHandler;
++struct Settings;
+ 
+ struct MockFuture {
+   static MockFuture *s_instance;
+@@ -136,13 +137,13 @@ struct MockJournaler {
+ struct MockJournalerProxy {
+   template <typename IoCtxT>
+   MockJournalerProxy(IoCtxT &header_ioctx, const std::string &,
+-                     const std::string &, double) {
++                     const std::string &, const Settings&) {
+     MockJournaler::get_instance().construct();
+   }
+ 
+   MockJournalerProxy(ContextWQ *work_queue, SafeTimer *timer, Mutex *timer_lock,
+                      librados::IoCtx &header_ioctx, const std::string &journal_id,
+-                     const std::string &client_id, double commit_interval) {
++                     const std::string &client_id, const Settings&) {
+     MockJournaler::get_instance().construct();
+   }
+ 
+diff --git a/src/test/journal/test_Journaler.cc b/src/test/journal/test_Journaler.cc
+index 4a4ecba..d400695 100644
+--- a/src/test/journal/test_Journaler.cc
++++ b/src/test/journal/test_Journaler.cc
+@@ -2,6 +2,7 @@
+ // vim: ts=8 sw=2 smarttab
+ 
+ #include "journal/Journaler.h"
++#include "journal/Settings.h"
+ #include "include/stringify.h"
+ #include "gtest/gtest.h"
+ #include "test/librados/test.h"
+@@ -21,7 +22,7 @@ public:
+     RadosTestFixture::SetUp();
+     m_journal_id = get_temp_journal_id();
+     m_journaler = new journal::Journaler(m_work_queue, m_timer, &m_timer_lock,
+-                                         m_ioctx, m_journal_id, CLIENT_ID, 5);
++                                         m_ioctx, m_journal_id, CLIENT_ID, {});
+   }
+ 
+   virtual void TearDown() {
+@@ -47,7 +48,7 @@ public:
+ 
+   int register_client(const std::string &client_id, const std::string &desc) {
+     journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock,
+-                                 m_ioctx, m_journal_id, client_id, 5);
++                                 m_ioctx, m_journal_id, client_id, {});
+     bufferlist data;
+     data.append(desc);
+     C_SaferCond cond;
+@@ -57,7 +58,7 @@ public:
+ 
+   int update_client(const std::string &client_id, const std::string &desc) {
+     journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock,
+-                                 m_ioctx, m_journal_id, client_id, 5);
++                                 m_ioctx, m_journal_id, client_id, {});
+     bufferlist data;
+     data.append(desc);
+     C_SaferCond cond;
+@@ -67,7 +68,7 @@ public:
+ 
+   int unregister_client(const std::string &client_id) {
+     journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock,
+-                                 m_ioctx, m_journal_id, client_id, 5);
++                                 m_ioctx, m_journal_id, client_id, {});
+     C_SaferCond cond;
+     journaler.unregister_client(&cond);
+     return cond.wait();
+diff --git a/src/test/librbd/fsx.cc b/src/test/librbd/fsx.cc
+index 2a06b34..ddcb9b7 100644
+--- a/src/test/librbd/fsx.cc
++++ b/src/test/librbd/fsx.cc
+@@ -53,6 +53,7 @@
+ #include "journal/Journaler.h"
+ #include "journal/ReplayEntry.h"
+ #include "journal/ReplayHandler.h"
++#include "journal/Settings.h"
+ 
+ #include <boost/scope_exit.hpp>
+ 
+@@ -322,7 +323,7 @@ int register_journal(rados_ioctx_t ioctx, const char *image_name) {
+                 return r;
+         }
+ 
+-        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, 0);
++        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, {});
+         r = journaler.register_client(bufferlist());
+         if (r < 0) {
+                 simple_err("failed to register journal client", r);
+@@ -341,7 +342,7 @@ int unregister_journal(rados_ioctx_t ioctx, const char *image_name) {
+                 return r;
+         }
+ 
+-        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, 0);
++        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, {});
+         r = journaler.unregister_client();
+         if (r < 0) {
+                 simple_err("failed to unregister journal client", r);
+@@ -393,7 +394,7 @@ int replay_journal(rados_ioctx_t ioctx, const char *image_name,
+                 return r;
+         }
+ 
+-        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, 0);
++        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, {});
+         C_SaferCond init_ctx;
+         journaler.init(&init_ctx);
+         BOOST_SCOPE_EXIT_ALL( (&journaler) ) {
+@@ -406,7 +407,7 @@ int replay_journal(rados_ioctx_t ioctx, const char *image_name,
+                 return r;
+         }
+ 
+-        journal::Journaler replay_journaler(io_ctx, replay_image_id, "", 0);
++        journal::Journaler replay_journaler(io_ctx, replay_image_id, "", {});
+ 
+         C_SaferCond replay_init_ctx;
+         replay_journaler.init(&replay_init_ctx);
+diff --git a/src/test/librbd/journal/test_Entries.cc b/src/test/librbd/journal/test_Entries.cc
+index bd984fd..3fd24f2 100644
+--- a/src/test/librbd/journal/test_Entries.cc
++++ b/src/test/librbd/journal/test_Entries.cc
+@@ -11,6 +11,7 @@
+ #include "journal/Journaler.h"
+ #include "journal/ReplayEntry.h"
+ #include "journal/ReplayHandler.h"
++#include "journal/Settings.h"
+ #include <list>
+ #include <boost/variant.hpp>
+ 
+@@ -66,7 +67,7 @@ public:
+ 
+   journal::Journaler *create_journaler(librbd::ImageCtx *ictx) {
+     journal::Journaler *journaler = new journal::Journaler(
+-      ictx->md_ctx, ictx->id, "dummy client", 1);
++      ictx->md_ctx, ictx->id, "dummy client", {});
+ 
+     int r = journaler->register_client(bufferlist());
+     if (r < 0) {
+diff --git a/src/test/librbd/test_mirroring.cc b/src/test/librbd/test_mirroring.cc
+index 758fc45..cd59dd7 100644
+--- a/src/test/librbd/test_mirroring.cc
++++ b/src/test/librbd/test_mirroring.cc
+@@ -24,6 +24,7 @@
+ #include "librbd/Operations.h"
+ #include "librbd/journal/Types.h"
+ #include "journal/Journaler.h"
++#include "journal/Settings.h"
+ #include <boost/scope_exit.hpp>
+ #include <boost/assign/list_of.hpp>
+ #include <utility>
+@@ -267,7 +268,7 @@ public:
+       "remote-image-id", {{"sync-point-snap", boost::none}}, {});
+     librbd::journal::ClientData client_data(peer_client_meta);
+ 
+-    journal::Journaler journaler(io_ctx, image_id, "peer-client", 5);
++    journal::Journaler journaler(io_ctx, image_id, "peer-client", {});
+     C_SaferCond init_ctx;
+     journaler.init(&init_ctx);
+     ASSERT_EQ(-ENOENT, init_ctx.wait());
+diff --git a/src/test/rbd_mirror/test_ImageSync.cc b/src/test/rbd_mirror/test_ImageSync.cc
+index 922d499..6097169 100644
+--- a/src/test/rbd_mirror/test_ImageSync.cc
++++ b/src/test/rbd_mirror/test_ImageSync.cc
+@@ -5,6 +5,7 @@
+ #include "include/stringify.h"
+ #include "include/rbd/librbd.hpp"
+ #include "journal/Journaler.h"
++#include "journal/Settings.h"
+ #include "librbd/AioImageRequestWQ.h"
+ #include "librbd/ExclusiveLock.h"
+ #include "librbd/ImageCtx.h"
+@@ -54,7 +55,7 @@ public:
+ 
+     m_remote_journaler = new ::journal::Journaler(
+       m_threads->work_queue, m_threads->timer, &m_threads->timer_lock,
+-      m_remote_io_ctx, m_remote_image_ctx->id, "mirror-uuid", 5);
++      m_remote_io_ctx, m_remote_image_ctx->id, "mirror-uuid", {});
+ 
+     m_client_meta = {"image-id"};
+ 
+diff --git a/src/tools/rbd/action/Journal.cc b/src/tools/rbd/action/Journal.cc
+index 0c85c26..ca2620a 100644
+--- a/src/tools/rbd/action/Journal.cc
++++ b/src/tools/rbd/action/Journal.cc
+@@ -20,6 +20,7 @@
+ #include "journal/Journaler.h"
+ #include "journal/ReplayEntry.h"
+ #include "journal/ReplayHandler.h"
++#include "journal/Settings.h"
+ #include "librbd/journal/Types.h"
+ 
+ namespace rbd {
+@@ -171,7 +172,7 @@ class Journaler : public ::journal::Journaler {
+ public:
+   Journaler(librados::IoCtx& io_ctx, const std::string& journal_id,
+ 	    const std::string &client_id) :
+-    ::journal::Journaler(io_ctx, journal_id, client_id, 5) {
++    ::journal::Journaler(io_ctx, journal_id, client_id, {}) {
+   }
+ 
+   int init() {
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index b568dbc..f981481 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -11,6 +11,7 @@
+ #include "global/global_context.h"
+ #include "journal/Journaler.h"
+ #include "journal/ReplayHandler.h"
++#include "journal/Settings.h"
+ #include "librbd/ExclusiveLock.h"
+ #include "librbd/ImageCtx.h"
+ #include "librbd/ImageState.h"
+@@ -372,12 +373,14 @@ void ImageReplayer<I>::start(Context *on_finish, bool manual)
+   }
+ 
+   CephContext *cct = static_cast<CephContext *>(m_local->cct());
+-  double commit_interval = cct->_conf->rbd_journal_commit_age;
++  journal::Settings settings;
++  settings.commit_interval = cct->_conf->rbd_journal_commit_age;
++
+   m_remote_journaler = new Journaler(m_threads->work_queue,
+                                      m_threads->timer,
+ 				     &m_threads->timer_lock, m_remote_ioctx,
+ 				     m_remote_image_id, m_local_mirror_uuid,
+-                                     commit_interval);
++                                     settings);
+   bootstrap();
+ }
+ 

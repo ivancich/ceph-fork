@@ -1,0 +1,89 @@
+From: Mykola Golub <mgolub@mirantis.com>
+Date: Fri, 10 Jun 2016 14:04:04 +0300
+Subject: rbd-mirror: fix error messages formatting
+
+Signed-off-by: Mykola Golub <mgolub@mirantis.com>
+(cherry picked from commit 2af72480d94b2b90ed6eac7b3e131437864eada7)
+
+Resolves: rhbz#1356064
+---
+ src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc  |  2 +-
+ src/tools/rbd_mirror/image_sync/SnapshotCopyRequest.cc   | 10 +++++-----
+ src/tools/rbd_mirror/image_sync/SnapshotCreateRequest.cc |  2 +-
+ 3 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+index 57f0705..9299cee 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+@@ -500,7 +500,7 @@ void BootstrapRequest<I>::handle_get_remote_tags(int r) {
+   {
+     RWLock::RLocker snap_locker(local_image_ctx->snap_lock);
+     if (local_image_ctx->journal == nullptr) {
+-      derr << "local image does not support journaling" << dendl;
++      derr << ": local image does not support journaling" << dendl;
+       m_ret_val = -EINVAL;
+       close_local_image();
+       return;
+diff --git a/src/tools/rbd_mirror/image_sync/SnapshotCopyRequest.cc b/src/tools/rbd_mirror/image_sync/SnapshotCopyRequest.cc
+index 026e72f..2f0946c 100644
+--- a/src/tools/rbd_mirror/image_sync/SnapshotCopyRequest.cc
++++ b/src/tools/rbd_mirror/image_sync/SnapshotCopyRequest.cc
+@@ -105,7 +105,7 @@ void SnapshotCopyRequest<I>::send_snap_unprotect() {
+     int r = m_local_image_ctx->is_snap_unprotected(local_snap_id,
+                                                    &local_unprotected);
+     if (r < 0) {
+-      derr << "failed to retrieve local snap unprotect status: "
++      derr << ": failed to retrieve local snap unprotect status: "
+            << cpp_strerror(r) << dendl;
+       m_local_image_ctx->snap_lock.put_read();
+       finish(r);
+@@ -132,7 +132,7 @@ void SnapshotCopyRequest<I>::send_snap_unprotect() {
+       r = m_remote_image_ctx->is_snap_unprotected(snap_seq_it->first,
+                                                   &remote_unprotected);
+       if (r < 0) {
+-        derr << "failed to retrieve remote snap unprotect status: "
++        derr << ": failed to retrieve remote snap unprotect status: "
+              << cpp_strerror(r) << dendl;
+         m_remote_image_ctx->snap_lock.put_read();
+         finish(r);
+@@ -281,7 +281,7 @@ void SnapshotCopyRequest<I>::send_snap_create() {
+   auto snap_info_it = m_remote_image_ctx->snap_info.find(m_prev_snap_id);
+   if (snap_info_it == m_remote_image_ctx->snap_info.end()) {
+     m_remote_image_ctx->snap_lock.put_read();
+-    derr << "failed to retrieve remote snap info: " << m_snap_name
++    derr << ": failed to retrieve remote snap info: " << m_snap_name
+          << dendl;
+     finish(-ENOENT);
+     return;
+@@ -358,7 +358,7 @@ void SnapshotCopyRequest<I>::send_snap_protect() {
+     int r = m_remote_image_ctx->is_snap_protected(remote_snap_id,
+                                                   &remote_protected);
+     if (r < 0) {
+-      derr << "failed to retrieve remote snap protect status: "
++      derr << ": failed to retrieve remote snap protect status: "
+            << cpp_strerror(r) << dendl;
+       m_remote_image_ctx->snap_lock.put_read();
+       finish(r);
+@@ -380,7 +380,7 @@ void SnapshotCopyRequest<I>::send_snap_protect() {
+     r = m_local_image_ctx->is_snap_protected(snap_seq_it->second,
+                                              &local_protected);
+     if (r < 0) {
+-      derr << "failed to retrieve local snap protect status: "
++      derr << ": failed to retrieve local snap protect status: "
+            << cpp_strerror(r) << dendl;
+       m_local_image_ctx->snap_lock.put_read();
+       finish(r);
+diff --git a/src/tools/rbd_mirror/image_sync/SnapshotCreateRequest.cc b/src/tools/rbd_mirror/image_sync/SnapshotCreateRequest.cc
+index ee0c80f..ac04618 100644
+--- a/src/tools/rbd_mirror/image_sync/SnapshotCreateRequest.cc
++++ b/src/tools/rbd_mirror/image_sync/SnapshotCreateRequest.cc
+@@ -214,7 +214,7 @@ void SnapshotCreateRequest<I>::send_create_object_map() {
+   m_local_image_ctx->snap_lock.get_read();
+   auto snap_it = m_local_image_ctx->snap_ids.find(m_snap_name);
+   if (snap_it == m_local_image_ctx->snap_ids.end()) {
+-    derr << "failed to locate snap: " << m_snap_name << dendl;
++    derr << ": failed to locate snap: " << m_snap_name << dendl;
+     m_local_image_ctx->snap_lock.put_read();
+     finish(-ENOENT);
+     return;

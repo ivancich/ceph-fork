@@ -1,0 +1,49 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 20 Jul 2016 08:06:13 -0400
+Subject: journal: optionally restrict maximum entry payload size
+
+Journal playback will need to read at least a full entry which was
+currently limited to the maximum object size. In memory constrained
+environment, this new optional limit will set a fix upper bound on
+memory usage.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 8c1877b82fee0db1dba76252b32ff348226d41a7)
+
+Resolves: rhbz#1356064
+---
+ src/journal/Journaler.cc | 8 +++++++-
+ src/journal/Settings.h   | 1 +
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/journal/Journaler.cc b/src/journal/Journaler.cc
+index 05d8069..27cc338 100644
+--- a/src/journal/Journaler.cc
++++ b/src/journal/Journaler.cc
+@@ -395,7 +395,13 @@ void Journaler::stop_append(Context *on_safe) {
+ }
+ 
+ uint64_t Journaler::get_max_append_size() const {
+-  return m_metadata->get_object_size() - Entry::get_fixed_size();
++  uint64_t max_payload_size = m_metadata->get_object_size() -
++                              Entry::get_fixed_size();
++  if (m_metadata->get_settings().max_payload_bytes > 0) {
++    max_payload_size = MIN(max_payload_size,
++                           m_metadata->get_settings().max_payload_bytes);
++  }
++  return max_payload_size;
+ }
+ 
+ Future Journaler::append(uint64_t tag_tid, const bufferlist &payload_bl) {
+diff --git a/src/journal/Settings.h b/src/journal/Settings.h
+index d8f5e74..603770c 100644
+--- a/src/journal/Settings.h
++++ b/src/journal/Settings.h
+@@ -11,6 +11,7 @@ namespace journal {
+ struct Settings {
+   double commit_interval = 5;         ///< commit position throttle (in secs)
+   uint64_t max_fetch_bytes = 0;       ///< 0 implies no limit
++  uint64_t max_payload_bytes = 0;     ///< 0 implies object size limit
+ };
+ 
+ } // namespace journal

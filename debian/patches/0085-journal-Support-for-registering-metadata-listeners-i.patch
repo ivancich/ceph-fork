@@ -1,0 +1,256 @@
+From: Ricardo Dias <rdias@suse.com>
+Date: Thu, 12 May 2016 18:09:09 +0100
+Subject: journal: Support for registering metadata listeners in the Journaler
+
+Signed-off-by: Ricardo Dias <rdias@suse.com>
+(cherry picked from commit c535eb0399cd649371db233ee1ed01cf5441a4b3)
+
+Resolves: rhbz#1356064
+---
+ src/journal/JournalMetadata.cc        |  4 ++--
+ src/journal/JournalMetadata.h         | 12 ++++--------
+ src/journal/JournalMetadataListener.h | 30 ++++++++++++++++++++++++++++++
+ src/journal/JournalRecorder.h         |  2 +-
+ src/journal/JournalTrimmer.h          |  2 +-
+ src/journal/Journaler.cc              |  8 ++++++++
+ src/journal/Journaler.h               |  4 ++++
+ src/journal/Makefile.am               |  1 +
+ src/test/journal/RadosTestFixture.h   |  2 +-
+ src/test/journal/mock/MockJournaler.h | 15 +++++++++++++++
+ 10 files changed, 67 insertions(+), 13 deletions(-)
+ create mode 100644 src/journal/JournalMetadataListener.h
+
+diff --git a/src/journal/JournalMetadata.cc b/src/journal/JournalMetadata.cc
+index ed586a3..8fc5634 100644
+--- a/src/journal/JournalMetadata.cc
++++ b/src/journal/JournalMetadata.cc
+@@ -587,7 +587,7 @@ void JournalMetadata::get_tags(const boost::optional<uint64_t> &tag_class,
+   ctx->send();
+ }
+ 
+-void JournalMetadata::add_listener(Listener *listener) {
++void JournalMetadata::add_listener(JournalMetadataListener *listener) {
+   Mutex::Locker locker(m_lock);
+   while (m_update_notifications > 0) {
+     m_update_cond.Wait(m_lock);
+@@ -595,7 +595,7 @@ void JournalMetadata::add_listener(Listener *listener) {
+   m_listeners.push_back(listener);
+ }
+ 
+-void JournalMetadata::remove_listener(Listener *listener) {
++void JournalMetadata::remove_listener(JournalMetadataListener *listener) {
+   Mutex::Locker locker(m_lock);
+   while (m_update_notifications > 0) {
+     m_update_cond.Wait(m_lock);
+diff --git a/src/journal/JournalMetadata.h b/src/journal/JournalMetadata.h
+index 1c084a4..c2fa711 100644
+--- a/src/journal/JournalMetadata.h
++++ b/src/journal/JournalMetadata.h
+@@ -13,6 +13,7 @@
+ #include "common/WorkQueue.h"
+ #include "cls/journal/cls_journal_types.h"
+ #include "journal/AsyncOpTracker.h"
++#include "journal/JournalMetadataListener.h"
+ #include <boost/intrusive_ptr.hpp>
+ #include <boost/noncopyable.hpp>
+ #include <boost/optional.hpp>
+@@ -41,11 +42,6 @@ public:
+   typedef std::set<Client> RegisteredClients;
+   typedef std::list<Tag> Tags;
+ 
+-  struct Listener {
+-    virtual ~Listener() {};
+-    virtual void handle_update(JournalMetadata *) = 0;
+-  };
+-
+   JournalMetadata(ContextWQ *work_queue, SafeTimer *timer, Mutex *timer_lock,
+                   librados::IoCtx &ioctx, const std::string &oid,
+                   const std::string &client_id, double commit_interval);
+@@ -62,8 +58,8 @@ public:
+   void get_mutable_metadata(uint64_t *minimum_set, uint64_t *active_set,
+ 			    RegisteredClients *clients, Context *on_finish);
+ 
+-  void add_listener(Listener *listener);
+-  void remove_listener(Listener *listener);
++  void add_listener(JournalMetadataListener *listener);
++  void remove_listener(JournalMetadataListener *listener);
+ 
+   void register_client(const bufferlist &data, Context *on_finish);
+   void update_client(const bufferlist &data, Context *on_finish);
+@@ -150,7 +146,7 @@ public:
+ 
+ private:
+   typedef std::map<uint64_t, uint64_t> AllocatedEntryTids;
+-  typedef std::list<Listener*> Listeners;
++  typedef std::list<JournalMetadataListener*> Listeners;
+ 
+   struct CommitEntry {
+     uint64_t object_num;
+diff --git a/src/journal/JournalMetadataListener.h b/src/journal/JournalMetadataListener.h
+new file mode 100644
+index 0000000..121fe68
+--- /dev/null
++++ b/src/journal/JournalMetadataListener.h
+@@ -0,0 +1,30 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++/*
++ * Ceph - scalable distributed file system
++ *
++ * Copyright (C) 2016 SUSE LINUX GmbH
++ *
++ * This is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License version 2.1, as published by the Free Software
++ * Foundation.  See file COPYING.
++ *
++ */
++
++#ifndef CEPH_JOURNAL_JOURNAL_METADATA_LISTENER_H
++#define CEPH_JOURNAL_JOURNAL_METADATA_LISTENER_H
++
++namespace journal {
++
++class JournalMetadata;
++
++struct JournalMetadataListener {
++  virtual ~JournalMetadataListener() {};
++  virtual void handle_update(JournalMetadata *) = 0;
++};
++
++} // namespace journal
++
++#endif // CEPH_JOURNAL_JOURNAL_METADATA_LISTENER_H
++
+diff --git a/src/journal/JournalRecorder.h b/src/journal/JournalRecorder.h
+index 68a1d8f..6ed2e63 100644
+--- a/src/journal/JournalRecorder.h
++++ b/src/journal/JournalRecorder.h
+@@ -36,7 +36,7 @@ public:
+ private:
+   typedef std::map<uint8_t, ObjectRecorderPtr> ObjectRecorderPtrs;
+ 
+-  struct Listener : public JournalMetadata::Listener {
++  struct Listener : public JournalMetadataListener {
+     JournalRecorder *journal_recorder;
+ 
+     Listener(JournalRecorder *_journal_recorder)
+diff --git a/src/journal/JournalTrimmer.h b/src/journal/JournalTrimmer.h
+index 26bfca7..ec76d72 100644
+--- a/src/journal/JournalTrimmer.h
++++ b/src/journal/JournalTrimmer.h
+@@ -33,7 +33,7 @@ public:
+ private:
+   typedef std::function<Context*()> CreateContext;
+ 
+-  struct MetadataListener : public JournalMetadata::Listener {
++  struct MetadataListener : public JournalMetadataListener {
+     JournalTrimmer *journal_trimmmer;
+ 
+     MetadataListener(JournalTrimmer *journal_trimmmer)
+diff --git a/src/journal/Journaler.cc b/src/journal/Journaler.cc
+index 1db5247..7bfbbe9 100644
+--- a/src/journal/Journaler.cc
++++ b/src/journal/Journaler.cc
+@@ -244,6 +244,14 @@ void Journaler::flush_commit_position(Context *on_safe) {
+   m_metadata->flush_commit_position(on_safe);
+ }
+ 
++void Journaler::add_listener(JournalMetadataListener *listener) {
++  m_metadata->add_listener(listener);
++}
++
++void Journaler::remove_listener(JournalMetadataListener *listener) {
++  m_metadata->remove_listener(listener);
++}
++
+ int Journaler::register_client(const bufferlist &data) {
+   C_SaferCond cond;
+   register_client(data, &cond);
+diff --git a/src/journal/Journaler.h b/src/journal/Journaler.h
+index f30a3a5..afa3c88 100644
+--- a/src/journal/Journaler.h
++++ b/src/journal/Journaler.h
+@@ -9,6 +9,7 @@
+ #include "include/Context.h"
+ #include "include/rados/librados.hpp"
+ #include "journal/Future.h"
++#include "journal/JournalMetadataListener.h"
+ #include "cls/journal/cls_journal_types.h"
+ #include <list>
+ #include <map>
+@@ -71,6 +72,9 @@ public:
+   void get_mutable_metadata(uint64_t *minimum_set, uint64_t *active_set,
+ 			    RegisteredClients *clients, Context *on_finish);
+ 
++  void add_listener(JournalMetadataListener *listener);
++  void remove_listener(JournalMetadataListener *listener);
++
+   int register_client(const bufferlist &data);
+   void register_client(const bufferlist &data, Context *on_finish);
+ 
+diff --git a/src/journal/Makefile.am b/src/journal/Makefile.am
+index 4f0cd18..8e222d9 100644
+--- a/src/journal/Makefile.am
++++ b/src/journal/Makefile.am
+@@ -23,6 +23,7 @@ noinst_HEADERS += \
+ 	journal/FutureImpl.h \
+ 	journal/Journaler.h \
+ 	journal/JournalMetadata.h \
++	journal/JournalMetadataListener.h \
+ 	journal/JournalPlayer.h \
+ 	journal/JournalRecorder.h \
+ 	journal/JournalTrimmer.h \
+diff --git a/src/test/journal/RadosTestFixture.h b/src/test/journal/RadosTestFixture.h
+index d7cd1a8..bbd6dde 100644
+--- a/src/test/journal/RadosTestFixture.h
++++ b/src/test/journal/RadosTestFixture.h
+@@ -35,7 +35,7 @@ public:
+ 
+   bufferlist create_payload(const std::string &payload);
+ 
+-  struct Listener : public journal::JournalMetadata::Listener {
++  struct Listener : public journal::JournalMetadataListener {
+     RadosTestFixture *test_fixture;
+     Mutex mutex;
+     Cond cond;
+diff --git a/src/test/journal/mock/MockJournaler.h b/src/test/journal/mock/MockJournaler.h
+index 05efb42..aab3ec1 100644
+--- a/src/test/journal/mock/MockJournaler.h
++++ b/src/test/journal/mock/MockJournaler.h
+@@ -128,6 +128,9 @@ struct MockJournaler {
+   MOCK_METHOD1(committed, void(const MockFutureProxy &future));
+   MOCK_METHOD1(flush_commit_position, void(Context*));
+ 
++  MOCK_METHOD1(add_listener, void(JournalMetadataListener *));
++  MOCK_METHOD1(remove_listener, void(JournalMetadataListener *));
++
+ };
+ 
+ struct MockJournalerProxy {
+@@ -155,6 +158,10 @@ struct MockJournalerProxy {
+   int register_client(const bufferlist &data) {
+     return -EINVAL;
+   }
++  void unregister_client(Context *ctx) {
++    ctx->complete(-EINVAL);
++  }
++
+   void allocate_tag(uint64_t, const bufferlist &,
+                     cls::journal::Tag*, Context *on_finish) {
+     on_finish->complete(-EINVAL);
+@@ -266,6 +273,14 @@ struct MockJournalerProxy {
+   void flush_commit_position(Context *on_finish) {
+     MockJournaler::get_instance().flush_commit_position(on_finish);
+   }
++
++  void add_listener(JournalMetadataListener *listener) {
++    MockJournaler::get_instance().add_listener(listener);
++  }
++
++  void remove_listener(JournalMetadataListener *listener) {
++    MockJournaler::get_instance().remove_listener(listener);
++  }
+ };
+ 
+ std::ostream &operator<<(std::ostream &os, const MockJournalerProxy &);
