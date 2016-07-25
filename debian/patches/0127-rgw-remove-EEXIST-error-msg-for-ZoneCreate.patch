@@ -1,0 +1,35 @@
+From: Abhishek Lekshmanan <abhishek@suse.com>
+Date: Tue, 3 May 2016 14:56:38 +0200
+Subject: rgw: remove -EEXIST error msg for ZoneCreate
+
+currently for any admin operations like user create etc. you would
+always see:
+
+`RGWZoneParams::create(): error creating default zone params: (17) File
+Exists`
+
+in stdout as the debug level is set to 0, which doesn't make much sense
+for an end user, so skip the error message, callers of the function handle
+the error message anyway, so we skip it here
+
+Fixes: http://tracker.ceph.com/issues/15720
+Signed-off-by: Abhishek Lekshmanan <abhishek@suse.com>
+(cherry picked from commit 2ace9d7f349ef09d3ed87fb216cda3e305ef706f)
+
+Resolves: rhbz#1359609
+---
+ src/rgw/rgw_rados.cc | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 24ffe36..17a86fd 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -1509,7 +1509,6 @@ int RGWZoneParams::create(bool exclusive)
+ 
+   r = RGWSystemMetaObj::create(exclusive);
+   if (r < 0) {
+-    ldout(cct, 0) << "RGWZoneParams::create(): error creating default zone params: " << cpp_strerror(-r) << dendl;
+     return r;
+   }
+ 

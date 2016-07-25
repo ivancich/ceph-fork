@@ -123,3 +123,5 @@
 0123-rbd-mirror-potential-memory-leak-when-attempting-to-.patch
 0124-rbd-mirror-do-not-cancel-maintenance-ops-with-missin.patch
 0125-rgw-multisite-preserve-zone-s-extra-pool.patch
+0126-rgw-remove-bucket-index-objects-when-deleting-the-bu.patch
+0127-rgw-remove-EEXIST-error-msg-for-ZoneCreate.patch

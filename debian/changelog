@@ -1,3 +1,11 @@
+ceph (10.2.2-22redhat1) stable; urgency=medium
+
+  * rgw: remove bucket index objects when deleting the bucket
+    (rhbz#1353435)
+  * rgw: remove -EEXIST error msg for ZoneCreate (rhbz#1359609)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 25 Jul 2016 16:06:26 -0600
+
 ceph (10.2.2-21redhat1) stable; urgency=medium
 
   * rbd-mirror: fix error messages formatting (rhbz#1356064)
