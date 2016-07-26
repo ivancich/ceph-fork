@@ -4,7 +4,7 @@ export DH_VERBOSE=1
 export DESTDIR=$(CURDIR)/debian/tmp
 
 # Custom "ceph --version" information:
-export COMMIT=49a48142f2f075dae5a4c47cc8c936e0bba5e35f
+export COMMIT=00ae803cb956d7bca455ee506de21f44255110ac
 export DEB_VERSION := $(shell dpkg-parsechangelog | egrep '^Version:' | cut -f 2 -d ' ')
 
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))

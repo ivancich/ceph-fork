@@ -1,0 +1,40 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Tue, 26 Jul 2016 12:50:13 -0400
+Subject: rgw: clear realm watch on failed watch_restart
+
+if the realm is deleted while the gateway has a watch, it's disconnected
+and watch_restart() will fail. this results in a watch handle of 0,
+which leads to a segfault on ~RGWRealmWatcher when we pass it to
+unwatch()
+
+this commit cleans up the watch when watch_restart() fails, so we don't
+try to unwatch() on destruction
+
+Fixes: http://tracker.ceph.com/issues/16817
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit e5b8b5b27502fdacdac38effd7a55fd719911e85)
+
+Resolves: rhbz#1360435
+---
+ src/rgw/rgw_realm_watcher.cc | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_realm_watcher.cc b/src/rgw/rgw_realm_watcher.cc
+index d9383d6..0ed332c 100644
+--- a/src/rgw/rgw_realm_watcher.cc
++++ b/src/rgw/rgw_realm_watcher.cc
+@@ -130,9 +130,12 @@ int RGWRealmWatcher::watch_restart()
+         << " with " << cpp_strerror(-r) << dendl;
+   }
+   r = pool_ctx.watch2(watch_oid, &watch_handle, this);
+-  if (r < 0)
++  if (r < 0) {
+     lderr(cct) << "Failed to restart watch on " << watch_oid
+         << " with " << cpp_strerror(-r) << dendl;
++    pool_ctx.close();
++    watch_oid.clear();
++  }
+   return r;
+ }
+ 
