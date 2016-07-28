@@ -1,0 +1,78 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Thu, 28 Jul 2016 09:55:05 -0400
+Subject: radosgw-admin: zone[group] modify can change realm id
+
+allows the default zone and zonegroup (created with empty realm_id) to
+be later added to a realm. the 'modify' command now accepts either
+--realm_id=id or --rgw-realm=name
+
+Fixes: http://tracker.ceph.com/issues/16839
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 064b7e953dd6ace2c32b94150e70959e95a01761)
+
+Resolves: rhbz#1360396
+---
+ src/rgw/rgw_admin.cc | 28 ++++++++++++++++++++++++++++
+ src/rgw/rgw_rados.h  |  2 ++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 37f7258..5f8730c 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -3037,6 +3037,20 @@ int main(int argc, char **argv)
+           need_update = true;
+         }
+ 
++        if (!realm_id.empty()) {
++          zonegroup.realm_id = realm_id;
++          need_update = true;
++        } else if (!realm_name.empty()) {
++          // get realm id from name
++          RGWRealm realm{g_ceph_context, store};
++          ret = realm.read_id(realm_name, zonegroup.realm_id);
++          if (ret < 0) {
++            cerr << "failed to find realm by name " << realm_name << std::endl;
++            return -ret;
++          }
++          need_update = true;
++        }
++
+         if (need_update) {
+           zonegroup.post_process_params();
+ 	  ret = zonegroup.update();
+@@ -3510,6 +3524,20 @@ int main(int argc, char **argv)
+           need_zone_update = true;
+         }
+ 
++        if (!realm_id.empty()) {
++          zone.realm_id = realm_id;
++          need_zone_update = true;
++        } else if (!realm_name.empty()) {
++          // get realm id from name
++          RGWRealm realm{g_ceph_context, store};
++          ret = realm.read_id(realm_name, zone.realm_id);
++          if (ret < 0) {
++            cerr << "failed to find realm by name " << realm_name << std::endl;
++            return -ret;
++          }
++          need_zone_update = true;
++        }
++
+         if (need_zone_update) {
+           ret = zone.update();
+           if (ret < 0) {
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index a57e9a1..3f63e6e 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -1334,6 +1334,8 @@ public:
+   const string& get_info_oid_prefix(bool old_format = false);
+   const string& get_predefined_name(CephContext *cct);
+ 
++  using RGWSystemMetaObj::read_id; // expose as public for radosgw-admin
++
+   void dump(Formatter *f) const;
+   void decode_json(JSONObj *obj);
+ 

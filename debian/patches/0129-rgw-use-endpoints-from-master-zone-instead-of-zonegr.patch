@@ -1,0 +1,56 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 27 Jul 2016 12:16:57 -0400
+Subject: rgw: use endpoints from master zone instead of zonegroup
+
+Fixes: http://tracker.ceph.com/issues/16834
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit d4872ec9f7554ff49f4be336fe59cdd2051ee2a5)
+
+Resolves: rhbz#1359696
+---
+ src/rgw/rgw_rados.cc | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 17a86fd..af2f2cb 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -3559,10 +3559,18 @@ int RGWRados::init_zg_from_period(bool *initialized)
+   for (iter = current_period.get_map().zonegroups.begin();
+        iter != current_period.get_map().zonegroups.end(); ++iter){
+     const RGWZoneGroup& zg = iter->second;
+-    add_new_connection_to_map(zonegroup_conn_map, zg, new RGWRESTConn(cct, this, zg.get_id(), zg.endpoints));
++    // use endpoints from the zonegroup's master zone
++    auto master = zg.zones.find(zg.master_zone);
++    if (master == zg.zones.end()) {
++      ldout(cct, 0) << "zonegroup " << zg.get_name() << " missing zone for "
++          "master_zone=" << zg.master_zone << dendl;
++      return -EINVAL;
++    }
++    const auto& endpoints = master->second.endpoints;
++    add_new_connection_to_map(zonegroup_conn_map, zg, new RGWRESTConn(cct, this, zg.get_id(), endpoints));
+     if (!current_period.get_master_zonegroup().empty() &&
+         zg.get_id() == current_period.get_master_zonegroup()) {
+-      rest_master_conn = new RGWRESTConn(cct, this, zg.get_id(), zg.endpoints);
++      rest_master_conn = new RGWRESTConn(cct, this, zg.get_id(), endpoints);
+     }
+   }
+ 
+@@ -3595,7 +3603,15 @@ int RGWRados::init_zg_from_local(bool *creating_defaults)
+   }
+   ldout(cct, 20) << "zonegroup " << zonegroup.get_name() << dendl;
+   if (zonegroup.is_master) {
+-    rest_master_conn = new RGWRESTConn(cct, this, zonegroup.get_id(), zonegroup.endpoints);
++    // use endpoints from the zonegroup's master zone
++    auto master = zonegroup.zones.find(zonegroup.master_zone);
++    if (master == zonegroup.zones.end()) {
++      ldout(cct, 0) << "zonegroup " << zonegroup.get_name() << " missing zone for "
++          "master_zone=" << zonegroup.master_zone << dendl;
++      return -EINVAL;
++    }
++    const auto& endpoints = master->second.endpoints;
++    rest_master_conn = new RGWRESTConn(cct, this, zonegroup.get_id(), endpoints);
+   }
+ 
+   return 0;

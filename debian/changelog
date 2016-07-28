@@ -1,3 +1,12 @@
+ceph (10.2.2-24redhat1) stable; urgency=medium
+
+  * rgw: use endpoints from master zone instead of zonegroup
+    (rhbz#1359696)
+  * radosgw-admin: zone[group] modify can change realm id
+    (rhbz#1360396)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 28 Jul 2016 12:42:14 -0600
+
 ceph (10.2.2-23redhat1) stable; urgency=medium
 
   * rgw: clear realm watch on failed watch_restart (rhbz#1360435)

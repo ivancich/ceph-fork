@@ -126,3 +126,5 @@
 0126-rgw-remove-bucket-index-objects-when-deleting-the-bu.patch
 0127-rgw-remove-EEXIST-error-msg-for-ZoneCreate.patch
 0128-rgw-clear-realm-watch-on-failed-watch_restart.patch
+0129-rgw-use-endpoints-from-master-zone-instead-of-zonegr.patch
+0130-radosgw-admin-zone-group-modify-can-change-realm-id.patch
