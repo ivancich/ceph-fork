@@ -128,3 +128,4 @@
 0128-rgw-clear-realm-watch-on-failed-watch_restart.patch
 0129-rgw-use-endpoints-from-master-zone-instead-of-zonegr.patch
 0130-radosgw-admin-zone-group-modify-can-change-realm-id.patch
+0131-rgw-add-reinit-rebind-logic-ldap.patch

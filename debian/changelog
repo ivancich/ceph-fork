@@ -1,3 +1,9 @@
+ceph (10.2.2-25redhat1) stable; urgency=medium
+
+  * rgw: add reinit/rebind logic (ldap) (rhbz#1361760)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 02 Aug 2016 08:16:26 -0600
+
 ceph (10.2.2-24redhat1) stable; urgency=medium
 
   * rgw: use endpoints from master zone instead of zonegroup
