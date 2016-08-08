@@ -133,3 +133,7 @@
 0133-filestore-Improve-logging.patch
 0134-filestore-Clear-objects-before-calling-collection_li.patch
 0135-os-Fix-HashIndex-recursive_remove-to-remove-everythi.patch
+0136-rgw_file-refuse-ops-on-deleted-targets.patch
+0137-rgw-file-refuse-to-rename-directories.patch
+0138-rgw-nfs-don-t-leak-fh-mtx-in-lookup_handle.patch
+0139-rgw-nfs-fix-write-continuations.patch

@@ -1,0 +1,249 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Fri, 5 Aug 2016 10:03:33 -0400
+Subject: rgw nfs: don't leak fh->mtx in lookup_handle()
+
+This change fixes a serious latent locking problem, noticed after
+updating the ganesha/rgw driver invalidation after renames.
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit d74d46170d7104a6553674f111bbdbe3a116cf54)
+
+(with previous 2 commits)
+Resolves: rhbz#1357896
+---
+ src/rgw/rgw_file.cc | 81 ++++++++++++++++++++++++++++++++++++++++++++++++-----
+ src/rgw/rgw_file.h  | 42 +++++++++++++++++++++++++--
+ 2 files changed, 114 insertions(+), 9 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 538b05f..e454099 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -252,7 +252,7 @@ namespace rgw {
+ 
+ 	/* rgw_fh ref+ */
+ 	rgw_fh = get_rgwfh(fh);
+-	rgw_fh->mtx.lock();
++	rgw_fh->mtx.lock(); /* LOCKED */
+       }
+ 
+       std::string oname = rgw_fh->relative_object_name();
+@@ -268,6 +268,14 @@ namespace rgw {
+ 
+     rgw_fh->flags |= RGWFileHandle::FLAG_DELETED;
+     fh_cache.remove(rgw_fh->fh.fh_hk.object, rgw_fh, cohort::lru::FLAG_NONE);
++
++#if 1 /* XXX verify clear cache */
++    fh_key fhk(rgw_fh->fh.fh_hk);
++    LookupFHResult tfhr = lookup_fh(fhk, RGWFileHandle::FLAG_LOCKED);
++    RGWFileHandle* nfh = get<0>(tfhr);
++    assert(!nfh);
++#endif
++
+     rgw_fh->mtx.unlock();
+     unref(rgw_fh);
+ 
+@@ -282,6 +290,8 @@ namespace rgw {
+      * succeeds */
+     int rc = -EINVAL;
+ 
++    real_time t;
++
+     std::string src_name{_src_name};
+     std::string dst_name{_dst_name};
+ 
+@@ -304,12 +314,22 @@ namespace rgw {
+ 			<< " rejecting attempt to rename directory path="
+ 			<< rgw_fh->full_object_name()
+ 			<< dendl;
+-      rgw_fh->mtx.unlock(); /* !LOCKED */
+-      unref(rgw_fh); /* -ref */
+       rc = -EPERM;
+-      goto out;
++      goto unlock;
++    }
++
++    /* forbid renaming open files (violates intent, for now) */
++    if (rgw_fh->is_open()) {
++      ldout(get_context(), 12) << __func__
++			<< " rejecting attempt to rename open file path="
++			<< rgw_fh->full_object_name()
++			<< dendl;
++      rc = -EPERM;
++      goto unlock;
+     }
+ 
++    t = real_clock::now();
++
+     for (int ix : {0, 1}) {
+       switch (ix) {
+       case 0:
+@@ -319,8 +339,26 @@ namespace rgw {
+ 	int rc = rgwlib.get_fe()->execute_req(&req);
+ 	if ((rc != 0) ||
+ 	    ((rc = req.get_ret()) != 0)) {
+-	  goto out;
++	  ldout(get_context(), 1)
++	    << __func__
++	    << " rename step 0 failed src="
++	    << src_fh->full_object_name() << " " << src_name
++	    << " dst=" << dst_fh->full_object_name()
++	    << " " << dst_name
++	    << "rc " << rc
++	    << dendl;
++	  goto unlock;
+ 	}
++	ldout(get_context(), 12)
++	  << __func__
++	  << " rename step 0 success src="
++	  << src_fh->full_object_name() << " " << src_name
++	  << " dst=" << dst_fh->full_object_name()
++	  << " " << dst_name
++	  << " rc " << rc
++	  << dendl;
++	/* update dst change id */
++	dst_fh->set_times(t);
+       }
+       break;
+       case 1:
+@@ -328,14 +366,37 @@ namespace rgw {
+ 	rc = this->unlink(rgw_fh /* LOCKED */, _src_name,
+ 			  RGWFileHandle::FLAG_UNLINK_THIS);
+ 	/* !LOCKED, -ref */
+-	if (! rc)
+-	  goto out;
++	if (! rc) {
++	  ldout(get_context(), 12)
++	    << __func__
++	    << " rename step 1 success src="
++	    << src_fh->full_object_name() << " " << src_name
++	    << " dst=" << dst_fh->full_object_name()
++	    << " " << dst_name
++	    << " rc " << rc
++	    << dendl;
++	  /* update src change id */
++	  src_fh->set_times(t);
++	} else {
++	  ldout(get_context(), 1)
++	    << __func__
++	    << " rename step 1 failed src="
++	    << src_fh->full_object_name() << " " << src_name
++	    << " dst=" << dst_fh->full_object_name()
++	    << " " << dst_name
++	    << " rc " << rc
++	    << dendl;
++	}
+       }
+       break;
+       default:
+ 	abort();
+       } /* switch */
+     } /* ix */
++  unlock:
++    rgw_fh->mtx.unlock(); /* !LOCKED */
++    unref(rgw_fh); /* -ref */
++
+   out:
+     return rc;
+   } /* RGWLibFS::rename */
+@@ -1222,6 +1283,12 @@ int rgw_getattr(struct rgw_fs *rgw_fs,
+   RGWLibFS *fs = static_cast<RGWLibFS*>(rgw_fs->fs_private);
+   RGWFileHandle* rgw_fh = get_rgwfh(fh);
+ 
++  int rc = -(fs->getattr(rgw_fh, st));
++  if (rc != 0) {
++    // do it again
++    rc = -(fs->getattr(rgw_fh, st));
++  }
++
+   return -(fs->getattr(rgw_fh, st));
+ }
+ 
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index bda4959..0bab892 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -153,6 +153,7 @@ namespace rgw {
+   {
+     struct rgw_file_handle fh;
+     std::mutex mtx;
++
+     RGWLibFS* fs;
+     RGWFileHandle* bucket;
+     RGWFileHandle* parent;
+@@ -232,6 +233,7 @@ namespace rgw {
+     static constexpr uint32_t FLAG_LOCK =   0x0040;
+     static constexpr uint32_t FLAG_DELETED = 0x0080;
+     static constexpr uint32_t FLAG_UNLINK_THIS = 0x0100;
++    static constexpr uint32_t FLAG_LOCKED = 0x0200;
+ 
+ #define CREATE_FLAGS(x) \
+     ((x) & ~(RGWFileHandle::FLAG_CREATE|RGWFileHandle::FLAG_LOCK))
+@@ -805,6 +807,41 @@ namespace rgw {
+       return ret;
+     } /* authorize */
+ 
++    /* find RGWFileHandle by id  */
++    LookupFHResult lookup_fh(const fh_key& fhk,
++			     const uint32_t flags = RGWFileHandle::FLAG_NONE) {
++      using std::get;
++
++      // cast int32_t(RGWFileHandle::FLAG_NONE) due to strictness of Clang 
++      // the cast transfers a lvalue into a rvalue  in the ctor
++      // check the commit message for the full details
++      LookupFHResult fhr { nullptr, uint32_t(RGWFileHandle::FLAG_NONE) };
++
++      RGWFileHandle::FHCache::Latch lat;
++
++    retry:
++      RGWFileHandle* fh =
++	fh_cache.find_latch(fhk.fh_hk.object /* partition selector*/,
++			    fhk /* key */, lat /* serializer */,
++			    RGWFileHandle::FHCache::FLAG_LOCK);
++      /* LATCHED */
++      if (fh) {
++	fh->mtx.lock(); // XXX !RAII because may-return-LOCKED
++	/* need initial ref from LRU (fast path) */
++	if (! fh_lru.ref(fh, cohort::lru::FLAG_INITIAL)) {
++	  lat.lock->unlock();
++	  fh->mtx.unlock();
++	  goto retry; /* !LATCHED */
++	}
++	/* LATCHED, LOCKED */
++	if (! (flags & RGWFileHandle::FLAG_LOCK))
++	  fh->mtx.unlock(); /* ! LOCKED */
++      }
++      lat.lock->unlock(); /* !LATCHED */
++      get<0>(fhr) = fh;
++      return fhr;
++    } /* lookup_fh(const fh_key&) */
++
+     /* find or create an RGWFileHandle */
+     LookupFHResult lookup_fh(RGWFileHandle* parent, const char *name,
+ 			     const uint32_t flags = RGWFileHandle::FLAG_NONE) {
+@@ -878,7 +915,7 @@ namespace rgw {
+     out:
+       get<0>(fhr) = fh;
+       return fhr;
+-    }
++    } /*  lookup_fh(RGWFileHandle*, const char *, const uint32_t) */
+ 
+     inline void unref(RGWFileHandle* fh) {
+       (void) fh_lru.unref(fh, cohort::lru::FLAG_NONE);
+@@ -944,7 +981,7 @@ namespace rgw {
+       if (fh->flags & RGWFileHandle::FLAG_DELETED) {
+ 	/* for now, delay briefly and retry */
+ 	lat.lock->unlock();
+-	fh->mtx.unlock();
++	fh->mtx.unlock(); /* !LOCKED */
+ 	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+ 	goto retry; /* !LATCHED */
+       }
+@@ -956,6 +993,7 @@ namespace rgw {
+       /* LATCHED */
+     out:
+       lat.lock->unlock(); /* !LATCHED */
++      fh->mtx.unlock(); /* !LOCKED */
+       return fh;
+     }
+ 

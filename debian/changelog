@@ -1,3 +1,12 @@
+ceph (10.2.2-28redhat1) stable; urgency=medium
+
+  * rgw_file: refuse ops on deleted targets (rhbz#1357896)
+  * rgw file: refuse to rename directories (rhbz#1357896)
+  * rgw nfs: don't leak fh->mtx in lookup_handle() (rhbz#1357896)
+  * rgw nfs: fix write continuations (rhbz#1359406)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 08 Aug 2016 15:41:16 -0600
+
 ceph (10.2.2-27redhat1) stable; urgency=medium
 
   * filestore: Improve logging (rhbz#1363807)
