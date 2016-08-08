@@ -1,0 +1,39 @@
+From: "Robin H. Johnson" <robin.johnson@dreamhost.com>
+Date: Thu, 4 Aug 2016 17:15:18 -0700
+Subject: rgw: Fix civetweb IPv6
+
+Commit c38e3cbb6f7c6221209f2b512cba18c564c895a4 introduced a second
+compiled version of src/civetweb/src/civetweb.c, but did not pass the
+configuration header (civetweb/include/civetweb_conf.h).
+
+As a result, USE_IPV6 was not defined when it was compiled, and that
+copy was included into the radosgw binary. This caused breakage for the
+civetweb frontend when used with IPv6:
+  rgw frontends = civetweb port=[::]:7480
+
+Reintroduce the header so that civetweb is compiled correctly again.
+
+Fixes: http://tracker.ceph.com/issues/16928
+Backport: jewel
+Signed-off-by: Robin H. Johnson <robin.johnson@dreamhost.com>
+(cherry picked from commit 921c556b65eafe2136f2afcc8234681711aa7348)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+
+Resolves: rhbz#1364345
+---
+ src/rgw/Makefile.am | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/Makefile.am b/src/rgw/Makefile.am
+index 6cc4da7..685f452 100644
+--- a/src/rgw/Makefile.am
++++ b/src/rgw/Makefile.am
+@@ -147,7 +147,7 @@ radosgw_SOURCES = \
+ 	civetweb/src/civetweb.c \
+ 	rgw/rgw_main.cc
+ 
+-radosgw_CFLAGS = -I$(srcdir)/civetweb/include -fPIC -I$(srcdir)/xxHash
++radosgw_CFLAGS = -I$(srcdir)/civetweb/include -fPIC -I$(srcdir)/xxHash ${CIVETWEB_INCLUDE}
+ radosgw_LDADD = $(LIBRGW) $(LIBCIVETWEB) $(LIBCIVETWEB_DEPS) $(LIBRGW_DEPS) $(RESOLV_LIBS) \
+ 	$(CEPH_GLOBAL)
+ bin_PROGRAMS += radosgw
