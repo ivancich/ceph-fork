@@ -1,0 +1,26 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Tue, 2 Aug 2016 23:24:12 -0700
+Subject: filestore: Improve logging
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit b78c457785553e3a6e4f901bfebb41fc9c4d9bd5)
+(cherry picked from commit bdcfcaf821add71c518b01d6fb3dccb7c2e074a7)
+
+Resolves: rhbz#1363807
+---
+ src/os/filestore/FileStore.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/os/filestore/FileStore.cc b/src/os/filestore/FileStore.cc
+index 95a4f5f..4d97d4a 100644
+--- a/src/os/filestore/FileStore.cc
++++ b/src/os/filestore/FileStore.cc
+@@ -4829,7 +4829,7 @@ int FileStore::collection_list(const coll_t& c, ghobject_t start, ghobject_t end
+     assert(!m_filestore_fail_eio || r != -EIO);
+     return r;
+   }
+-  dout(20) << "objects: " << ls << dendl;
++  dout(20) << "objects: " << *ls << dendl;
+ 
+   // HashIndex doesn't know the pool when constructing a 'next' value
+   if (next && !next->is_max()) {

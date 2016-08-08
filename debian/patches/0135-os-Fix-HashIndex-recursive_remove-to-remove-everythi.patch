@@ -1,0 +1,68 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Tue, 2 Aug 2016 22:32:02 -0700
+Subject: os: Fix HashIndex::recursive_remove() to remove everything but
+ original path
+
+Fixes: http://tracker.ceph.com/issues/16672
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit ba88a3aac0d3b620986e32ed718237513d6592f6)
+(cherry picked from commit 7e1ba28b1e218deb7d54ad6bef8853c9d19411a0)
+
+Resolves: rhbz#1363807
+---
+ src/os/filestore/HashIndex.cc | 12 ++++++++++--
+ src/os/filestore/HashIndex.h  |  5 +++++
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/src/os/filestore/HashIndex.cc b/src/os/filestore/HashIndex.cc
+index a358ef3..b1bf702 100644
+--- a/src/os/filestore/HashIndex.cc
++++ b/src/os/filestore/HashIndex.cc
+@@ -550,7 +550,12 @@ int HashIndex::recursive_create_path(vector<string>& path, int level)
+ }
+ 
+ int HashIndex::recursive_remove(const vector<string> &path) {
++  return _recursive_remove(path, true);
++}
++
++int HashIndex::_recursive_remove(const vector<string> &path, bool top) {
+   vector<string> subdirs;
++  dout(20) << __func__ << " path=" << path << dendl;
+   int r = list_subdirs(path, &subdirs);
+   if (r < 0)
+     return r;
+@@ -565,12 +570,15 @@ int HashIndex::recursive_remove(const vector<string> &path) {
+        i != subdirs.end();
+        ++i) {
+     subdir.push_back(*i);
+-    r = recursive_remove(subdir);
++    r = _recursive_remove(subdir, false);
+     if (r < 0)
+       return r;
+     subdir.pop_back();
+   }
+-  return remove_path(path);
++  if (top)
++    return 0;
++  else
++    return remove_path(path);
+ }
+ 
+ int HashIndex::start_col_split(const vector<string> &path) {
+diff --git a/src/os/filestore/HashIndex.h b/src/os/filestore/HashIndex.h
+index d4222f9..461eddc 100644
+--- a/src/os/filestore/HashIndex.h
++++ b/src/os/filestore/HashIndex.h
+@@ -198,6 +198,11 @@ protected:
+     ghobject_t *next
+     );
+ private:
++  /// Internal recursively remove path and its subdirs
++  int _recursive_remove(
++    const vector<string> &path, ///< [in] path to remove
++    bool top			///< [in] internal tracking of first caller
++    ); /// @return Error Code, 0 on success
+   /// Recursively remove path and its subdirs
+   int recursive_remove(
+     const vector<string> &path ///< [in] path to remove

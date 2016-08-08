@@ -130,3 +130,6 @@
 0130-radosgw-admin-zone-group-modify-can-change-realm-id.patch
 0131-rgw-add-reinit-rebind-logic-ldap.patch
 0132-rgw-Fix-civetweb-IPv6.patch
+0133-filestore-Improve-logging.patch
+0134-filestore-Clear-objects-before-calling-collection_li.patch
+0135-os-Fix-HashIndex-recursive_remove-to-remove-everythi.patch

@@ -1,0 +1,25 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Tue, 2 Aug 2016 23:26:41 -0700
+Subject: filestore: Clear objects before calling collection_list() again
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit 892303cd02b64b622669183c2acffcdd7a8f3547)
+(cherry picked from commit cb1f17f05422ac802378df0de698ce20a1f2976e)
+
+Resolves: rhbz#1363807
+---
+ src/os/filestore/FileStore.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/os/filestore/FileStore.cc b/src/os/filestore/FileStore.cc
+index 4d97d4a..1b59414 100644
+--- a/src/os/filestore/FileStore.cc
++++ b/src/os/filestore/FileStore.cc
+@@ -4616,6 +4616,7 @@ int FileStore::_collection_remove_recursive(const coll_t &cid,
+       if (r < 0)
+ 	return r;
+     }
++    objects.clear();
+   }
+   return _destroy_collection(cid);
+ }
