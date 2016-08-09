@@ -1,3 +1,9 @@
+ceph (10.2.2-30redhat1) stable; urgency=medium
+
+  * rgw_file: unlock() must precede out label (rhbz#1357896)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 09 Aug 2016 15:23:20 -0400
+
 ceph (10.2.2-29redhat1) stable; urgency=medium
 
   * rbd-mirror: potential assertion failure during error-induced

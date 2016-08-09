@@ -1,0 +1,30 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 9 Aug 2016 14:23:00 -0400
+Subject: rgw_file: unlock() must precede out label
+
+In lookup_handle(...).
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 9f64f34e481278a683e962b17c7aa811005783a8)
+
+(with preceding commits)
+Resolves: rhbz#1357896
+---
+ src/rgw/rgw_file.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index a99ea50..7648b0b 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -991,9 +991,9 @@ namespace rgw {
+ 	goto retry; /* !LATCHED */
+       }
+       /* LATCHED */
++      fh->mtx.unlock(); /* !LOCKED */
+     out:
+       lat.lock->unlock(); /* !LATCHED */
+-      fh->mtx.unlock(); /* !LOCKED */
+       return fh;
+     }
+ 
