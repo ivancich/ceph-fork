@@ -1,0 +1,115 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Tue, 3 May 2016 12:10:38 -0700
+Subject: test: Add testing of new scrub commands in rados
+
+Test list-inconsistent-pg
+Test list-inconsistent-obj
+Test inconsistent-snapset
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit db517ba9176f1ee829453b016b1bd43c6054a555)
+(cherry picked from commit c789aa39f27dc83f52465ba2d5b513a06b99c9d2)
+
+Resolves: rhbz#1364878
+---
+ src/test/osd/osd-scrub-repair.sh | 49 ++++++++++++++++++++++++++++++++++++++++
+ src/test/osd/osd-scrub-snaps.sh  | 26 +++++++++++++++++++++
+ 2 files changed, 75 insertions(+)
+
+diff --git a/src/test/osd/osd-scrub-repair.sh b/src/test/osd/osd-scrub-repair.sh
+index 03580c3..687b8ed 100755
+--- a/src/test/osd/osd-scrub-repair.sh
++++ b/src/test/osd/osd-scrub-repair.sh
+@@ -351,6 +351,55 @@ function TEST_list_missing_erasure_coded() {
+     teardown $dir || return 1
+ }
+ 
++#
++# Corrupt one copy of a replicated pool
++#
++function TEST_corrupt_scrub_replicated() {
++    local dir=$1
++    local poolname=csr_pool
++    local total_objs=4
++
++    setup $dir || return 1
++    run_mon $dir a --osd_pool_default_size=2 || return 1
++    run_osd $dir 0 || return 1
++    run_osd $dir 1 || return 1
++    wait_for_clean || return 1
++
++    ceph osd pool create $poolname 1 1 || return 1
++    wait_for_clean || return 1
++
++    for i in $(seq 0 $total_objs) ; do
++      objname=OBJ${i}
++      add_something $dir $poolname $objname
++      if [ $i = "0" ];
++      then
++        local payload=UVWXYZ
++        echo $payload > $dir/CORRUPT
++        objectstore_tool $dir $(expr $i % 2) $objname set-bytes $dir/CORRUPT || return 1
++      else
++        objectstore_tool $dir $(expr $i % 2) $objname remove || return 1
++      fi
++    done
++
++    local pg=$(get_pg $poolname OBJ0)
++    pg_scrub $pg
++
++    rados list-inconsistent-pg $poolname > $dir/json || return 1
++    # Check pg count
++    test $(jq '. | length' $dir/json) = "1" || return 1
++    # Check pgid
++    test $(jq -r '.[0]' $dir/json) = $pg || return 1
++
++    rados list-inconsistent-obj $pg > $dir/json || return 1
++    # Get epoch for repair-get requests
++    epoch=$(jq .epoch $dir/json)
++    # Check object count
++    test $(jq '.inconsistents | length' $dir/json) = "$total_objs" || return 1
++
++    rados rmpool $poolname $poolname --yes-i-really-really-mean-it
++    teardown $dir || return 1
++}
++
+ 
+ main osd-scrub-repair "$@"
+ 
+diff --git a/src/test/osd/osd-scrub-snaps.sh b/src/test/osd/osd-scrub-snaps.sh
+index 906674c..b3ddaff 100755
+--- a/src/test/osd/osd-scrub-snaps.sh
++++ b/src/test/osd/osd-scrub-snaps.sh
+@@ -156,6 +156,32 @@ function TEST_scrub_snaps() {
+     fi
+     grep 'log_channel' $dir/osd.0.log
+ 
++    rados list-inconsistent-pg $poolname > $dir/json || return 1
++    # Check pg count
++    test $(jq '. | length' $dir/json) = "1" || return 1
++    # Check pgid
++    test $(jq -r '.[0]' $dir/json) = $pgid || return 1
++
++    rados list-inconsistent-snapset $pgid > $dir/json || return 1
++    test $(jq '.inconsistents | length' $dir/json) = "20" || return 1
++
++    jq -c -S '.inconsistents | sort' > $dir/checkcsjson << EOF
++{"inconsistents":[{"headless":true,"snap":"0x00000001","locator":"","nspace":"","name":"obj1"},{"size_mismatch":true,"snap":"0x00000001","locator":"","nspace":"","name":"obj10"},
++{"headless":true,"snap":"0x00000001","locator":"","nspace":"","name":"obj11"},{"size_mismatch":true,"snap":"0x00000001","locator":"","nspace":"","name":"obj14"},{"headless":true,
++"snap":"0x00000001","locator":"","nspace":"","name":"obj6"},{"headless":true,"snap":"0x00000001","locator":"","nspace":"","name":"obj7"},{"size_mismatch":true,"snap":"0x00000001",
++"locator":"","nspace":"","name":"obj9"},{"headless":true,"snap":"0x00000004","locator":"","nspace":"","name":"obj2"},{"size_mismatch":true,"snap":"0x00000004","locator":"",
++"nspace":"","name":"obj5"},{"headless":true,"snap":"0x00000007","locator":"","nspace":"","name":"obj2"},{"headless":true,"oi_attr_missing":true,"snap":"0x00000007","locator":"",
++"nspace":"","name":"obj5"},{"extra clones":[1],"extra_clones":true,"snap":"head","locator":"","nspace":"","name":"obj11"},{"head_mismatch":true,"snap":"head","locator":"",
++"nspace":"","name":"obj12"},{"size_mismatch":true,"snap":"head","locator":"","nspace":"","name":"obj3"},{"missing":[2,1],"clone_missing":true,"extra clones":[7],"extra_clones":true,
++"snap":"head","locator":"","nspace":"","name":"obj5"},{"extra clones":[1],"extra_clones":true,"snap":"head","locator":"","nspace":"","name":"obj6"},{"extra clones":[1],
++"extra_clones":true,"head_mismatch":true,"snap":"head","locator":"","nspace":"","name":"obj7"},{"snapset_mismatch":true,"snap":"head","locator":"","nspace":"","name":"obj8"},
++{"extra clones":[7,4],"extra_clones":true,"ss_attr_missing":true,"snap":"snapdir","locator":"","nspace":"","name":"obj2"},{"missing":[7],"clone_missing":true,"snap":"snapdir",
++"locator":"","nspace":"","name":"obj4"}],"epoch":18}
++EOF
++
++    jq -c -S '.inconsistents | sort' $dir/json > $dir/csjson
++    diff $dir/csjson $dir/checkcsjson || return 1
++
+     for i in `seq 1 7`
+     do
+         rados -p $poolname rmsnap snap$i

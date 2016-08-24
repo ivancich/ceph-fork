@@ -1,0 +1,57 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Mon, 21 Mar 2016 20:41:03 -0700
+Subject: rados: Include epoch in the list-inconsistent-* command output
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit df4bc16c4d49489f7398eb1ecc7b9aef93258414)
+(cherry picked from commit d248aba10ed232df116729591fea5b195a245735)
+
+Resolves: rhbz#1364878
+---
+ src/tools/rados/rados.cc | 16 +++++++++++++---
+ 1 file changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/src/tools/rados/rados.cc b/src/tools/rados/rados.cc
+index 834721d..725fe36 100644
+--- a/src/tools/rados/rados.cc
++++ b/src/tools/rados/rados.cc
+@@ -1367,9 +1367,9 @@ static int do_get_inconsistent_cmd(const std::vector<const char*> &nargs,
+     cerr << "bad pg: " << nargs[1] << std::endl;
+     return ret;
+   }
+-
+-  uint32_t interval = 0;
++  uint32_t interval = 0, first_interval = 0;
+   const unsigned max_item_num = 32;
++  bool opened = false;
+   for (librados::object_id_t start;;) {
+     std::vector<T> items;
+     auto completion = librados::Rados::aio_create_completion();
+@@ -1387,8 +1387,15 @@ static int do_get_inconsistent_cmd(const std::vector<const char*> &nargs,
+         cerr << "Unknown error " << cpp_strerror(ret) << std::endl;
+       break;
+     }
++    // It must be the same interval every time.  EAGAIN would
++    // occur if interval changes.
++    assert(start.name.empty() || first_interval == interval);
+     if (start.name.empty()) {
++      first_interval = interval;
++      formatter.open_object_section("info");
++      formatter.dump_int("epoch", interval);
+       formatter.open_array_section("inconsistents");
++      opened = true;
+     }
+     for (auto& inc : items) {
+       formatter.open_object_section("inconsistent");
+@@ -1403,7 +1410,10 @@ static int do_get_inconsistent_cmd(const std::vector<const char*> &nargs,
+     }
+     items.clear();
+   }
+-  formatter.flush(cout);
++  if (opened) {
++    formatter.close_section();
++    formatter.flush(cout);
++  }
+   return ret;
+ }
+ 

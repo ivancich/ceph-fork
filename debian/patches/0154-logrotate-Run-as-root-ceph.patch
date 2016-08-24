@@ -1,0 +1,30 @@
+From: Boris Ranto <branto@redhat.com>
+Date: Fri, 5 Aug 2016 11:14:53 +0200
+Subject: logrotate: Run as root/ceph
+
+Currently, we run the logrotate scripts as ceph/ceph but that way we
+cannot rotate the scripts created by qemu (they are root/ceph and 644).
+The original su line was introduced in commit 73d7bed9 because logrotate
+complained that the directory was writable by a non-root group and it
+needed a su line to supress that error. This way, we keep the group
+settings and we can access and rotate the qemu logs as well.
+
+Signed-off-by: Boris Ranto <branto@redhat.com>
+(cherry picked from commit 3db2973fc881675bd8340f484df9ef298c0dcbae)
+
+Resolves: rhbz#1360229
+---
+ src/logrotate.conf | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/logrotate.conf b/src/logrotate.conf
+index 061965b..6bd1a98 100644
+--- a/src/logrotate.conf
++++ b/src/logrotate.conf
+@@ -8,5 +8,5 @@
+     endscript
+     missingok
+     notifempty
+-    su ceph ceph
++    su root ceph
+ }

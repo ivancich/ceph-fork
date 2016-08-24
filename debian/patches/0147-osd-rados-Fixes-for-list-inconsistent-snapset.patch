@@ -1,0 +1,396 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Fri, 29 Apr 2016 17:09:13 -0700
+Subject: osd, rados: Fixes for list-inconsistent-snapset
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit fdca113fc24adbb4f60bfdc55fbbd5044b711b5d)
+(cherry picked from commit 4c72195a6c5cb9eeca952f12edf62a10ec666f10)
+
+Resolves: rhbz#1364878
+---
+ src/common/scrub_types.cc         | 20 +++++++++++--
+ src/common/scrub_types.h          |  4 +++
+ src/include/rados/rados_types.hpp | 21 ++++++++++---
+ src/osd/ReplicatedPG.cc           | 62 +++++++++++++++++++++------------------
+ src/test/osd/osd-scrub-snaps.sh   |  6 ++--
+ src/tools/rados/rados.cc          | 11 +++++--
+ 6 files changed, 84 insertions(+), 40 deletions(-)
+
+diff --git a/src/common/scrub_types.cc b/src/common/scrub_types.cc
+index 3342a49..336965c 100644
+--- a/src/common/scrub_types.cc
++++ b/src/common/scrub_types.cc
+@@ -158,12 +158,22 @@ void inconsistent_snapset_wrapper::set_headless()
+ 
+ void inconsistent_snapset_wrapper::set_ss_attr_missing()
+ {
+-  errors |= inc_snapset_t::ATTR_MISSING;
++  errors |= inc_snapset_t::SNAPSET_MISSING;
++}
++
++void inconsistent_snapset_wrapper::set_oi_attr_missing()
++{
++  errors |= inc_snapset_t::OI_MISSING;
+ }
+ 
+ void inconsistent_snapset_wrapper::set_ss_attr_corrupted()
+ {
+-  errors |= inc_snapset_t::ATTR_CORRUPTED;
++  errors |= inc_snapset_t::SNAPSET_CORRUPTED;
++}
++
++void inconsistent_snapset_wrapper::set_oi_attr_corrupted()
++{
++  errors |= inc_snapset_t::OI_CORRUPTED;
+ }
+ 
+ void inconsistent_snapset_wrapper::set_clone_missing(snapid_t snap)
+@@ -172,6 +182,12 @@ void inconsistent_snapset_wrapper::set_clone_missing(snapid_t snap)
+   missing.push_back(snap);
+ }
+ 
++void inconsistent_snapset_wrapper::set_clone(snapid_t snap)
++{
++  errors |= inc_snapset_t::EXTRA_CLONES;
++  clones.push_back(snap);
++}
++
+ void inconsistent_snapset_wrapper::set_snapset_mismatch()
+ {
+   errors |= inc_snapset_t::SNAP_MISMATCH;
+diff --git a/src/common/scrub_types.h b/src/common/scrub_types.h
+index ed45e08..dc93c88 100644
+--- a/src/common/scrub_types.h
++++ b/src/common/scrub_types.h
+@@ -96,9 +96,13 @@ struct inconsistent_snapset_wrapper : public librados::inconsistent_snapset_t {
+   // soid claims that it is a head or a snapdir, but its SS_ATTR
+   // is missing.
+   void set_ss_attr_missing();
++  void set_oi_attr_missing();
+   void set_ss_attr_corrupted();
++  void set_oi_attr_corrupted();
+   // snapset with missing clone
+   void set_clone_missing(snapid_t);
++  // Clones that are there
++  void set_clone(snapid_t);
+   // the snapset is not consistent with itself
+   void set_snapset_mismatch();
+   // soid.snap inconsistent with snapset
+diff --git a/src/include/rados/rados_types.hpp b/src/include/rados/rados_types.hpp
+index c4f268d..ca7a490 100644
+--- a/src/include/rados/rados_types.hpp
++++ b/src/include/rados/rados_types.hpp
+@@ -131,24 +131,28 @@ struct inconsistent_snapset_t {
+     : object{head}
+   {}
+   enum {
+-    ATTR_MISSING   = 1 << 0,
+-    ATTR_CORRUPTED = 1 << 1,
++    SNAPSET_MISSING = 1 << 0,
++    SNAPSET_CORRUPTED = 1 << 1,
+     CLONE_MISSING  = 1 << 2,
+     SNAP_MISMATCH  = 1 << 3,
+     HEAD_MISMATCH  = 1 << 4,
+     HEADLESS_CLONE = 1 << 5,
+     SIZE_MISMATCH  = 1 << 6,
++    OI_MISSING   = 1 << 7,
++    OI_CORRUPTED = 1 << 8,
++    EXTRA_CLONES = 1 << 9,
+   };
+   uint64_t errors = 0;
+   object_id_t object;
++  // Extra clones
+   std::vector<snap_t> clones;
+   std::vector<snap_t> missing;
+ 
+   bool ss_attr_missing() const {
+-    return errors & ATTR_MISSING;
++    return errors & SNAPSET_MISSING;
+   }
+   bool ss_attr_corrupted() const {
+-    return errors & ATTR_CORRUPTED;
++    return errors & SNAPSET_CORRUPTED;
+   }
+   bool clone_missing() const  {
+     return errors & CLONE_MISSING;
+@@ -165,6 +169,15 @@ struct inconsistent_snapset_t {
+   bool size_mismatch() const {
+     return errors & SIZE_MISMATCH;
+   }
++  bool oi_attr_missing() const {
++    return errors & OI_MISSING;
++  }
++  bool oi_attr_corrupted() const {
++    return errors & OI_CORRUPTED;
++  }
++  bool extra_clones() const {
++    return errors & EXTRA_CLONES;
++  }
+ };
+ 
+ /**
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index 43a29ad..9e44a4f 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -12595,14 +12595,14 @@ void ReplicatedPG::_scrub(
+   boost::optional<SnapSet> snapset; // If initialized so will head (above)
+   vector<snapid_t>::reverse_iterator curclone; // Defined only if snapset initialized
+   unsigned missing = 0;
+-  inconsistent_snapset_wrapper snap_error;
++  inconsistent_snapset_wrapper soid_error, head_error;
+ 
+   bufferlist last_data;
+ 
+   for (map<hobject_t,ScrubMap::object, hobject_t::BitwiseComparator>::reverse_iterator
+        p = scrubmap.objects.rbegin(); p != scrubmap.objects.rend(); ++p) {
+     const hobject_t& soid = p->first;
+-    snap_error = inconsistent_snapset_wrapper{soid};
++    soid_error = inconsistent_snapset_wrapper{soid};
+     object_stat_sum_t stat;
+     boost::optional<object_info_t> oi;
+ 
+@@ -12623,7 +12623,7 @@ void ReplicatedPG::_scrub(
+       osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			<< " no '" << OI_ATTR << "' attr";
+       ++scrubber.shallow_errors;
+-      snap_error.set_ss_attr_missing();
++      soid_error.set_oi_attr_missing();
+     } else {
+       bufferlist bv;
+       bv.push_back(p->second.attrs[OI_ATTR]);
+@@ -12635,7 +12635,8 @@ void ReplicatedPG::_scrub(
+ 	osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 		<< " can't decode '" << OI_ATTR << "' attr " << e.what();
+ 	++scrubber.shallow_errors;
+-	snap_error.set_ss_attr_corrupted();
++	soid_error.set_oi_attr_corrupted();
++        soid_error.set_oi_attr_missing(); // Not available too
+       }
+     }
+ 
+@@ -12647,7 +12648,7 @@ void ReplicatedPG::_scrub(
+ 			   << oi->size << ") adjusted for ondisk to ("
+ 			   << pgbackend->be_get_ondisk_size(oi->size)
+ 			   << ")";
+-	snap_error.set_size_mismatch();
++	soid_error.set_size_mismatch();
+ 	++scrubber.shallow_errors;
+       }
+ 
+@@ -12691,7 +12692,7 @@ void ReplicatedPG::_scrub(
+       // This will set missing, but will be a no-op if snap.soid == *curclone.
+       missing += process_clones_to(head, snapset, osd->clog, info.pgid, mode,
+ 		        pool.info.allow_incomplete_clones(), target, &curclone,
+-			snap_error);
++			head_error);
+     }
+     bool expected;
+     // Check doing_clones() again in case we ran process_clones_to()
+@@ -12707,19 +12708,18 @@ void ReplicatedPG::_scrub(
+       expected = soid.has_snapset();
+     }
+     if (!expected) {
+-      // If we couldn't read the head's snapset, then just ignore clones and
+-      // don't count as an error.
++      // If we couldn't read the head's snapset, just ignore clones
+       if (head && !snapset) {
+-	osd->clog->info() << mode << " " << info.pgid << " " << soid
++	osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			  << " clone ignored due to missing snapset";
+-	scrubber.store->add_snap_error(pool.id, snap_error);
+-	continue;
+-      }
+-      osd->clog->error() << mode << " " << info.pgid << " " << soid
++      } else {
++	osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			   << " is an unexpected clone";
++      }
+       ++scrubber.shallow_errors;
+-      snap_error.set_headless();
+-      scrubber.store->add_snap_error(pool.id, snap_error);
++      soid_error.set_headless();
++      scrubber.store->add_snap_error(pool.id, soid_error);
++      head_error.set_clone(soid.snap);
+       continue;
+     }
+ 
+@@ -12729,13 +12729,15 @@ void ReplicatedPG::_scrub(
+       if (missing) {
+ 	log_missing(missing, head, osd->clog, info.pgid, __func__, mode,
+ 		    pool.info.allow_incomplete_clones());
+-	scrubber.store->add_snap_error(pool.id, snap_error);
+       }
+ 
++      // Save previous head error information
++      if (head && head_error.errors)
++	scrubber.store->add_snap_error(pool.id, head_error);
+       // Set this as a new head object
+       head = soid;
+       missing = 0;
+-      snap_error = inconsistent_snapset_wrapper{head.get()};
++      head_error = soid_error;
+ 
+       dout(20) << __func__ << " " << mode << " new head " << head << dendl;
+ 
+@@ -12744,7 +12746,7 @@ void ReplicatedPG::_scrub(
+ 			  << " no '" << SS_ATTR << "' attr";
+         ++scrubber.shallow_errors;
+ 	snapset = boost::none;
+-	snap_error.set_ss_attr_missing();
++	head_error.set_ss_attr_missing();
+       } else {
+ 	bufferlist bl;
+ 	bl.push_back(p->second.attrs[SS_ATTR]);
+@@ -12757,7 +12759,8 @@ void ReplicatedPG::_scrub(
+           osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 		<< " can't decode '" << SS_ATTR << "' attr " << e.what();
+ 	  ++scrubber.shallow_errors;
+-	  snap_error.set_ss_attr_corrupted();
++	  head_error.set_ss_attr_corrupted();
++	  head_error.set_ss_attr_missing(); // Not available too
+         }
+       }
+ 
+@@ -12771,7 +12774,7 @@ void ReplicatedPG::_scrub(
+ 	    osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			       << " snaps.seq not set";
+ 	    ++scrubber.shallow_errors;
+-	    snap_error.set_snapset_mismatch();
++	    head_error.set_snapset_mismatch();
+           }
+ 	}
+ 
+@@ -12779,13 +12782,13 @@ void ReplicatedPG::_scrub(
+ 	  osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			  << " snapset.head_exists=false, but head exists";
+ 	  ++scrubber.shallow_errors;
+-	  snap_error.set_head_mismatch();
++	  head_error.set_head_mismatch();
+ 	}
+ 	if (soid.is_snapdir() && snapset->head_exists) {
+ 	  osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			  << " snapset.head_exists=true, but snapdir exists";
+ 	  ++scrubber.shallow_errors;
+-	  snap_error.set_head_mismatch();
++	  head_error.set_head_mismatch();
+ 	}
+       }
+     } else {
+@@ -12800,21 +12803,21 @@ void ReplicatedPG::_scrub(
+ 	osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			   << " is missing in clone_size";
+ 	++scrubber.shallow_errors;
+-	snap_error.set_size_mismatch();
++	soid_error.set_size_mismatch();
+       } else {
+         if (oi && oi->size != snapset->clone_size[soid.snap]) {
+ 	  osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			     << " size " << oi->size << " != clone_size "
+ 			     << snapset->clone_size[*curclone];
+ 	  ++scrubber.shallow_errors;
+-	  snap_error.set_size_mismatch();
++	  soid_error.set_size_mismatch();
+         }
+ 
+         if (snapset->clone_overlap.count(soid.snap) == 0) {
+ 	  osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			     << " is missing in clone_overlap";
+ 	  ++scrubber.shallow_errors;
+-	  snap_error.set_size_mismatch();
++	  soid_error.set_size_mismatch();
+ 	} else {
+ 	  // This checking is based on get_clone_bytes().  The first 2 asserts
+ 	  // can't happen because we know we have a clone_size and
+@@ -12837,7 +12840,7 @@ void ReplicatedPG::_scrub(
+ 	    osd->clog->error() << mode << " " << info.pgid << " " << soid
+ 			       << " bad interval_set in clone_overlap";
+ 	    ++scrubber.shallow_errors;
+-	    snap_error.set_size_mismatch();
++	    soid_error.set_size_mismatch();
+ 	  } else {
+             stat.num_bytes += snapset->get_clone_bytes(soid.snap);
+ 	  }
+@@ -12846,6 +12849,8 @@ void ReplicatedPG::_scrub(
+ 
+       // what's next?
+       ++curclone;
++      if (soid_error.errors)
++        scrubber.store->add_snap_error(pool.id, soid_error);
+     }
+ 
+     scrub_cstat.add(stat);
+@@ -12857,15 +12862,16 @@ void ReplicatedPG::_scrub(
+ 
+     missing += process_clones_to(head, snapset, osd->clog, info.pgid, mode,
+ 		      pool.info.allow_incomplete_clones(), all_clones, &curclone,
+-		      snap_error);
++		      head_error);
+   }
+   // There could be missing found by the test above or even
+   // before dropping out of the loop for the last head.
+   if (missing) {
+     log_missing(missing, head, osd->clog, info.pgid, __func__,
+ 		mode, pool.info.allow_incomplete_clones());
+-    scrubber.store->add_snap_error(pool.id, snap_error);
+   }
++  if (head && head_error.errors)
++    scrubber.store->add_snap_error(pool.id, head_error);
+ 
+   for (map<hobject_t,pair<uint32_t,uint32_t>, hobject_t::BitwiseComparator>::const_iterator p =
+ 	 missing_digest.begin();
+diff --git a/src/test/osd/osd-scrub-snaps.sh b/src/test/osd/osd-scrub-snaps.sh
+index d422448..906674c 100755
+--- a/src/test/osd/osd-scrub-snaps.sh
++++ b/src/test/osd/osd-scrub-snaps.sh
+@@ -189,15 +189,15 @@ function TEST_scrub_snaps() {
+     err_strings[11]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj3:head on disk size [(]3840[)] does not match object info size [(]768[)] adjusted for ondisk to [(]768[)]"
+     err_strings[12]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj6:1 is an unexpected clone"
+     err_strings[13]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj2:snapdir no 'snapset' attr"
+-    err_strings[14]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 .*:::obj2:7 clone ignored due to missing snapset"
+-    err_strings[15]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 .*:::obj2:4 clone ignored due to missing snapset"
++    err_strings[14]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj2:7 clone ignored due to missing snapset"
++    err_strings[15]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj2:4 clone ignored due to missing snapset"
+     err_strings[16]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj4:snapdir expected clone .*:::obj4:7"
+     err_strings[17]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 .*:::obj4:snapdir 1 missing clone[(]s[)]"
+     err_strings[18]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj1:1 is an unexpected clone"
+     err_strings[19]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj9:1 is missing in clone_size"
+     err_strings[20]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj11:1 is an unexpected clone"
+     err_strings[21]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj14:1 size 1032 != clone_size 1033"
+-    err_strings[22]="log_channel[(]cluster[)] log [[]ERR[]] : [0-9]*[.]0 scrub 19 errors"
++    err_strings[22]="log_channel[(]cluster[)] log [[]ERR[]] : [0-9]*[.]0 scrub 21 errors"
+ 
+     for i in `seq 0 ${#err_strings[@]}`
+     do
+diff --git a/src/tools/rados/rados.cc b/src/tools/rados/rados.cc
+index aa20ec9..3e014f2 100644
+--- a/src/tools/rados/rados.cc
++++ b/src/tools/rados/rados.cc
+@@ -1306,19 +1306,24 @@ static void dump_inconsistent(const inconsistent_snapset_t& inc,
+   dump_object_id(inc.object, f);
+   f.dump_bool("ss_attr_missing", inc.ss_attr_missing());
+   f.dump_bool("ss_attr_corrupted", inc.ss_attr_corrupted());
+-  f.dump_bool("clone_missing", inc.clone_missing());
++  f.dump_bool("oi_attr_missing", inc.oi_attr_missing());
++  f.dump_bool("oi_attr_corrupted", inc.oi_attr_corrupted());
+   f.dump_bool("snapset_mismatch", inc.snapset_mismatch());
+   f.dump_bool("head_mismatch", inc.head_mismatch());
+   f.dump_bool("headless", inc.headless());
+   f.dump_bool("size_mismatch", inc.size_mismatch());
+ 
+-  if (inc.clone_missing()) {
+-    f.open_array_section("clones");
++  f.dump_bool("extra_clones", inc.extra_clones());
++  if (inc.extra_clones()) {
++    f.open_array_section("extra clones");
+     for (auto snap : inc.clones) {
+       f.dump_unsigned("snap", snap);
+     }
+     f.close_section();
++  }
+ 
++  f.dump_bool("clone_missing", inc.clone_missing());
++  if (inc.clone_missing()) {
+     f.open_array_section("missing");
+     for (auto snap : inc.missing) {
+       f.dump_unsigned("snap", snap);

@@ -1,0 +1,213 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 10 Aug 2016 12:50:53 -0400
+Subject: rbd-mirror: potential race condition during failure shutdown
+
+Fixes: http://tracker.ceph.com/issues/16980
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 74ec7c91f17630c77647cfc9813090d688b3410d)
+
+Resolves: rhbz#1365076
+---
+ src/librbd/parent_types.h                 |   2 +-
+ src/test/rbd_mirror/test_ImageReplayer.cc | 125 ++++++++++++++++++++++++++++--
+ src/tools/rbd_mirror/ImageReplayer.cc     |   4 +
+ 3 files changed, 122 insertions(+), 9 deletions(-)
+
+diff --git a/src/librbd/parent_types.h b/src/librbd/parent_types.h
+index 5e26794..69598b7 100644
+--- a/src/librbd/parent_types.h
++++ b/src/librbd/parent_types.h
+@@ -16,7 +16,7 @@ namespace librbd {
+     std::string image_id;
+     snapid_t snap_id;
+     parent_spec() : pool_id(-1), snap_id(CEPH_NOSNAP) {}
+-    parent_spec(uint64_t pool_id, std::string image_id, snapid_t snap_id) :
++    parent_spec(int64_t pool_id, std::string image_id, snapid_t snap_id) :
+       pool_id(pool_id), image_id(image_id), snap_id(snap_id) {}
+     bool operator==(const parent_spec &other) {
+       return ((this->pool_id == other.pool_id) &&
+diff --git a/src/test/rbd_mirror/test_ImageReplayer.cc b/src/test/rbd_mirror/test_ImageReplayer.cc
+index 4e85be9..d3002b0 100644
+--- a/src/test/rbd_mirror/test_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_ImageReplayer.cc
+@@ -23,9 +23,11 @@
+ #include "journal/Journaler.h"
+ #include "librbd/AioCompletion.h"
+ #include "librbd/AioImageRequestWQ.h"
++#include "librbd/ExclusiveLock.h"
+ #include "librbd/ImageCtx.h"
+ #include "librbd/ImageState.h"
+ #include "librbd/Journal.h"
++#include "librbd/Operations.h"
+ #include "librbd/Utils.h"
+ #include "librbd/internal.h"
+ #include "tools/rbd_mirror/types.h"
+@@ -115,12 +117,7 @@ public:
+ 
+   ~TestImageReplayer()
+   {
+-    if (m_watch_handle != 0) {
+-      m_remote_ioctx.unwatch2(m_watch_handle);
+-      delete m_watch_ctx;
+-      m_watch_ctx = nullptr;
+-      m_watch_handle = 0;
+-    }
++    unwatch();
+ 
+     delete m_replayer;
+     delete m_threads;
+@@ -150,14 +147,18 @@ public:
+     ASSERT_EQ(0, m_remote_ioctx.watch2(oid, &m_watch_handle, m_watch_ctx));
+   }
+ 
+-  void stop()
+-  {
++  void unwatch() {
+     if (m_watch_handle != 0) {
+       m_remote_ioctx.unwatch2(m_watch_handle);
+       delete m_watch_ctx;
+       m_watch_ctx = nullptr;
+       m_watch_handle = 0;
+     }
++  }
++
++  void stop()
++  {
++    unwatch();
+ 
+     C_SaferCond cond;
+     m_replayer->stop(&cond);
+@@ -285,6 +286,16 @@ public:
+     ASSERT_EQ(master_position, mirror_position);
+   }
+ 
++  void wait_for_stopped() {
++    for (int i = 0; i < 100; i++) {
++      if (m_replayer->is_stopped()) {
++        break;
++      }
++      wait_for_watcher_notify(1);
++    }
++    ASSERT_TRUE(m_replayer->is_stopped());
++  }
++
+   void write_test_data(librbd::ImageCtx *ictx, const char *test_data, off_t off,
+                        size_t len)
+   {
+@@ -713,3 +724,101 @@ TEST_F(TestImageReplayer, Resync_StartInterrupted)
+ 
+   stop();
+ }
++
++TEST_F(TestImageReplayer, MultipleReplayFailures_SingleEpoch) {
++  bootstrap();
++
++  // inject a snapshot that cannot be unprotected
++  librbd::ImageCtx *ictx;
++  open_image(m_local_ioctx, m_image_name, false, &ictx);
++  ictx->features &= ~RBD_FEATURE_JOURNALING;
++  ASSERT_EQ(0, ictx->operations->snap_create("foo"));
++  ASSERT_EQ(0, ictx->operations->snap_protect("foo"));
++  ASSERT_EQ(0, librbd::cls_client::add_child(&ictx->md_ctx, RBD_CHILDREN,
++                                             {ictx->md_ctx.get_id(),
++                                              ictx->id, ictx->snap_ids["foo"]},
++                                             "dummy child id"));
++  close_image(ictx);
++
++  // race failed op shut down with new ops
++  open_remote_image(&ictx);
++  for (uint64_t i = 0; i < 10; ++i) {
++    RWLock::RLocker owner_locker(ictx->owner_lock);
++    C_SaferCond request_lock;
++    ictx->exclusive_lock->request_lock(&request_lock);
++    ASSERT_EQ(0, request_lock.wait());
++
++    C_SaferCond append_ctx;
++    ictx->journal->append_op_event(
++      i,
++      librbd::journal::EventEntry{
++        librbd::journal::SnapUnprotectEvent{i, "foo"}},
++      &append_ctx);
++    ASSERT_EQ(0, append_ctx.wait());
++
++    C_SaferCond commit_ctx;
++    ictx->journal->commit_op_event(i, 0, &commit_ctx);
++    ASSERT_EQ(0, commit_ctx.wait());
++
++    C_SaferCond release_ctx;
++    ictx->exclusive_lock->release_lock(&release_ctx);
++    ASSERT_EQ(0, release_ctx.wait());
++  }
++
++  for (uint64_t i = 0; i < 5; ++i) {
++    start();
++    wait_for_stopped();
++    unwatch();
++  }
++}
++
++TEST_F(TestImageReplayer, MultipleReplayFailures_MultiEpoch) {
++  bootstrap();
++
++  // inject a snapshot that cannot be unprotected
++  librbd::ImageCtx *ictx;
++  open_image(m_local_ioctx, m_image_name, false, &ictx);
++  ictx->features &= ~RBD_FEATURE_JOURNALING;
++  ASSERT_EQ(0, ictx->operations->snap_create("foo"));
++  ASSERT_EQ(0, ictx->operations->snap_protect("foo"));
++  ASSERT_EQ(0, librbd::cls_client::add_child(&ictx->md_ctx, RBD_CHILDREN,
++                                             {ictx->md_ctx.get_id(),
++                                              ictx->id, ictx->snap_ids["foo"]},
++                                             "dummy child id"));
++  close_image(ictx);
++
++  // race failed op shut down with new tag flush
++  open_remote_image(&ictx);
++  {
++    RWLock::RLocker owner_locker(ictx->owner_lock);
++    C_SaferCond request_lock;
++    ictx->exclusive_lock->request_lock(&request_lock);
++    ASSERT_EQ(0, request_lock.wait());
++
++    C_SaferCond append_ctx;
++    ictx->journal->append_op_event(
++      1U,
++      librbd::journal::EventEntry{
++        librbd::journal::SnapUnprotectEvent{1U, "foo"}},
++      &append_ctx);
++    ASSERT_EQ(0, append_ctx.wait());
++
++    C_SaferCond commit_ctx;
++    ictx->journal->commit_op_event(1U, 0, &commit_ctx);
++    ASSERT_EQ(0, commit_ctx.wait());
++
++    C_SaferCond release_ctx;
++    ictx->exclusive_lock->release_lock(&release_ctx);
++    ASSERT_EQ(0, release_ctx.wait());
++  }
++
++  write_test_data(ictx, m_test_data, 0, TEST_IO_SIZE);
++
++  for (uint64_t i = 0; i < 5; ++i) {
++    start();
++    wait_for_stopped();
++    unwatch();
++  }
++  close_image(ictx);
++}
++
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index 4aae81b..86da4bc 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -876,6 +876,10 @@ void ImageReplayer<I>::replay_flush() {
+ 
+   {
+     Mutex::Locker locker(m_lock);
++    if (m_state != STATE_REPLAYING) {
++      dout(20) << "replay interrupted" << dendl;
++      return;
++    }
+     m_state = STATE_REPLAY_FLUSHING;
+   }
+ 

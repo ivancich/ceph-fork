@@ -1,3 +1,32 @@
+ceph (10.2.2-31redhat1) stable; urgency=medium
+
+  * rbd-mirror: potential race condition during failure shutdown
+    (rhbz#1365076)
+  * rados: Improve error messages for list-inconsistent commands
+    (rhbz#1364878)
+  * rados: Include epoch in the list-inconsistent-* command output
+    (rhbz#1364878)
+  * rados: Balance format sections in same do_get_inconsistent_cmd()
+    (rhbz#1364878)
+  * include, rados: Fixes for list-inconsistent-obj and librados
+    (rhbz#1364878)
+  * osd, rados: Fixes for list-inconsistent-snapset (rhbz#1364878)
+  * rados: Don't bother showing list-inconsistent-* errors that aren't
+    set (rhbz#1364878)
+  * test: Add testing of new scrub commands in rados (rhbz#1364878)
+  * test: Fix test to not use jq -S which isn't avail in all
+    distributions (rhbz#1364878)
+  * rgw: default quota fixes (rhbz#1362284)
+  * mon/PGMonitor: mark dump_object_stat_sum() as static
+    (rhbz#1360230)
+  * mon/PGMonitor: calc the %USED of pool using used/(used+avail)
+    (rhbz#1360230)
+  * logrotate: Run as root/ceph (rhbz#1360229)
+  * librbd: cache was not switching to writeback after first flush
+    (rhbz#1367891)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 24 Aug 2016 15:20:55 -0600
+
 ceph (10.2.2-30redhat1) stable; urgency=medium
 
   * rgw_file: unlock() must precede out label (rhbz#1357896)

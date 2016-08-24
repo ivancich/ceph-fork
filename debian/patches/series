@@ -139,3 +139,17 @@
 0139-rgw-nfs-fix-write-continuations.patch
 0140-rbd-mirror-potential-assertion-failure-during-error-.patch
 0141-rgw_file-unlock-must-precede-out-label.patch
+0142-rbd-mirror-potential-race-condition-during-failure-s.patch
+0143-rados-Improve-error-messages-for-list-inconsistent-c.patch
+0144-rados-Include-epoch-in-the-list-inconsistent-command.patch
+0145-rados-Balance-format-sections-in-same-do_get_inconsi.patch
+0146-include-rados-Fixes-for-list-inconsistent-obj-and-li.patch
+0147-osd-rados-Fixes-for-list-inconsistent-snapset.patch
+0148-rados-Don-t-bother-showing-list-inconsistent-errors-.patch
+0149-test-Add-testing-of-new-scrub-commands-in-rados.patch
+0150-test-Fix-test-to-not-use-jq-S-which-isn-t-avail-in-a.patch
+0151-rgw-default-quota-fixes.patch
+0152-mon-PGMonitor-mark-dump_object_stat_sum-as-static.patch
+0153-mon-PGMonitor-calc-the-USED-of-pool-using-used-used-.patch
+0154-logrotate-Run-as-root-ceph.patch
+0155-librbd-cache-was-not-switching-to-writeback-after-fi.patch

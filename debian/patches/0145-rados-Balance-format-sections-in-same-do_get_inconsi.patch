@@ -1,0 +1,41 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Tue, 26 Apr 2016 18:16:22 -0700
+Subject: rados: Balance format sections in same do_get_inconsistent_cmd()
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit de4681b80a5d24e72bbc7ac6dfee4775987fd834)
+(cherry picked from commit 80f0dd348f32ff6e1f98ca29ea2ed38b5b7f5854)
+
+Resolves: rhbz#1364878
+---
+ src/tools/rados/rados.cc | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/tools/rados/rados.cc b/src/tools/rados/rados.cc
+index 725fe36..edc0fd6 100644
+--- a/src/tools/rados/rados.cc
++++ b/src/tools/rados/rados.cc
+@@ -1296,7 +1296,6 @@ static void dump_inconsistent(const inconsistent_obj_t& inc,
+     f.close_section();
+   }
+   f.close_section();
+-  f.close_section();
+ }
+ 
+ static void dump_inconsistent(const inconsistent_snapset_t& inc,
+@@ -1324,7 +1323,6 @@ static void dump_inconsistent(const inconsistent_snapset_t& inc,
+     }
+     f.close_section();
+   }
+-  f.close_section();
+ }
+ 
+ // dispatch the call by type
+@@ -1400,6 +1398,7 @@ static int do_get_inconsistent_cmd(const std::vector<const char*> &nargs,
+     for (auto& inc : items) {
+       formatter.open_object_section("inconsistent");
+       dump_inconsistent(inc, formatter);
++      formatter.close_section();
+     }
+     if (items.size() < max_item_num) {
+       formatter.close_section();

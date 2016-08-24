@@ -1,0 +1,49 @@
+From: Kefu Chai <kchai@redhat.com>
+Date: Sun, 7 Aug 2016 00:58:04 +0800
+Subject: mon/PGMonitor: mark dump_object_stat_sum() as static
+
+so we can test this method without create an instance of PGMonitor.
+
+Signed-off-by: Kefu Chai <kchai@redhat.com>
+(cherry picked from commit af3d3e25823ca9b40ddf09835edb82795ac68f33)
+
+Resolves: rhbz#1360230
+---
+ src/mon/PGMonitor.cc |  2 +-
+ src/mon/PGMonitor.h  | 10 +++++-----
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/mon/PGMonitor.cc b/src/mon/PGMonitor.cc
+index 8b4c44b..36b1b72 100644
+--- a/src/mon/PGMonitor.cc
++++ b/src/mon/PGMonitor.cc
+@@ -1369,7 +1369,7 @@ inline string percentify(const float& a) {
+ //void PGMonitor::dump_object_stat_sum(stringstream& ss, Formatter *f,
+ void PGMonitor::dump_object_stat_sum(TextTable &tbl, Formatter *f,
+                                      object_stat_sum_t &sum, uint64_t avail,
+-                                     float raw_used_rate, bool verbose, const pg_pool_t *pool) const
++                                     float raw_used_rate, bool verbose, const pg_pool_t *pool)
+ {
+   float curr_object_copies_rate = 0.0;
+   if (sum.num_object_copies > 0)
+diff --git a/src/mon/PGMonitor.h b/src/mon/PGMonitor.h
+index e4081f1..11c72a0 100644
+--- a/src/mon/PGMonitor.h
++++ b/src/mon/PGMonitor.h
+@@ -154,11 +154,11 @@ private:
+ 			  int threshold,
+ 			  vector<string>& args) const;
+ 
+-  void dump_object_stat_sum(TextTable &tbl, Formatter *f,
+-			    object_stat_sum_t &sum,
+-			    uint64_t avail,
+-			    float raw_used_rate,
+-			    bool verbose, const pg_pool_t *pool) const;
++  static void dump_object_stat_sum(TextTable &tbl, Formatter *f,
++				   object_stat_sum_t &sum,
++				   uint64_t avail,
++				   float raw_used_rate,
++				   bool verbose, const pg_pool_t *pool);
+ 
+   int64_t get_rule_avail(OSDMap& osdmap, int ruleno) const;
+ 

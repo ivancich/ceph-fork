@@ -1,0 +1,33 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Mon, 21 Mar 2016 20:39:53 -0700
+Subject: rados: Improve error messages for list-inconsistent commands
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit cea7cf56ee3b9593c935d0c74ce6e4b28b14c2da)
+(cherry picked from commit 43141e383ebac822221b3f22392f02b95b015ef5)
+
+Resolves: rhbz#1364878
+---
+ src/tools/rados/rados.cc | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/tools/rados/rados.cc b/src/tools/rados/rados.cc
+index 33b20d3..834721d 100644
+--- a/src/tools/rados/rados.cc
++++ b/src/tools/rados/rados.cc
+@@ -1378,8 +1378,13 @@ static int do_get_inconsistent_cmd(const std::vector<const char*> &nargs,
+     completion->wait_for_safe();
+     ret = completion->get_return_value();
+     completion->release();
+-    if (ret == -EAGAIN) {
+-      cerr << "interval#" << interval << " expired." << std::endl;
++    if (ret < 0) {
++      if (ret == -EAGAIN)
++        cerr << "interval#" << interval << " expired." << std::endl;
++      else if (ret == -ENOENT)
++        cerr << "No scrub information available for pg " << pg << std::endl;
++      else
++        cerr << "Unknown error " << cpp_strerror(ret) << std::endl;
+       break;
+     }
+     if (start.name.empty()) {
