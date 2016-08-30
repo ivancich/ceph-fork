@@ -148,8 +148,9 @@
 0148-rados-Don-t-bother-showing-list-inconsistent-errors-.patch
 0149-test-Add-testing-of-new-scrub-commands-in-rados.patch
 0150-test-Fix-test-to-not-use-jq-S-which-isn-t-avail-in-a.patch
-0151-rgw-default-quota-fixes.patch
-0152-mon-PGMonitor-mark-dump_object_stat_sum-as-static.patch
-0153-mon-PGMonitor-calc-the-USED-of-pool-using-used-used-.patch
-0154-logrotate-Run-as-root-ceph.patch
-0155-librbd-cache-was-not-switching-to-writeback-after-fi.patch
+0151-mon-PGMonitor-mark-dump_object_stat_sum-as-static.patch
+0152-mon-PGMonitor-calc-the-USED-of-pool-using-used-used-.patch
+0153-logrotate-Run-as-root-ceph.patch
+0154-librbd-cache-was-not-switching-to-writeback-after-fi.patch
+0155-rgw-Let-the-default-quota-settings-take-effect-durin.patch
+0156-rgw-Do-not-bother-to-check-against-conf-values-durin.patch

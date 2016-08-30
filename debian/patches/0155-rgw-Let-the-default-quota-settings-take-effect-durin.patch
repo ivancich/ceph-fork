@@ -1,0 +1,103 @@
+From: root <root@ceph-node1.homeoffice.wal-mart.com>
+Date: Mon, 23 May 2016 15:34:58 +0530
+Subject: rgw: Let the default quota settings take effect during user creation
+
+Fixes http://tracker.ceph.com/issues/16447
+Cherry picked from 400d7c982f18efd7cf96acfc3a63078791d1ec0a
+
+Signed-off-by: Pavan Rallabhandi <PRallabhandi@walmartlabs.com>
+Signed-off-by: Daniel Gryniewicz <dang@redhat.com>
+(cherry picked from commit e07fa1befabd56a3f353bcca50229620abd08dec)
+
+Resolves: rhbz#1362284
+---
+ src/rgw/rgw_rest_user.cc | 31 +++++++++++++++++++++++++++++++
+ src/rgw/rgw_user.cc      | 24 ++++++++++++++++++++++--
+ 2 files changed, 53 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_rest_user.cc b/src/rgw/rgw_rest_user.cc
+index 587e6d0..ef0d7ad 100644
+--- a/src/rgw/rgw_rest_user.cc
++++ b/src/rgw/rgw_rest_user.cc
+@@ -143,6 +143,37 @@ void RGWOp_User_Create::execute()
+   if (gen_key)
+     op_state.set_generate_key();
+ 
++  RGWQuotaInfo bucket_quota;
++  RGWQuotaInfo user_quota;
++
++  if (s->cct->_conf->rgw_bucket_default_quota_max_objects >= 0) {
++    bucket_quota.max_objects = s->cct->_conf->rgw_bucket_default_quota_max_objects;
++    bucket_quota.enabled = true;
++  }
++
++  if (s->cct->_conf->rgw_bucket_default_quota_max_size >= 0) {
++    bucket_quota.max_size_kb = s->cct->_conf->rgw_bucket_default_quota_max_size;
++    bucket_quota.enabled = true;
++  }
++
++  if (s->cct->_conf->rgw_user_default_quota_max_objects >= 0) {
++    user_quota.max_objects = s->cct->_conf->rgw_user_default_quota_max_objects;
++    user_quota.enabled = true;
++  }
++
++  if (s->cct->_conf->rgw_user_default_quota_max_size >= 0) {
++    user_quota.max_size_kb = s->cct->_conf->rgw_user_default_quota_max_size;
++    user_quota.enabled = true;
++  }
++
++  if (bucket_quota.enabled) {
++    op_state.set_bucket_quota(bucket_quota);
++  }
++
++  if (user_quota.enabled) {
++    op_state.set_user_quota(user_quota);
++  }
++
+   http_ret = RGWUserAdminOp_User::create(store, op_state, flusher);
+ }
+ 
+diff --git a/src/rgw/rgw_user.cc b/src/rgw/rgw_user.cc
+index 53f4a75..a9621d1 100644
+--- a/src/rgw/rgw_user.cc
++++ b/src/rgw/rgw_user.cc
+@@ -1929,8 +1929,18 @@ int RGWUser::execute_add(RGWUserAdminOpState& op_state, std::string *err_msg)
+   if (op_state.op_mask_specified)
+     user_info.op_mask = op_state.get_op_mask();
+ 
+-  if (op_state.has_bucket_quota())
++  if (op_state.has_bucket_quota()) {
+     user_info.bucket_quota = op_state.get_bucket_quota();
++  } else {
++    if (cct->_conf->rgw_bucket_default_quota_max_objects >= 0) {
++      user_info.bucket_quota.max_objects = cct->_conf->rgw_bucket_default_quota_max_objects;
++      user_info.bucket_quota.enabled = true;
++    }
++    if (cct->_conf->rgw_bucket_default_quota_max_size >= 0) {
++      user_info.bucket_quota.max_size_kb = cct->_conf->rgw_bucket_default_quota_max_size;
++      user_info.bucket_quota.enabled = true;
++    }
++  }
+ 
+   if (op_state.temp_url_key_specified) {
+     map<int, string>::iterator iter;
+@@ -1940,8 +1950,18 @@ int RGWUser::execute_add(RGWUserAdminOpState& op_state, std::string *err_msg)
+     }
+   }
+ 
+-  if (op_state.has_user_quota())
++  if (op_state.has_user_quota()) {
+     user_info.user_quota = op_state.get_user_quota();
++  } else {
++    if (cct->_conf->rgw_user_default_quota_max_objects >= 0) {
++      user_info.user_quota.max_objects = cct->_conf->rgw_user_default_quota_max_objects;
++      user_info.user_quota.enabled = true;
++    }
++    if (cct->_conf->rgw_user_default_quota_max_size >= 0) {
++      user_info.user_quota.max_size_kb = cct->_conf->rgw_user_default_quota_max_size;
++      user_info.user_quota.enabled = true;
++    }
++  }
+ 
+   // update the request
+   op_state.set_user_info(user_info);

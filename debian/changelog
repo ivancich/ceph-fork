@@ -1,3 +1,9 @@
+ceph (10.2.2-32redhat1) stable; urgency=medium
+
+  * fix and reorder RGW quota patches (rhbz#1362284)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 30 Aug 2016 16:06:08 -0600
+
 ceph (10.2.2-31redhat1) stable; urgency=medium
 
   * rbd-mirror: potential race condition during failure shutdown
