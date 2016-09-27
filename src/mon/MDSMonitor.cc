@@ -616,7 +616,8 @@ bool MDSMonitor::prepare_beacon(MonOpRequestRef op)
       dout(4) << __func__ << ": marking rank "
               << info.rank << " damaged" << dendl;
 
-      const utime_t until = ceph_clock_now(g_ceph_context);
+      utime_t until = ceph_clock_now(g_ceph_context);
+      until += g_conf->mds_blacklist_interval;
       const auto blacklist_epoch = mon->osdmon()->blacklist(info.addr, until);
       request_proposal(mon->osdmon());
       pending_fsmap.damaged(gid, blacklist_epoch);
@@ -1472,7 +1473,7 @@ class FlagSetHandler : public FileSystemCommandHandler
         return r;
       }
 
-      bool jewel = mon->get_quorum_features() && CEPH_FEATURE_SERVER_JEWEL;
+      bool jewel = mon->get_quorum_features() & CEPH_FEATURE_SERVER_JEWEL;
       if (flag_bool && !jewel) {
         ss << "Multiple-filesystems are forbidden until all mons are updated";
         return -EINVAL;
@@ -2414,22 +2415,22 @@ void MDSMonitor::check_subs()
 {
   std::list<std::string> types;
 
-  // Subscriptions may be to "fsmap" (MDS and legacy clients),
-  // "fsmap.<namespace>", or to "fsmap" for the full state of all
+  // Subscriptions may be to "mdsmap" (MDS and legacy clients),
+  // "mdsmap.<namespace>", or to "fsmap" for the full state of all
   // filesystems.  Build a list of all the types we service
   // subscriptions for.
-  types.push_back("mdsmap");
   types.push_back("fsmap");
+  types.push_back("mdsmap");
   for (const auto &i : fsmap.filesystems) {
     auto fscid = i.first;
     std::ostringstream oss;
-    oss << "fsmap." << fscid;
+    oss << "mdsmap." << fscid;
     types.push_back(oss.str());
   }
 
   for (const auto &type : types) {
     if (mon->session_map.subs.count(type) == 0)
-      return;
+      continue;
     xlist<Subscription*>::iterator p = mon->session_map.subs[type]->begin();
     while (!p.end()) {
       Subscription *sub = *p;

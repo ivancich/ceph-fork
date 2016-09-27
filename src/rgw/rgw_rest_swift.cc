@@ -1,6 +1,9 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 
+#include <boost/optional.hpp>
+#include <boost/utility/in_place_factory.hpp>
+
 #include "include/assert.h"
 
 #include "common/Formatter.h"
@@ -102,8 +105,9 @@ static void dump_account_metadata(struct req_state * const s,
       STREAM_IO(s)->print("%s: %s\r\n", geniter->second.c_str(),
 			  iter->second.c_str());
     } else if (strncmp(name, RGW_ATTR_META_PREFIX, PREFIX_LEN) == 0) {
-      STREAM_IO(s)->print("X-Account-Meta-%s: %s\r\n", name + PREFIX_LEN,
-			  iter->second.c_str());
+      STREAM_IO(s)->print("X-Account-Meta-%s: %s\r\n",
+                          camelcase_dash_http_attr(name + PREFIX_LEN).c_str(),
+                          iter->second.c_str());
     }
   }
 }
@@ -366,8 +370,9 @@ static void dump_container_metadata(struct req_state *s, RGWBucketEnt& bucket)
         STREAM_IO(s)->print("%s: %s\r\n", geniter->second.c_str(),
 			    iter->second.c_str());
       } else if (strncmp(name, RGW_ATTR_META_PREFIX, PREFIX_LEN) == 0) {
-        STREAM_IO(s)->print("X-Container-Meta-%s: %s\r\n", name + PREFIX_LEN,
-			    iter->second.c_str());
+        STREAM_IO(s)->print("X-Container-Meta-%s: %s\r\n",
+                            camelcase_dash_http_attr(name + PREFIX_LEN).c_str(),
+                            iter->second.c_str());
       }
     }
   }
@@ -503,6 +508,33 @@ static void get_rmattrs_from_headers(const req_state * const s,
   }
 }
 
+static int get_swift_versioning_settings(
+  req_state * const s,
+  boost::optional<std::string>& swift_ver_location)
+{
+  /* Removing the Swift's versions location has lower priority than setting
+   * a new one. That's the reason why we're handling it first. */
+  const std::string vlocdel =
+    s->info.env->get("HTTP_X_REMOVE_VERSIONS_LOCATION", "");
+  if (vlocdel.size()) {
+    swift_ver_location = boost::in_place(std::string());
+  }
+
+  std::string vloc = s->info.env->get("HTTP_X_VERSIONS_LOCATION", "");
+  if (vloc.size()) {
+    /* If the Swift's versioning is globally disabled but someone wants to
+     * enable it for a given container, new version of Swift will generate
+     * the precondition failed error. */
+    if (! s->cct->_conf->rgw_swift_versioning_enabled) {
+      return -ERR_PRECONDITION_FAILED;
+    }
+
+    swift_ver_location = std::move(vloc);
+  }
+
+  return 0;
+}
+
 int RGWCreateBucket_ObjStore_SWIFT::get_params()
 {
   bool has_policy;
@@ -521,11 +553,7 @@ int RGWCreateBucket_ObjStore_SWIFT::get_params()
                            CONT_REMOVE_ATTR_PREFIX, rmattr_names);
   placement_rule = s->info.env->get("HTTP_X_STORAGE_POLICY", "");
 
-  if (s->cct->_conf->rgw_swift_versioning_enabled) {
-    swift_ver_location = s->info.env->get("HTTP_X_VERSIONS_LOCATION", "");
-  }
-
-  return 0;
+  return get_swift_versioning_settings(s, swift_ver_location);
 }
 
 void RGWCreateBucket_ObjStore_SWIFT::send_response()
@@ -739,10 +767,7 @@ int RGWPutMetadataBucket_ObjStore_SWIFT::get_params()
 			   rmattr_names);
   placement_rule = s->info.env->get("HTTP_X_STORAGE_POLICY", "");
 
-  if (s->cct->_conf->rgw_swift_versioning_enabled) {
-    swift_ver_location = s->info.env->get("HTTP_X_VERSIONS_LOCATION", "");
-  }
-  return 0;
+  return get_swift_versioning_settings(s, swift_ver_location);
 }
 
 void RGWPutMetadataBucket_ObjStore_SWIFT::send_response()
@@ -919,7 +944,8 @@ static void dump_object_metadata(struct req_state * const s,
     } else if (strncmp(name, RGW_ATTR_META_PREFIX,
 		       sizeof(RGW_ATTR_META_PREFIX)-1) == 0) {
       name += sizeof(RGW_ATTR_META_PREFIX) - 1;
-      STREAM_IO(s)->print("X-Object-Meta-%s: %s\r\n", name,
+      STREAM_IO(s)->print("X-Object-Meta-%s: %s\r\n",
+                          camelcase_dash_http_attr(name).c_str(),
                           kv.second.c_str());
     }
   }
@@ -1173,21 +1199,31 @@ int RGWBulkDelete_ObjStore_SWIFT::get_data(
 
     RGWBulkDelete::acct_path_t path;
 
-    const size_t sep_pos = path_str.find('/');
-    if (string::npos == sep_pos) {
-      url_decode(path_str, path.bucket_name);
-    } else {
-      string bucket_name;
-      url_decode(path_str.substr(0, sep_pos), bucket_name);
+    /* We need to skip all slashes at the beginning in order to preserve
+     * compliance with Swift. */
+    const size_t start_pos = path_str.find_first_not_of('/');
 
-      string obj_name;
-      url_decode(path_str.substr(sep_pos + 1), obj_name);
+    if (string::npos != start_pos) {
+      /* Seperator is the first slash after the leading ones. */
+      const size_t sep_pos = path_str.find('/', start_pos);
 
-      path.bucket_name = bucket_name;
-      path.obj_key = obj_name;
+      if (string::npos != sep_pos) {
+        string bucket_name;
+        url_decode(path_str.substr(start_pos, sep_pos - start_pos), bucket_name);
+
+        string obj_name;
+        url_decode(path_str.substr(sep_pos + 1), obj_name);
+
+        path.bucket_name = bucket_name;
+        path.obj_key = obj_name;
+      } else {
+        /* It's guaranteed here that bucket name is at least one character
+         * long and is different than slash. */
+        url_decode(path_str.substr(start_pos), path.bucket_name);
+      }
+
+      items.push_back(path);
     }
-
-    items.push_back(path);
 
     if (items.size() == MAX_CHUNK_ENTRIES) {
       *is_truncated = true;

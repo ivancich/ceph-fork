@@ -11,7 +11,7 @@
 
 #define dout_subsys ceph_subsys_journaler
 #undef dout_prefix
-#define dout_prefix *_dout << "JournalMetadata: "
+#define dout_prefix *_dout << "JournalMetadata: " << this << " "
 
 namespace journal {
 
@@ -402,9 +402,9 @@ JournalMetadata::JournalMetadata(ContextWQ *work_queue, SafeTimer *timer,
                                  Mutex *timer_lock, librados::IoCtx &ioctx,
                                  const std::string &oid,
                                  const std::string &client_id,
-                                 double commit_interval)
+                                 const Settings &settings)
     : RefCountedObject(NULL, 0), m_cct(NULL), m_oid(oid),
-      m_client_id(client_id), m_commit_interval(commit_interval), m_order(0),
+      m_client_id(client_id), m_settings(settings), m_order(0),
       m_splay_width(0), m_pool_id(-1), m_initialized(false),
       m_work_queue(work_queue), m_timer(timer), m_timer_lock(timer_lock),
       m_lock("JournalMetadata::m_lock"), m_commit_tid(0), m_watch_ctx(this),
@@ -587,7 +587,7 @@ void JournalMetadata::get_tags(const boost::optional<uint64_t> &tag_class,
   ctx->send();
 }
 
-void JournalMetadata::add_listener(Listener *listener) {
+void JournalMetadata::add_listener(JournalMetadataListener *listener) {
   Mutex::Locker locker(m_lock);
   while (m_update_notifications > 0) {
     m_update_cond.Wait(m_lock);
@@ -595,7 +595,7 @@ void JournalMetadata::add_listener(Listener *listener) {
   m_listeners.push_back(listener);
 }
 
-void JournalMetadata::remove_listener(Listener *listener) {
+void JournalMetadata::remove_listener(JournalMetadataListener *listener) {
   Mutex::Locker locker(m_lock);
   while (m_update_notifications > 0) {
     m_update_cond.Wait(m_lock);
@@ -795,7 +795,8 @@ void JournalMetadata::schedule_commit_task() {
   assert(m_commit_position_ctx != nullptr);
   if (m_commit_position_task_ctx == NULL) {
     m_commit_position_task_ctx = new C_CommitPositionTask(this);
-    m_timer->add_event_after(m_commit_interval, m_commit_position_task_ctx);
+    m_timer->add_event_after(m_settings.commit_interval,
+                             m_commit_position_task_ctx);
   }
 }
 
@@ -824,7 +825,7 @@ void JournalMetadata::handle_commit_position_task() {
 
 void JournalMetadata::schedule_watch_reset() {
   assert(m_timer_lock->is_locked());
-  m_timer->add_event_after(0.1, new C_WatchReset(this));
+  m_timer->add_event_after(1, new C_WatchReset(this));
 }
 
 void JournalMetadata::handle_watch_reset() {
@@ -835,8 +836,12 @@ void JournalMetadata::handle_watch_reset() {
 
   int r = m_ioctx.watch2(m_oid, &m_watch_handle, &m_watch_ctx);
   if (r < 0) {
-    lderr(m_cct) << __func__ << ": failed to watch journal"
-                 << cpp_strerror(r) << dendl;
+    if (r == -ENOENT) {
+      ldout(m_cct, 5) << __func__ << ": journal header not found" << dendl;
+    } else {
+      lderr(m_cct) << __func__ << ": failed to watch journal"
+                   << cpp_strerror(r) << dendl;
+    }
     schedule_watch_reset();
   } else {
     ldout(m_cct, 10) << __func__ << ": reset journal watch" << dendl;
@@ -854,7 +859,12 @@ void JournalMetadata::handle_watch_notify(uint64_t notify_id, uint64_t cookie) {
 }
 
 void JournalMetadata::handle_watch_error(int err) {
-  lderr(m_cct) << "journal watch error: " << cpp_strerror(err) << dendl;
+  if (err == -ENOTCONN) {
+    ldout(m_cct, 5) << "journal watch error: header removed" << dendl;
+  } else {
+    lderr(m_cct) << "journal watch error: " << cpp_strerror(err) << dendl;
+  }
+
   Mutex::Locker timer_locker(*m_timer_lock);
   Mutex::Locker locker(m_lock);
 
@@ -1036,7 +1046,7 @@ std::ostream &operator<<(std::ostream &os,
      << "active_set=" << jm.m_active_set << ", "
      << "client_id=" << jm.m_client_id << ", "
      << "commit_tid=" << jm.m_commit_tid << ", "
-     << "commit_interval=" << jm.m_commit_interval << ", "
+     << "commit_interval=" << jm.m_settings.commit_interval << ", "
      << "commit_position=" << jm.m_commit_position << ", "
      << "registered_clients=" << jm.m_registered_clients << "]";
   return os;

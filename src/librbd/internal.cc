@@ -10,9 +10,7 @@
 #include "common/ceph_context.h"
 #include "common/dout.h"
 #include "common/errno.h"
-#include "common/ContextCompletion.h"
 #include "common/Throttle.h"
-#include "common/WorkQueue.h"
 #include "common/event_socket.h"
 #include "cls/lock/cls_lock_client.h"
 #include "include/stringify.h"
@@ -26,12 +24,10 @@
 #include "librbd/AioImageRequest.h"
 #include "librbd/AioImageRequestWQ.h"
 #include "librbd/AioObjectRequest.h"
-#include "librbd/CopyupRequest.h"
 #include "librbd/DiffIterate.h"
 #include "librbd/ExclusiveLock.h"
 #include "librbd/ImageCtx.h"
 #include "librbd/ImageState.h"
-#include "librbd/ImageWatcher.h"
 #include "librbd/internal.h"
 #include "librbd/Journal.h"
 #include "librbd/journal/Types.h"
@@ -45,7 +41,6 @@
 
 #include "journal/Journaler.h"
 
-#include <boost/bind.hpp>
 #include <boost/scope_exit.hpp>
 #include <boost/variant.hpp>
 #include "include/assert.h"
@@ -248,7 +243,6 @@ int mirror_image_enable(CephContext *cct, librados::IoCtx &io_ctx,
   if (r < 0) {
     lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
                << dendl;
-    return r;
   }
 
   ldout(cct, 20) << "image mirroring is enabled: global_id=" <<
@@ -341,7 +335,6 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
   if (r < 0) {
     lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
                << dendl;
-    return r;
   }
 
   header_oid = ::journal::Journaler::header_oid(ictx->id);
@@ -395,7 +388,7 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
 
   if (remove) {
     r = cls_client::mirror_image_remove(&ictx->md_ctx, ictx->id);
-    if (r < 0) {
+    if (r < 0 && r != -ENOENT) {
       lderr(cct) << "failed to remove image from mirroring directory: "
                  << cpp_strerror(r) << dendl;
       return r;
@@ -1689,7 +1682,7 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
     // avoid accepting new requests from peers while we manipulate
     // the image features
     if (ictx->exclusive_lock != nullptr) {
-      ictx->exclusive_lock->block_requests();
+      ictx->exclusive_lock->block_requests(0);
     }
     BOOST_SCOPE_EXIT_ALL( (ictx) ) {
       if (ictx->exclusive_lock != nullptr) {
@@ -1818,6 +1811,7 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
             if (r < 0 && r != -ENOENT) {
               lderr(cct) << "error retrieving mirroring state: "
                 << cpp_strerror(r) << dendl;
+              return r;
             }
 
             if (mirror_image.state == cls::rbd::MIRROR_IMAGE_STATE_ENABLED) {
@@ -1827,7 +1821,7 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
             }
           } else if (mirror_mode == RBD_MIRROR_MODE_POOL) {
             r = cls_client::mirror_image_remove(&ictx->md_ctx, ictx->id);
-            if (r < 0) {
+            if (r < 0 && r != -ENOENT) {
               lderr(cct) << "failed to remove image from mirroring directory: "
                          << cpp_strerror(r) << dendl;
               return r;
@@ -2125,58 +2119,66 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
     }
 
     if (old_format || unknown_format) {
-      ldout(cct, 2) << "removing rbd image from directory..." << dendl;
+      ldout(cct, 2) << "removing rbd image from v1 directory..." << dendl;
       r = tmap_rm(io_ctx, imgname);
       old_format = (r == 0);
       if (r < 0 && !unknown_format) {
         if (r != -ENOENT) {
-	  lderr(cct) << "error removing img from old-style directory: "
-		     << cpp_strerror(-r) << dendl;
+          lderr(cct) << "error removing image from v1 directory: "
+                     << cpp_strerror(-r) << dendl;
         }
 	return r;
       }
     }
     if (!old_format) {
-      r = Journal<>::remove(io_ctx, id);
-      if (r < 0 && r != -ENOENT) {
-        lderr(cct) << "error removing image journal" << dendl;
-        return r;
+      if (id.empty()) {
+        ldout(cct, 5) << "attempting to determine image id" << dendl;
+        r = cls_client::dir_get_id(&io_ctx, RBD_DIRECTORY, imgname, &id);
+        if (r < 0 && r != -ENOENT) {
+          lderr(cct) << "error getting id of image" << dendl;
+          return r;
+        }
       }
+      if (!id.empty()) {
+        ldout(cct, 10) << "removing journal..." << dendl;
+        r = Journal<>::remove(io_ctx, id);
+        if (r < 0 && r != -ENOENT) {
+          lderr(cct) << "error removing image journal" << dendl;
+          return r;
+        }
 
-      r = ObjectMap::remove(io_ctx, id);
-      if (r < 0 && r != -ENOENT) {
-	lderr(cct) << "error removing image object map" << dendl;
-        return r;
+        ldout(cct, 10) << "removing object map..." << dendl;
+        r = ObjectMap::remove(io_ctx, id);
+        if (r < 0 && r != -ENOENT) {
+          lderr(cct) << "error removing image object map" << dendl;
+          return r;
+        }
+
+        ldout(cct, 10) << "removing image from rbd_mirroring object..."
+                       << dendl;
+        r = cls_client::mirror_image_remove(&io_ctx, id);
+        if (r < 0 && r != -ENOENT && r != -EOPNOTSUPP) {
+          lderr(cct) << "failed to remove image from mirroring directory: "
+                     << cpp_strerror(r) << dendl;
+          return r;
+        }
       }
 
       ldout(cct, 2) << "removing id object..." << dendl;
       r = io_ctx.remove(util::id_obj_name(imgname));
       if (r < 0 && r != -ENOENT) {
-	lderr(cct) << "error removing id object: " << cpp_strerror(r) << dendl;
+	lderr(cct) << "error removing id object: " << cpp_strerror(r)
+                   << dendl;
 	return r;
       }
 
-      r = cls_client::dir_get_id(&io_ctx, RBD_DIRECTORY, imgname, &id);
-      if (r < 0 && r != -ENOENT) {
-	lderr(cct) << "error getting id of image" << dendl;
-	return r;
-      }
-
-      ldout(cct, 2) << "removing rbd image from directory..." << dendl;
+      ldout(cct, 2) << "removing rbd image from v2 directory..." << dendl;
       r = cls_client::dir_remove_image(&io_ctx, RBD_DIRECTORY, imgname, id);
       if (r < 0) {
         if (r != -ENOENT) {
-	  lderr(cct) << "error removing img from new-style directory: "
-		     << cpp_strerror(-r) << dendl;
+          lderr(cct) << "error removing image from v2 directory: "
+                     << cpp_strerror(-r) << dendl;
         }
-	return r;
-      }
-
-      ldout(cct, 2) << "removing image from rbd_mirroring object..." << dendl;
-      r = cls_client::mirror_image_remove(&io_ctx, id);
-      if (r < 0 && r != -ENOENT && r != -EOPNOTSUPP) {
-        lderr(cct) << "failed to remove image from mirroring directory: "
-                   << cpp_strerror(r) << dendl;
         return r;
       }
     }
@@ -2384,7 +2386,8 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
       uint64_t len = min(period, src_size - offset);
       bufferlist *bl = new bufferlist();
       Context *ctx = new C_CopyRead(&throttle, dest, offset, bl);
-      AioCompletion *comp = AioCompletion::create(ctx);
+      AioCompletion *comp = AioCompletion::create_and_start(ctx, src,
+                                                            AIO_TYPE_READ);
       AioImageRequest<>::aio_read(src, comp, offset, len, NULL, bl,
                                   fadvise_flags);
       prog_ctx.update_progress(offset, src_size);
@@ -2609,7 +2612,8 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
       bufferlist bl;
 
       C_SaferCond ctx;
-      AioCompletion *c = AioCompletion::create(&ctx);
+      AioCompletion *c = AioCompletion::create_and_start(&ctx, ictx,
+                                                         AIO_TYPE_READ);
       AioImageRequest<>::aio_read(ictx, c, off, read_len, NULL, &bl, 0);
 
       int ret = ctx.wait();
@@ -3199,7 +3203,6 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
       if (r < 0) {
         lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
                    << dendl;
-        return r;
       }
     }
 
@@ -3355,7 +3358,6 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
     if (r < 0) {
       lderr(cct) << "failed to send update notification: " << cpp_strerror(r)
                  << dendl;
-      return r;
     }
     return 0;
   }
@@ -3530,13 +3532,6 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
       (*states)[static_cast<mirror_image_status_state_t>(s.first)] = s.second;
     }
     return 0;
-  }
-
-  void rbd_req_cb(completion_t cb, void *arg)
-  {
-    AioObjectRequest *req = reinterpret_cast<AioObjectRequest *>(arg);
-    AioCompletion *comp = reinterpret_cast<AioCompletion *>(cb);
-    req->complete(comp->get_return_value());
   }
 
   struct C_RBD_Readahead : public Context {

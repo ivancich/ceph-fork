@@ -14,6 +14,7 @@
 
 extern std::map<std::string, std::string> rgw_to_http_attrs;
 
+extern string camelcase_dash_http_attr(const string& orig);
 extern string lowercase_dash_http_attr(const string& orig);
 
 extern void rgw_rest_init(CephContext *cct, RGWRados *store, RGWZoneGroup& zone_group);
@@ -216,6 +217,8 @@ public:
   virtual int verify_params();
   virtual int get_params();
   virtual int get_data(bufferlist& bl);
+
+  int get_padding_last_aws4_chunk_encoded(bufferlist &bl, uint64_t chunk_size);
 };
 
 class RGWPostObj_ObjStore : public RGWPostObj
@@ -376,15 +379,15 @@ protected:
   virtual RGWOp *op_copy() { return NULL; }
   virtual RGWOp *op_options() { return NULL; }
 
-  virtual int validate_tenant_name(const string& bucket);
-  virtual int validate_bucket_name(const string& bucket);
-  virtual int validate_object_name(const string& object);
-
   static int allocate_formatter(struct req_state *s, int default_formatter,
 				bool configurable);
 public:
   RGWHandler_REST() {}
   virtual ~RGWHandler_REST() {}
+
+  static int validate_tenant_name(const string& bucket);
+  static int validate_bucket_name(const string& bucket);
+  static int validate_object_name(const string& object);
 
   int init_permissions(RGWOp* op);
   int read_permissions(RGWOp* op);

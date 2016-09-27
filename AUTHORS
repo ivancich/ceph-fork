@@ -15,6 +15,7 @@ Ahoussi Armand <ahoussi.say@telecom-bretagne.eu>
 Ailing Zhang <zhangal1992@gmail.com>
 Alan Grosskurth <code@alan.grosskurth.ca>
 Alan Somers <asomers@gmail.com>
+Albert Tu <albert.t@inwinstack.com>
 Alexander Chuzhoy <achuzhoy@redhat.com>
 Alexandre Derumier <aderumier@odiso.com>
 Alexandre Marangone <alexandre.marangone@inktank.com>
@@ -92,6 +93,7 @@ Chen Baozi <baozich@gmail.com>
 Chen Dihao <tobeg3oogle@gmail.com>
 Chendi Xue <chendi.xue@intel.com>
 Cheng Cheng <ccheng.leo@gmail.com>
+Chengwei Yang <yangchengwei@qiyi.com>
 Chengyuan Li <chengyli@ebay.com>
 Chris Dunlop <chris@onthe.net.au>
 Chris Glass <tribaal@gmail.com>
@@ -111,6 +113,7 @@ Colin Mattson <colinmattson@gmail.com>
 Colin P. McCabe <colinm@hq.newdream.net>
 cy.l@inwinstack.com <cy.l@inwinstack.com>
 Dan Chai <tengweicai@gmail.com>
+Dan Horák <dan@danny.cz>
 Daniel Gollub <d.gollub@telekom.de>
 Daniel Gryniewicz <dang@redhat.com>
 Daniel J. Hofmann <daniel@trvx.org>
@@ -160,6 +163,7 @@ Fabio Alessandro Locati <fabiolocati@gmail.com>
 fangdong <yp.fangdong@gmail.com>
 Federico Gimenez <fgimenez@coit.es>
 Federico Simoncelli <fsimonce@redhat.com>
+Feng Guo <diluga@gmail.com>
 Feng He <fenglife@hotmail.com>
 Feng Wang <cyclonew@cs.ucsc.edu>
 Filippos Giannakos <philipgian@grnet.gr>
@@ -231,8 +235,10 @@ Jean-Rémi Deveaux <jeanremi.deveaux@gmail.com>
 Jeff Epstein <jepst79@gmail.com>
 Jeffrey Lu <lzhng2000@aliyun.com>
 Jeff Weber <jweber@cofront.net>
+Jenkins Build Slave User <ceph-release-team@redhat.com>
 Jenkins Build Slave User <jenkins-build@trusty-huge--11a52675-9585-4db4-a514-798db40d6da2.localdomain>
 Jenkins Build Slave User <jenkins-build@trusty-huge--abdffd45-81df-4aa8-a769-e169993c7a0f.localdomain>
+Jenkins Build Slave User <jenkins-build@trusty-huge--dfeed223-b008-47e6-b689-a0d96992b62c.localdomain>
 Jenkins Build Slave User <jenkins-build@trusty-small-unique--68a2c286-dc75-4669-822d-28cd109dc3c5.localdomain>
 Jenkins <jenkins@ceph.com>
 Jens-Christian Fischer <jens-christian.fischer@switch.ch>
@@ -247,6 +253,7 @@ Jiaying Ren <mikulely@gmail.com>
 Ji Chen <insomnia@139.com>
 Jie Wang <jie.wang@kylin-cloud.com>
 Jim Schutt <jaschut@sandia.gov>
+Jim Wright <jim@quadraturecapital.com>
 Jingkai Yuan <jingkai.yuan@intel.com>
 João Eduardo Luís <joao.luis@inktank.com>
 João Eduardo Luís <joao@redhat.com>
@@ -346,6 +353,7 @@ Michael Nelson <mikenel@tnld.net>
 Michael Riederer <michael@riederer.org>
 Michael Rodriguez <michael@newdream.net>
 Michal Jarzabek <stiopa@gmail.com>
+Michel Normand <normand@linux.vnet.ibm.com>
 Mike Kelly <pioto@pioto.org>
 Mike Lundy <mike@fluffypenguin.org>
 Mike Ryan <mike.ryan@inktank.com>
@@ -372,6 +380,7 @@ Ning Yao <yaoning@unitedstack.com>
 Nishtha Rai <nishtha3rai@gmail.com>
 Noah Watkins <nwatkins@redhat.com>
 (no author) <(no author)@29311d96-e01e-0410-9327-a35deaab8ce9>
+Oleh Prypin <oleh@pryp.in>
 Orit Wasserman <owasserm@redhat.com>
 Owen Synge <osynge@suse.com>
 Padraig O'Sullivan <posulliv@umd.edu>
@@ -385,6 +394,7 @@ Paul Chiang <paul_chiang@tcloudcomputing.com>
 Paul Meserve <paul@pogodan.com>
 Pavan Rallabhandi <pavan.rallabhandi@sandisk.com>
 Peter Reiher <reiher@inktank.com>
+Peter Sabaini <peter@sabaini.at>
 Peter Vinson <peter@hq.newdream.net>
 Peter Wienemann <wienemann@physik.uni-bonn.de>
 Pete V <peter@squid.newdream.net>
@@ -393,6 +403,7 @@ Petr Machata <pmachata@redhat.com>
 Pierre Chaumont <pierre.chaumont31@gmail.com>
 Pierre Rognant <prognant@oodrive.com>
 Piotr Dałek <piotr.dalek@ts.fujitsu.com>
+Pritha Srivastava <prsrivas@redhat.com>
 Qiankun Zheng <zheng.qiankun@h3c.com>
 Qinghua Jin <qhjin_dev@163.com>
 Rachana Patel <rachana83.patel@gmail.com>
@@ -451,6 +462,7 @@ Shang Ding <dingshang2013@163.com>
 Shanggao Qiu <qiushanggao@qq.com>
 Sharif Olorin <sio@tesser.org>
 Shawn Edwards <lesser.evil@gmail.com>
+Shilpa Jagannath <smanjara@redhat.com>
 Shishir Gowda <shishir.gowda@sandisk.com>
 Shotaro Kawaguchi <kawaguchi.s@jp.fujitsu.com>
 Shun Song <song.shun3@zte.com.cn>

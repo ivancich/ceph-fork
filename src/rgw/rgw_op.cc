@@ -637,6 +637,18 @@ bool RGWOp::generate_cors_headers(string& origin, string& method, string& header
   if (!rule)
     return false;
 
+  /*
+   * Set the Allowed-Origin header to a asterisk if this is allowed in the rule
+   * and no Authorization was send by the client
+   *
+   * The origin parameter specifies a URI that may access the resource.  The browser must enforce this.
+   * For requests without credentials, the server may specify "*" as a wildcard,
+   * thereby allowing any origin to access the resource.
+   */
+  const char *authorization = s->info.env->get("HTTP_AUTHORIZATION");
+  if (!authorization && rule->has_wildcard_origin())
+    origin = "*";
+
   /* CORS 6.2.3. */
   const char *req_meth = s->info.env->get("HTTP_ACCESS_CONTROL_REQUEST_METHOD");
   if (!req_meth) {
@@ -1015,13 +1027,26 @@ int RGWGetObj::handle_slo_manifest(bufferlist& bl)
 
   for (const auto& entry : slo_info.entries) {
     const string& path = entry.path;
-    const size_t pos = path.find('/', 1); /* skip first / */
-    if (pos == string::npos) {
+
+    /* If the path starts with slashes, strip them all. */
+    const size_t pos_init = path.find_first_not_of('/');
+    /* According to the documentation of std::string::find following check
+     * is not necessary as we should get the std::string::npos propagation
+     * here. This might be true with the accuracy to implementation's bugs.
+     * See following question on SO:
+     * http://stackoverflow.com/questions/1011790/why-does-stdstring-findtext-stdstringnpos-not-return-npos
+     */
+    if (pos_init == string::npos) {
       return -EINVAL;
     }
 
-    string bucket_name = path.substr(1, pos - 1);
-    string obj_name = path.substr(pos + 1);
+    const size_t pos_sep = path.find('/', pos_init);
+    if (pos_sep == string::npos) {
+      return -EINVAL;
+    }
+
+    string bucket_name = path.substr(pos_init, pos_sep - pos_init);
+    string obj_name = path.substr(pos_sep + 1);
 
     rgw_bucket bucket;
     RGWAccessControlPolicy *bucket_policy;
@@ -1225,6 +1250,7 @@ void RGWGetObj::execute()
     if (op_ret < 0) {
       ldout(s->cct, 0) << "ERROR: failed to handle user manifest ret="
 		       << op_ret << dendl;
+      goto done_err;
     }
     return;
   }
@@ -1769,6 +1795,9 @@ int RGWCreateBucket::verify_permission()
       << dendl;
     return -EACCES;
   }
+  if (s->user->max_buckets < 0) {
+    return -EPERM;
+  }
 
   if (s->user->max_buckets) {
     RGWUserBuckets buckets;
@@ -1838,6 +1867,14 @@ static void prepare_add_del_attrs(const map<string, bufferlist>& orig_attrs,
   }
 }
 
+/* Fuse resource metadata basing on original attributes in @orig_attrs, set
+ * of _custom_ attribute names to remove in @rmattr_names and attributes in
+ * @out_attrs. Place results in @out_attrs.
+ *
+ * NOTE: it's supposed that all special attrs already present in @out_attrs
+ * will be preserved without any change. Special attributes are those which
+ * names start with RGW_ATTR_META_PREFIX. They're complement to custom ones
+ * used for X-Account-Meta-*, X-Container-Meta-*, X-Amz-Meta and so on.  */
 static void prepare_add_del_attrs(const map<string, bufferlist>& orig_attrs,
                                   const set<string>& rmattr_names,
                                   map<string, bufferlist>& out_attrs)
@@ -1856,6 +1893,10 @@ static void prepare_add_del_attrs(const map<string, bufferlist>& orig_attrs,
         if (aiter != std::end(out_attrs)) {
           out_attrs.erase(aiter);
         }
+      } else {
+        /* emplace() won't alter the map if the key is already present.
+         * This behaviour is fully intensional here. */
+        out_attrs.emplace(kv);
       }
     } else if (out_attrs.find(name) == std::end(out_attrs)) {
       out_attrs[name] = kv.second;
@@ -1966,12 +2007,9 @@ void RGWCreateBucket::execute()
     }
   }
 
-  if (need_metadata_upload()) {
-    rgw_get_request_metadata(s->cct, s->info, attrs, false);
-    prepare_add_del_attrs(s->bucket_attrs, rmattr_names, attrs);
-    populate_with_generic_attrs(s, attrs);
-  }
-
+  /* Encode special metadata first as we're using std::map::emplace under
+   * the hood. This method will add the new items only if the map doesn't
+   * contain such keys yet. */
   policy.encode(aclbl);
   emplace_attr(RGW_ATTR_ACL, std::move(aclbl));
 
@@ -1979,12 +2017,28 @@ void RGWCreateBucket::execute()
     cors_config.encode(corsbl);
     emplace_attr(RGW_ATTR_CORS, std::move(corsbl));
   }
+
+  if (need_metadata_upload()) {
+    /* It's supposed that following functions WILL NOT change any special
+     * attributes (like RGW_ATTR_ACL) if they are already present in attrs. */
+    rgw_get_request_metadata(s->cct, s->info, attrs, false);
+    prepare_add_del_attrs(s->bucket_attrs, rmattr_names, attrs);
+    populate_with_generic_attrs(s, attrs);
+  }
+
   s->bucket.tenant = s->bucket_tenant; /* ignored if bucket exists */
   s->bucket.name = s->bucket_name;
+
+  /* Handle updates of the metadata for Swift's object versioning. */
+  if (swift_ver_location) {
+    s->bucket_info.swift_ver_location = *swift_ver_location;
+    s->bucket_info.swift_versioning = (! swift_ver_location->empty());
+  }
+
   op_ret = store->create_bucket(*(s->user), s->bucket, zonegroup_id,
-				placement_rule, swift_ver_location, attrs,
-				info, pobjv, &ep_objv, creation_time,
-				pmaster_bucket, true);
+                                placement_rule, s->bucket_info.swift_ver_location,
+                                attrs, info, pobjv, &ep_objv, creation_time,
+                                pmaster_bucket, true);
   /* continue if EEXIST and create_bucket will fail below.  this way we can
    * recover from a partial create by retrying it. */
   ldout(s->cct, 20) << "rgw_create_bucket returned ret=" << op_ret << " bucket=" << s->bucket << dendl;
@@ -2051,6 +2105,12 @@ void RGWCreateBucket::execute()
       rgw_get_request_metadata(s->cct, s->info, attrs, false);
       prepare_add_del_attrs(s->bucket_attrs, rmattr_names, attrs);
       populate_with_generic_attrs(s, attrs);
+
+      /* Handle updates of the metadata for Swift's object versioning. */
+      if (swift_ver_location) {
+        s->bucket_info.swift_ver_location = *swift_ver_location;
+        s->bucket_info.swift_versioning = (! swift_ver_location->empty());
+      }
 
       op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs,
                                     &s->bucket_info.objv_tracker);
@@ -2395,6 +2455,18 @@ void RGWPutObj::execute()
 
   processor = select_processor(*static_cast<RGWObjectCtx *>(s->obj_ctx), &multipart);
 
+  /* Handle object versioning of Swift API. */
+  if (! multipart) {
+    rgw_obj obj(s->bucket, s->object);
+    op_ret = store->swift_versioning_copy(*static_cast<RGWObjectCtx *>(s->obj_ctx),
+                                          s->bucket_owner.get_id(),
+                                          s->bucket_info,
+                                          obj);
+    if (op_ret < 0) {
+      return;
+    }
+  }
+
   op_ret = processor->prepare(store, NULL);
   if (op_ret < 0) {
     ldout(s->cct, 20) << "processor->prepare() returned ret=" << op_ret
@@ -2403,14 +2475,21 @@ void RGWPutObj::execute()
   }
 
   do {
-    bufferlist data;
-    len = get_data(data);
+    bufferlist data_in;
+    len = get_data(data_in);
     if (len < 0) {
       op_ret = len;
       goto done;
     }
     if (!len)
       break;
+
+    bufferlist &data = data_in;
+    if (s->aws4_auth_streaming_mode) {
+      /* use unwrapped data */
+      data = s->aws4_auth->bl;
+      len = data.length();
+    }
 
     /* do we need this operation to be synchronous? if we're dealing with an object with immutable
      * head, e.g., multipart object we need to make sure we're the first one writing to this object
@@ -2463,7 +2542,9 @@ void RGWPutObj::execute()
     ofs += len;
   } while (len > 0);
 
-  if (!chunked_upload && ofs != s->content_length) {
+  if (!chunked_upload &&
+      ofs != s->content_length &&
+      !s->aws4_auth_streaming_mode) {
     op_ret = -ERR_REQUEST_TIMEOUT;
     goto done;
   }
@@ -2509,6 +2590,7 @@ void RGWPutObj::execute()
   hash.Final(m);
 
   buf_to_hex(m, CEPH_CRYPTO_MD5_DIGESTSIZE, calc_md5);
+
   etag = calc_md5;
 
   if (supplied_md5_b64 && strcmp(calc_md5, supplied_md5)) {
@@ -2773,10 +2855,22 @@ void RGWPutMetadataAccount::execute()
     return;
   }
 
+  op_ret = rgw_get_user_attrs_by_uid(store, s->user->user_id, orig_attrs,
+                                     &acct_op_tracker);
+  if (op_ret < 0) {
+    return;
+  }
+
   rgw_get_request_metadata(s->cct, s->info, attrs, false);
-  RGWUserInfo orig_uinfo;
-  rgw_get_user_info_by_uid(store, s->user->user_id, orig_uinfo, &acct_op_tracker);
+  prepare_add_del_attrs(orig_attrs, rmattr_names, attrs);
   populate_with_generic_attrs(s, attrs);
+
+  RGWUserInfo orig_uinfo;
+  op_ret = rgw_get_user_info_by_uid(store, s->user->user_id, orig_uinfo,
+                                    &acct_op_tracker);
+  if (op_ret < 0) {
+    return;
+  }
 
   /* Handle the TempURL-related stuff. */
   map<int, string> temp_url_keys;
@@ -2819,8 +2913,6 @@ void RGWPutMetadataBucket::pre_exec()
 
 void RGWPutMetadataBucket::execute()
 {
-  map<string, buffer::list> orig_attrs;
-
   op_ret = get_params();
   if (op_ret < 0) {
     return;
@@ -2834,10 +2926,9 @@ void RGWPutMetadataBucket::execute()
     return;
   }
 
-  orig_attrs = s->bucket_attrs; /* XXX map copy */
-  prepare_add_del_attrs(orig_attrs, rmattr_names, attrs);
-  populate_with_generic_attrs(s, attrs);
-
+  /* Encode special metadata first as we're using std::map::emplace under
+   * the hood. This method will add the new items only if the map doesn't
+   * contain such keys yet. */
   if (has_policy) {
     buffer::list bl;
     policy.encode(bl);
@@ -2850,8 +2941,15 @@ void RGWPutMetadataBucket::execute()
     emplace_attr(RGW_ATTR_CORS, std::move(bl));
   }
 
-  s->bucket_info.swift_ver_location = swift_ver_location;
-  s->bucket_info.swift_versioning = (!swift_ver_location.empty());
+  /* It's supposed that following functions WILL NOT change any special
+   * attributes (like RGW_ATTR_ACL) if they are already present in attrs. */
+  prepare_add_del_attrs(s->bucket_attrs, rmattr_names, attrs);
+  populate_with_generic_attrs(s, attrs);
+
+  if (swift_ver_location) {
+    s->bucket_info.swift_ver_location = *swift_ver_location;
+    s->bucket_info.swift_versioning = (! swift_ver_location->empty());
+  }
 
   op_ret = rgw_bucket_set_attrs(store, s->bucket_info, attrs,
 				&s->bucket_info.objv_tracker);
@@ -3023,35 +3121,46 @@ void RGWDeleteObj::execute()
     }
 
     RGWObjectCtx *obj_ctx = static_cast<RGWObjectCtx *>(s->obj_ctx);
-
     obj_ctx->set_atomic(obj);
 
-    RGWRados::Object del_target(store, s->bucket_info, *obj_ctx, obj);
-    RGWRados::Object::Delete del_op(&del_target);
-
-    op_ret = get_system_versioning_params(s, &del_op.params.olh_epoch,
-					  &del_op.params.marker_version_id);
+    bool ver_restored = false;
+    op_ret = store->swift_versioning_restore(*obj_ctx, s->bucket_owner.get_id(),
+                                             s->bucket_info, obj, ver_restored);
     if (op_ret < 0) {
       return;
     }
 
-    del_op.params.bucket_owner = s->bucket_owner.get_id();
-    del_op.params.versioning_status = s->bucket_info.versioning_status();
-    del_op.params.obj_owner = s->owner;
-    del_op.params.unmod_since = unmod_since;
-    del_op.params.high_precision_time = s->system_request; /* system request uses high precision time */
+    if (!ver_restored) {
+      /* Swift's versioning mechanism hasn't found any previous version of
+       * the object that could be restored. This means we should proceed
+       * with the regular delete path. */
+      RGWRados::Object del_target(store, s->bucket_info, *obj_ctx, obj);
+      RGWRados::Object::Delete del_op(&del_target);
 
-    op_ret = del_op.delete_obj();
-    if (op_ret >= 0) {
-      delete_marker = del_op.result.delete_marker;
-      version_id = del_op.result.version_id;
-    }
+      op_ret = get_system_versioning_params(s, &del_op.params.olh_epoch,
+                                            &del_op.params.marker_version_id);
+      if (op_ret < 0) {
+        return;
+      }
 
-    /* Check whether the object has expired. Swift API documentation
-     * stands that we should return 404 Not Found in such case. */
-    if (need_object_expiration() && object_is_expired(attrs)) {
-      op_ret = -ENOENT;
-      return;
+      del_op.params.bucket_owner = s->bucket_owner.get_id();
+      del_op.params.versioning_status = s->bucket_info.versioning_status();
+      del_op.params.obj_owner = s->owner;
+      del_op.params.unmod_since = unmod_since;
+      del_op.params.high_precision_time = s->system_request; /* system request uses high precision time */
+
+      op_ret = del_op.delete_obj();
+      if (op_ret >= 0) {
+        delete_marker = del_op.result.delete_marker;
+        version_id = del_op.result.version_id;
+      }
+
+      /* Check whether the object has expired. Swift API documentation
+       * stands that we should return 404 Not Found in such case. */
+      if (need_object_expiration() && object_is_expired(attrs)) {
+        op_ret = -ENOENT;
+        return;
+      }
     }
 
     if (op_ret == -ERR_PRECONDITION_FAILED && no_precondition_error) {
@@ -3272,6 +3381,16 @@ void RGWCopyObj::execute()
   encode_delete_at_attr(delete_at, attrs);
 
   bool high_precision_time = (s->system_request);
+
+  /* Handle object versioning of Swift API. In case of copying to remote this
+   * should fail gently (op_ret == 0) as the dst_obj will not exist here. */
+  op_ret = store->swift_versioning_copy(obj_ctx,
+                                        dest_bucket_info.owner,
+                                        dest_bucket_info,
+                                        dst_obj);
+  if (op_ret < 0) {
+    return;
+  }
 
   op_ret = store->copy_obj(obj_ctx,
 			   s->user->user_id,

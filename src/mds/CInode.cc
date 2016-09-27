@@ -92,9 +92,8 @@ struct cinode_lock_info_t cinode_lock_info[] = {
   { CEPH_LOCK_IAUTH, CEPH_CAP_AUTH_EXCL },
   { CEPH_LOCK_ILINK, CEPH_CAP_LINK_EXCL },
   { CEPH_LOCK_IXATTR, CEPH_CAP_XATTR_EXCL },
-  { CEPH_LOCK_IFLOCK, CEPH_CAP_FLOCK_EXCL }  
 };
-int num_cinode_locks = 5;
+int num_cinode_locks = sizeof(cinode_lock_info) / sizeof(cinode_lock_info[0]);
 
 
 
@@ -144,6 +143,7 @@ ostream& operator<<(ostream& out, const CInode& in)
   if (in.state_test(CInode::STATE_NEEDSRECOVER)) out << " needsrecover";
   if (in.state_test(CInode::STATE_RECOVERING)) out << " recovering";
   if (in.state_test(CInode::STATE_DIRTYPARENT)) out << " dirtyparent";
+  if (in.state_test(CInode::STATE_MISSINGOBJS)) out << " missingobjs";
   if (in.is_freezing_inode()) out << " FREEZING=" << in.auth_pin_freeze_allowance;
   if (in.is_frozen_inode()) out << " FROZEN";
   if (in.is_frozen_auth_pin()) out << " FROZEN_AUTHPIN";
@@ -311,20 +311,23 @@ void CInode::remove_need_snapflush(CInode *snapin, snapid_t snapid, client_t cli
   }
 }
 
-void CInode::split_need_snapflush(CInode *cowin, CInode *in)
+bool CInode::split_need_snapflush(CInode *cowin, CInode *in)
 {
   dout(10) << "split_need_snapflush [" << cowin->first << "," << cowin->last << "] for " << *cowin << dendl;
+  bool need_flush = false;
   for (compact_map<snapid_t, set<client_t> >::iterator p = client_need_snapflush.lower_bound(cowin->first);
        p != client_need_snapflush.end() && p->first < in->first; ) {
     compact_map<snapid_t, set<client_t> >::iterator q = p;
     ++p;
     assert(!q->second.empty());
-    if (cowin->last >= q->first)
+    if (cowin->last >= q->first) {
       cowin->auth_pin(this);
-    else
+      need_flush = true;
+    } else
       client_need_snapflush.erase(q);
     in->auth_unpin(this);
   }
+  return need_flush;
 }
 
 void CInode::mark_dirty_rstat()
@@ -807,9 +810,14 @@ bool CInode::is_projected_ancestor_of(CInode *other)
   return false;
 }
 
-void CInode::make_path_string(string& s, bool force, CDentry *use_parent) const
+/*
+ * If use_parent is NULL (it should be one of inode's projected parents),
+ * we use it to make path string. Otherwise, we use inode's parent dentry
+ * to make path string
+ */
+void CInode::make_path_string(string& s, CDentry *use_parent) const
 {
-  if (!force)
+  if (!use_parent)
     use_parent = parent;
 
   if (use_parent) {
@@ -844,7 +852,7 @@ void CInode::make_path_string_projected(string& s) const
 	 p != projected_parent.end();
 	 ++p) {
       string q;
-      make_path_string(q, true, *p);
+      make_path_string(q, *p);
       s += " ";
       s += q;
     }
@@ -2814,18 +2822,18 @@ void CInode::move_to_realm(SnapRealm *realm)
   containing_realm = realm;
 }
 
-Capability *CInode::reconnect_cap(client_t client, ceph_mds_cap_reconnect& icr, Session *session)
+Capability *CInode::reconnect_cap(client_t client, const cap_reconnect_t& icr, Session *session)
 {
   Capability *cap = get_client_cap(client);
   if (cap) {
     // FIXME?
-    cap->merge(icr.wanted, icr.issued);
+    cap->merge(icr.capinfo.wanted, icr.capinfo.issued);
   } else {
     cap = add_client_cap(client, session);
-    cap->set_wanted(icr.wanted);
-    cap->issue_norevoke(icr.issued);
+    cap->set_cap_id(icr.capinfo.cap_id);
+    cap->set_wanted(icr.capinfo.wanted);
+    cap->issue_norevoke(icr.capinfo.issued);
     cap->reset_seq();
-    cap->set_cap_id(icr.cap_id);
   }
   cap->set_last_issue_stamp(ceph_clock_now(g_ceph_context));
   return cap;
@@ -4093,6 +4101,8 @@ void CInode::dump(Formatter *f) const
     f->dump_string("state", "dirtypool");
   if (state_test(STATE_ORPHAN))
     f->dump_string("state", "orphan");
+  if (state_test(STATE_MISSINGOBJS))
+    f->dump_string("state", "missingobjs");
   f->close_section();
 
   f->open_array_section("client_caps");

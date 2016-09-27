@@ -81,7 +81,7 @@ host_triplet = @host@
 target_triplet = @target@
 subdir = src/ocf
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
-	$(srcdir)/ceph.in $(srcdir)/rbd.in
+	$(srcdir)/rbd.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ac_prog_jar.m4 \
@@ -102,7 +102,7 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/acconfig.h
-CONFIG_CLEAN_FILES = ceph rbd
+CONFIG_CLEAN_FILES = rbd
 CONFIG_CLEAN_VPATH_FILES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
@@ -357,7 +357,7 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-EXTRA_DIST = ceph.in Makefile.in
+EXTRA_DIST = Makefile.in
 
 # The root of the OCF resource agent hierarchy
 # Per the OCF standard, it's always "lib",
@@ -366,7 +366,7 @@ EXTRA_DIST = ceph.in Makefile.in
 
 # The ceph provider directory
 @WITH_OCF_TRUE@radir = $(ocfdir)/resource.d/$(PACKAGE_NAME)
-@WITH_OCF_TRUE@ra_SCRIPTS = ceph rbd
+@WITH_OCF_TRUE@ra_SCRIPTS = rbd
 all: all-am
 
 .SUFFIXES:
@@ -400,8 +400,6 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
-ceph: $(top_builddir)/config.status $(srcdir)/ceph.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 rbd: $(top_builddir)/config.status $(srcdir)/rbd.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-raSCRIPTS: $(ra_SCRIPTS)
@@ -519,8 +517,6 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@WITH_OCF_FALSE@install-data-hook:
-@WITH_OCF_FALSE@uninstall-hook:
 clean: clean-am
 
 clean-am: clean-generic clean-libtool mostlyclean-am
@@ -542,8 +538,7 @@ info: info-am
 info-am:
 
 install-data-am: install-raSCRIPTS
-	@$(NORMAL_INSTALL)
-	$(MAKE) $(AM_MAKEFLAGS) install-data-hook
+
 install-dvi: install-dvi-am
 
 install-dvi-am:
@@ -587,33 +582,21 @@ ps: ps-am
 ps-am:
 
 uninstall-am: uninstall-raSCRIPTS
-	@$(NORMAL_INSTALL)
-	$(MAKE) $(AM_MAKEFLAGS) uninstall-hook
-.MAKE: install-am install-data-am install-strip uninstall-am
+
+.MAKE: install-am install-strip
 
 .PHONY: all all-am check check-am clean clean-generic clean-libtool \
 	cscopelist-am ctags-am distclean distclean-generic \
 	distclean-libtool distdir dvi dvi-am html html-am info info-am \
-	install install-am install-data install-data-am \
-	install-data-hook install-dvi install-dvi-am install-exec \
-	install-exec-am install-html install-html-am install-info \
-	install-info-am install-man install-pdf install-pdf-am \
-	install-ps install-ps-am install-raSCRIPTS install-strip \
-	installcheck installcheck-am installdirs maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-generic \
-	mostlyclean-libtool pdf pdf-am ps ps-am tags-am uninstall \
-	uninstall-am uninstall-hook uninstall-raSCRIPTS
+	install install-am install-data install-data-am install-dvi \
+	install-dvi-am install-exec install-exec-am install-html \
+	install-html-am install-info install-info-am install-man \
+	install-pdf install-pdf-am install-ps install-ps-am \
+	install-raSCRIPTS install-strip installcheck installcheck-am \
+	installdirs maintainer-clean maintainer-clean-generic \
+	mostlyclean mostlyclean-generic mostlyclean-libtool pdf pdf-am \
+	ps ps-am tags-am uninstall uninstall-am uninstall-raSCRIPTS
 
-
-@WITH_OCF_TRUE@install-data-hook:
-@WITH_OCF_TRUE@	$(LN_S) ceph $(DESTDIR)$(radir)/osd
-@WITH_OCF_TRUE@	$(LN_S) ceph $(DESTDIR)$(radir)/mds
-@WITH_OCF_TRUE@	$(LN_S) ceph $(DESTDIR)$(radir)/mon
-
-@WITH_OCF_TRUE@uninstall-hook:
-@WITH_OCF_TRUE@	rm -f $(DESTDIR)$(radir)/osd
-@WITH_OCF_TRUE@	rm -f $(DESTDIR)$(radir)/mds
-@WITH_OCF_TRUE@	rm -f $(DESTDIR)$(radir)/mon
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
