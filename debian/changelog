@@ -1,3 +1,43 @@
+ceph (10.2.3-3redhat1) stable; urgency=medium
+
+  * ceph-disk: timeout ceph-disk to avoid blocking forever
+    (rhbz#1351484)
+  * ceph-disk: do not activate device that is not ready (rhbz#1326740)
+  * librbd: possible deadlock if cluster connection closed after image
+    (rhbz#1377777)
+  * librbd: corrected use-after-free in ImageWatcher (rhbz#1377777)
+  * librbd: block name prefix might overflow fixed size C-string
+    (rhbz#1377774)
+  * librbd: fix possible inconsistent state when disabling mirroring
+    (rhbz#1362647)
+  * rbd: bench io-size should not be larger than image size
+    (rhbz#1362014)
+  * librbd: request exclusive lock if current owner cannot execute op
+    (rhbz#1357611)
+  * librbd: prevent creation of clone from non-primary mirrored image
+    (rhbz#1349332)
+  * rbd: cleanup - Proxied operations shouldn't result in error
+    messages if replayed (rhbz#1340772)
+  * rgw: RGWCoroutinesManager::run returns status of last cr
+    (rhbz#1368562)
+  * rbd-mirror: include tag tid in bootstrap debug log messages
+    (rhbz#1349955)
+  * librbd: separate journal::TagData predecessor data into new struct
+    (rhbz#1349955)
+  * librbd: block RPC requests when demoting the image (rhbz#1349955)
+  * librbd: normalize journal promotion/demotion events (rhbz#1349955)
+  * rbd-mirror: demote/promote in same cluster results in split-brain
+    (rhbz#1349955)
+  * rbd-mirror: prevent syncing to non-primary image after failover
+    (rhbz#1349955)
+  * test: fixed unused function warnings in unittest_rbd_mirror
+    (rhbz#1349955)
+  * librbd: fix journal create compilation error (rhbz#1349955)
+  * rbd-mirror: concurrent access of event might result in heap
+    corruption (rhbz#1349955)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 27 Sep 2016 15:44:27 -0600
+
 ceph (10.2.3-2redhat1) stable; urgency=medium
 
   * Rebase to version 10.2.3 (rhbz#1364352, rhbz#1365606, rhbz#1364353,
