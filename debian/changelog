@@ -1,3 +1,12 @@
+ceph (10.2.3-2redhat1) stable; urgency=medium
+
+  * Rebase to version 10.2.3 (rhbz#1364352, rhbz#1365606, rhbz#1364353,
+    rhbz#1352878, rhbz#1350003, rhbz#1349116, rhbz#1348928, rhbz#1347664,
+    rhbz#1347205, rhbz#1347174, rhbz#1346946, rhbz#1340004, rhbz#1339256,
+    rhbz#1332513, rhbz#1241725)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 27 Sep 2016 15:32:46 -0600
+
 ceph (10.2.2-32redhat1) stable; urgency=medium
 
   * fix and reorder RGW quota patches (rhbz#1362284)
