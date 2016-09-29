@@ -44,3 +44,4 @@
 0044-test-fixed-unused-function-warnings-in-unittest_rbd_.patch
 0045-librbd-fix-journal-create-compilation-error.patch
 0046-rbd-mirror-concurrent-access-of-event-might-result-i.patch
+0047-log-Log.cc-Assign-LOG_INFO-priority-to-syslog-calls.patch
