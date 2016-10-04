@@ -1,3 +1,48 @@
+ceph (10.2.3-5redhat1) stable; urgency=medium
+
+  * mon/AuthMonitor: make AuthMonitor::IncType public (rhbz#1374224)
+  * tools/ceph-objectstore-tool: add "update-mon-db" command
+    (rhbz#1374224)
+  * tools/ceph_monstore_tool: add "rebuild" command (rhbz#1374224)
+  * tools/rebuild_mondb: avoid unnecessary result code cast
+    (rhbz#1374224)
+  * tools/rebuild_mondb: kill compiling warning (rhbz#1374224)
+  * tools/ceph_monstore_tool: update pgmap_meta also when rebuilding
+    store.db (rhbz#1374224)
+  * ceph-objectstore-tool: add a way to split filestore directories
+    offline (rhbz#1367442)
+  * rgw ldap: enforce simple_bind w/LDAPv3 (rhbz#1364396)
+  * rgw file: remove busy-wait in RGWLibFS::gc()
+  * rgw_file: fix/update rgw_open flag arguments (rhbz#1370331)
+  * rgw_file: fix/update rgw_create flag arguments (rhbz#1370331)
+  * rgw_file: implement stateless write completion timer
+    (rhbz#1370331)
+  * rgw_file: add RGW_OPEN_FLAG_STATELESS as a synonym for V3
+    (rhbz#1370331)
+  * rgw_file: log on write completion events at level 10
+    (rhbz#1370331)
+  * rgw file: allow RGWLibFS::write_completion_interval_s to be set in
+    conf (rhbz#1370331)
+  * librgw: add API version defines for librgw and rgw_file
+    (rhbz#1370331)
+  * ceph_timer: prefer using directive to typedef (rhbz#1370331)
+  * rgw_file: explain semantics of RGWFileHandle::commit
+    (rhbz#1370331)
+  * rgw_file: restore local definition of RGWLibFS gc interval
+    (rhbz#1381698)
+  * rgw ldap: protect rgw::from_base64 from non-base64 input
+    (rhbz#1381694)
+  * rgw: fix the wrong return value (rhbz#1381693)
+  * rgw: rgw file fix bug of rgw_lookup can not exact match file name
+    (rhbz#1381692)
+  * rgw: remove duplicated calls to getattr (rhbz#1381684)
+  * add ldap auth custom search filter feature patch -
+    http://tracker.ceph.com/issues/17185 (rhbz#1381687)
+  * rgw_file: fix set_attrs operation (rhbz#1358020)
+  * rgw_file: pre-assign times (rhbz#1358020)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 04 Oct 2016 17:33:34 -0400
+
 ceph (10.2.3-4redhat1) stable; urgency=medium
 
   * log: Log.cc: Assign LOG_INFO priority to syslog calls
