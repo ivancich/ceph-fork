@@ -1,3 +1,80 @@
+ceph (10.2.3-6redhat1) stable; urgency=medium
+
+  * rgw: Have a flavor of bucket deletion to bypass GC and to trigger
+    object deletions async. (rhbz#1318409)
+  * rgw: fix regression with handling double underscore (rhbz#1372346)
+  * rgw: set correct instance on the object (rhbz#1372346)
+  * rgw: RGWDataSyncCR fails on errors from RGWListBucketIndexesCR
+    (rhbz#1368583)
+  * librbd: always respond to "release lock" request if lock owner
+    (rhbz#1382044)
+  * librbd: new journal policy to disable initializing the journal
+    (rhbz#1382044)
+  * librbd: permit disabling journaling if in corrupt state
+    (rhbz#1382044)
+  * cls_lock: support updating the lock cookie without releasing the
+    lock (rhbz#1379837)
+  * librbd: helper state machine to update lock cookie (rhbz#1379837)
+  * librbd: store exclusive lock cookie instead of recalculating
+    (rhbz#1379837)
+  * librbd: exclusive lock now supports reacquiring a lost lock
+    (rhbz#1379837)
+  * librbd: helper state machine for asynchronous watch recovery
+    (rhbz#1379837)
+  * librbd: integrate asynchronous image rewatch state machine
+    (rhbz#1379837)
+  * librbd: image state machine now has hooks for lock requests
+    (rhbz#1379837)
+  * librbd: interlock image refresh and lock operations (rhbz#1379837)
+  * librbd: remove unused refresh request logic (rhbz#1379837)
+  * librbd: improve image state machine debug log messages
+    (rhbz#1379837)
+  * librbd: deadlock when replaying journal during image open
+    (rhbz#1379837)
+  * librbd: potential double-unwatch of watch handle upon error
+    (rhbz#1379837)
+  * librbd: potential seg fault when blacklisting an image client
+    (rhbz#1379837)
+  * librbd: ignore partial refresh error when acquiring exclusive lock
+    (rhbz#1379837)
+  * librbd: support deleting image by id instead of name
+    (rhbz#1379835)
+  * rbd-mirror: use pool id + global image id as deletion primary key
+    (rhbz#1379835)
+  * cls/journal: add async client_update_state method (rhbz#1379835)
+  * journal: allow to trim journal for "laggy" clients (rhbz#1379835)
+  * librbd: optionally flag "laggy" journal clients disconnected
+    (rhbz#1379835)
+  * rbd: new command to disconnect journal client (rhbz#1379835)
+  * rbd-mirror: decode_client_meta should return false on error
+    (rhbz#1379835)
+  * rbd-mirror: resync was possible only when image replayer start had
+    succeeded (rhbz#1379835)
+  * rbd-mirror: stop replay when client is disconnected (rhbz#1379835)
+  * rbd-mirror: option to automatically resync after journal client
+    disconnect (rhbz#1379835)
+  * test/rbd: fix possible mock journal race conditions (rhbz#1365648)
+  * journal: expose ability to retrieve partial tag list
+    (rhbz#1365648)
+  * librbd: unify journal event callbacks into single interface
+    (rhbz#1365648)
+  * librbd: helper class for quiescing in-flight async ops
+    (rhbz#1365648)
+  * librbd: new journal listener event for force promotion
+    (rhbz#1365648)
+  * journal: send update notification when tag allocated
+    (rhbz#1365648)
+  * common: move AsyncOpTracker to common library (rhbz#1365648)
+  * rbd-mirror: wait for in-flight event commit notifications
+    (rhbz#1365648)
+  * journal: complete action only after notification completed
+    (rhbz#1365648)
+  * journal: ensure in-flight ops are complete destroying journaler
+    (rhbz#1365648)
+  * journal: fix downstream compile issue (rhbz#1365648)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Wed, 05 Oct 2016 16:49:53 -0400
+
 ceph (10.2.3-5redhat1) stable; urgency=medium
 
   * mon/AuthMonitor: make AuthMonitor::IncType public (rhbz#1374224)
