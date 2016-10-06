@@ -114,3 +114,5 @@
 0114-journal-complete-action-only-after-notification-comp.patch
 0115-journal-ensure-in-flight-ops-are-complete-destroying.patch
 0116-journal-fix-downstream-compile-issue.patch
+0117-rgw-set-args-when-rebuilding-req_info.patch
+0118-rgw-forward-input-data-when-forwarding-set_bucket_ve.patch
