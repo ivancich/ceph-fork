@@ -1,3 +1,39 @@
+ceph (10.2.3-8redhat1) stable; urgency=medium
+
+  * cls/rgw: utilities to support raw bucket index operations
+    (rhbz#1380601)
+  * rgw: use bucket_info.bucket_id instead of marker where needed
+    (rhbz#1380601)
+  * rgw: utilities to support raw bucket index operations
+    (rhbz#1380601)
+  * rgw_admin: bucket rehsrading, initial work (rhbz#1380601)
+  * cls/rgw: fix bi_list objclass command (rhbz#1380601)
+  * radosgw-admin: bucket reshard needs --num-shards to be specified
+    (rhbz#1380601)
+  * rgw: rgw_link_bucket, use correct bucket structure for entry point
+    (rhbz#1380601)
+  * rgw_admin: reshard also links to new bucket instance
+    (rhbz#1380601)
+  * cls/rgw: add bucket_update_stats method (rhbz#1380601)
+  * rgw: bucket reshard updates stats (rhbz#1380601)
+  * rgw_admin: use aio operations for bucket resharding (rhbz#1380601)
+  * rgw_admin: fix bi list command (rhbz#1380601)
+  * rgw: limit bucket reshard num shards to max possible
+    (rhbz#1380601)
+  * rgw_admin: better bucket reshard logging (rhbz#1380601)
+  * rgw_admin: require --yes-i-really-mean-it for bucket reshard
+    (rhbz#1380601)
+  * cls/rgw: bi_list() fix is_truncated returned param (rhbz#1380601)
+  * rgw: bucket resharding, adjust logging (rhbz#1380601)
+  * rgw_admin: add bi purge command (rhbz#1380601)
+  * rgw_admin: add a few admin commands to the usage (rhbz#1380601)
+  * rbd: recognize lock_on_read option (rhbz#1382437)
+  * doc: clarify rbd size units (rhbz#1382437)
+  * rbd: fix up terminology in help texts (rhbz#1382437)
+  * rbd: expose rbd unmap options (rhbz#1382437)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 11 Oct 2016 12:37:40 -0600
+
 ceph (10.2.3-7redhat1) stable; urgency=medium
 
   * rgw: set args when rebuilding req_info (rhbz#1350522)
