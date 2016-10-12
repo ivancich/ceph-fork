@@ -139,3 +139,10 @@
 0139-doc-clarify-rbd-size-units.patch
 0140-rbd-fix-up-terminology-in-help-texts.patch
 0141-rbd-expose-rbd-unmap-options.patch
+0142-mds-make-mds_role_t-member-order-match-constructor.patch
+0143-mon-don-t-crash-on-invalid-standby_for_fscid.patch
+0144-messages-fix-MMDSBeacon-constructor.patch
+0145-client-kill-QuotaTree.patch
+0146-rgw-mark-configuration-as-converted-to-avoid-corrupt.patch
+0147-rgw-Fix-missing-master-zone-for-default-region-conve.patch
+0148-rgw-avoid-corruption-when-running-old-radosgw-admin-.patch

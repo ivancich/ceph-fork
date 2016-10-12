@@ -1,3 +1,18 @@
+ceph (10.2.3-9redhat1) stable; urgency=medium
+
+  * mds: make mds_role_t member order match constructor (rhbz#1384002)
+  * mon: don't crash on invalid standby_for_fscid (rhbz#1384002)
+  * messages: fix MMDSBeacon constructor (rhbz#1384002)
+  * client: kill QuotaTree (rhbz#1384008)
+  * rgw: mark configuration as converted to avoid corruption when
+    running older admins (rhbz#1383631)
+  * rgw: Fix missing master zone for default region conversion
+    (rhbz#1383631)
+  * rgw: avoid corruption when running old radosgw-admin on a newer
+    rgw (rhbz#1383631)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 12 Oct 2016 10:25:06 -0600
+
 ceph (10.2.3-8redhat1) stable; urgency=medium
 
   * cls/rgw: utilities to support raw bucket index operations
