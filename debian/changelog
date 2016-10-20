@@ -1,3 +1,10 @@
+ceph (10.2.3-10redhat1) stable; urgency=medium
+
+  * Don't loop forever when reading data from 0 sized segment.
+    (rhbz#1383728)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 20 Oct 2016 12:59:36 -0600
+
 ceph (10.2.3-9redhat1) stable; urgency=medium
 
   * mds: make mds_role_t member order match constructor (rhbz#1384002)

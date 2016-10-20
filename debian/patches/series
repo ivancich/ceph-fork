@@ -146,3 +146,4 @@
 0146-rgw-mark-configuration-as-converted-to-avoid-corrupt.patch
 0147-rgw-Fix-missing-master-zone-for-default-region-conve.patch
 0148-rgw-avoid-corruption-when-running-old-radosgw-admin-.patch
+0149-Don-t-loop-forever-when-reading-data-from-0-sized-se.patch
