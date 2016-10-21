@@ -1,3 +1,10 @@
+ceph (10.2.3-11redhat1) stable; urgency=medium
+
+  * rgw: fix put_acls for objects starting and ending with underscore
+    (rhbz#1372346)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 21 Oct 2016 11:22:03 -0600
+
 ceph (10.2.3-10redhat1) stable; urgency=medium
 
   * Don't loop forever when reading data from 0 sized segment.
