@@ -1,3 +1,9 @@
+ceph (10.2.3-12redhat1) stable; urgency=medium
+
+  * rgw_rest_s3: apply missed base64 try-catch (rhbz#1381694)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 28 Oct 2016 06:50:24 -0600
+
 ceph (10.2.3-11redhat1) stable; urgency=medium
 
   * rgw: fix put_acls for objects starting and ending with underscore
