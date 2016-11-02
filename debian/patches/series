@@ -149,3 +149,4 @@
 0149-Don-t-loop-forever-when-reading-data-from-0-sized-se.patch
 0150-rgw-fix-put_acls-for-objects-starting-and-ending-wit.patch
 0151-rgw_rest_s3-apply-missed-base64-try-catch.patch
+0152-rgw-handle-empty-POST-condition.patch
