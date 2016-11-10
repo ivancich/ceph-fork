@@ -150,3 +150,7 @@
 0150-rgw-fix-put_acls-for-objects-starting-and-ending-wit.patch
 0151-rgw_rest_s3-apply-missed-base64-try-catch.patch
 0152-rgw-handle-empty-POST-condition.patch
+0153-rgw-RGWSimpleRadosReadCR-tolerates-empty-reads.patch
+0154-rgw-clear-data_sync_cr-if-RGWDataSyncControlCR-fails.patch
+0155-rgw-hold-a-reference-on-data_sync_cr-over-run.patch
+0156-rgw-clean-up-RGWShardedOmapCRManager-on-early-return.patch
