@@ -154,3 +154,4 @@
 0154-rgw-clear-data_sync_cr-if-RGWDataSyncControlCR-fails.patch
 0155-rgw-hold-a-reference-on-data_sync_cr-over-run.patch
 0156-rgw-clean-up-RGWShardedOmapCRManager-on-early-return.patch
+0157-os-filestore-HashIndex-fix-list_by_hash_-termination.patch

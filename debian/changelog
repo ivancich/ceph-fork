@@ -1,3 +1,10 @@
+ceph (10.2.3-15redhat1) stable; urgency=medium
+
+  * os/filestore/HashIndex: fix list_by_hash_* termination on reaching
+    end (rhbz#1394007)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Thu, 01 Dec 2016 18:27:37 -0500
+
 ceph (10.2.3-14redhat1) stable; urgency=medium
 
   * rgw: RGWSimpleRadosReadCR tolerates empty reads (rhbz#1393665)
