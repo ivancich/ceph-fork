@@ -1,0 +1,45 @@
+From: "Yan, Zheng" <zyan@redhat.com>
+Date: Fri, 18 Dec 2015 22:04:08 +0800
+Subject: msg/simple/Pipe: avoid infinite loop in Pipe::do_recv()
+
+I found that, sometimes an OSD thread uses 100% CPU after cutting network
+between OSD and client. recv(2) in Pipe::do_recv() keeps returning -EAGAIN,
+which causes infinite loop. the call trace is:
+
+ Pipe::do_recv (...)
+ Pipe::buffered_recv (...)
+ Pipe::tcp_read_nonblocking (...)
+ Pipe::tcp_read (...)
+
+Pipe::tcp_read() first calls Pipe::tcp_read_wait() to check if data is
+avaliable. If there are prefetched data, Pipe::tcp_read_wait() return
+immediately. Pipe::buffered_recv() is called, which reads data from the
+prefetched data. If prefetched data isn't enough, Pipe::buffered_recv()
+calls Pipe::do_recv() to read data from socket. But it's possble that
+socket has no data at this time, so Pipe::do_recv() keeps retry.
+
+The fix is simple, just not retry when recv(2) return -EAGAIN.
+
+Fixes: #14120
+Signed-off-by: Yan, Zheng <zyan@redhat.com>
+(cherry picked from commit 63e44e32974c9bae17bb1bfd4261dcb024ad845c)
+(cherry picked from commit 2eb2f854ef82a38f0ae101906768676f5a2fbdd8)
+
+Resolves: rhbz#1402098
+---
+ src/msg/simple/Pipe.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/msg/simple/Pipe.cc b/src/msg/simple/Pipe.cc
+index 6d72754..fd6a7af 100644
+--- a/src/msg/simple/Pipe.cc
++++ b/src/msg/simple/Pipe.cc
+@@ -2511,7 +2511,7 @@ ssize_t Pipe::do_recv(char *buf, size_t len, int flags)
+ again:
+   ssize_t got = ::recv( sd, buf, len, flags );
+   if (got < 0) {
+-    if (errno == EAGAIN || errno == EINTR) {
++    if (errno == EINTR) {
+       goto again;
+     }
+     ldout(msgr->cct, 10) << __func__ << " socket " << sd << " returned "

@@ -155,3 +155,9 @@
 0155-rgw-hold-a-reference-on-data_sync_cr-over-run.patch
 0156-rgw-clean-up-RGWShardedOmapCRManager-on-early-return.patch
 0157-os-filestore-HashIndex-fix-list_by_hash_-termination.patch
+0158-osd-osd_types-conditional-pg_pool_t-encoding.patch
+0159-osd-osd_types-encode-pg_pool_t-like-hammer-if-featur.patch
+0160-crush-CrushWrapper-drop-unused-lean-encode-argument.patch
+0161-crush-CrushWrapper-encode-with-features.patch
+0162-crush-condition-latest-tunable-encoding-on-features.patch
+0163-msg-simple-Pipe-avoid-infinite-loop-in-Pipe-do_recv.patch

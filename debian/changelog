@@ -1,3 +1,18 @@
+ceph (10.2.3-16redhat1) stable; urgency=medium
+
+  * osd/osd_types: conditional pg_pool_t encoding (rhbz#1402185)
+  * osd/osd_types: encode pg_pool_t like hammer if features indicate
+    hammer (rhbz#1402185)
+  * crush/CrushWrapper: drop unused 'lean' encode() argument
+    (rhbz#1402185)
+  * crush/CrushWrapper: encode with features (rhbz#1402185)
+  * crush: condition latest tunable encoding on features
+    (rhbz#1402185)
+  * msg/simple/Pipe: avoid infinite loop in Pipe::do_recv()
+    (rhbz#1402098)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 07 Dec 2016 10:19:58 -0700
+
 ceph (10.2.3-15redhat1) stable; urgency=medium
 
   * os/filestore/HashIndex: fix list_by_hash_* termination on reaching
