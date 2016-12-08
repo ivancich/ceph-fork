@@ -1,3 +1,10 @@
+ceph (10.2.3-18redhat1) stable; urgency=medium
+
+  * rgw: do not abort when accept a CORS request with short origin
+    (rhbz#1403003)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 08 Dec 2016 14:12:52 -0700
+
 ceph (10.2.3-17redhat1) stable; urgency=medium
 
   * Drop SimpleMessenger patch, it is unneeded for v10.2.3

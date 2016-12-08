@@ -160,3 +160,4 @@
 0160-crush-CrushWrapper-drop-unused-lean-encode-argument.patch
 0161-crush-CrushWrapper-encode-with-features.patch
 0162-crush-condition-latest-tunable-encoding-on-features.patch
+0163-rgw-do-not-abort-when-accept-a-CORS-request-with-sho.patch
