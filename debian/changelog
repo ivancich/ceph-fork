@@ -1,3 +1,10 @@
+ceph (10.2.3-17redhat1) stable; urgency=medium
+
+  * Drop SimpleMessenger patch, it is unneeded for v10.2.3
+    (rhbz#1402098)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 08 Dec 2016 09:57:33 -0700
+
 ceph (10.2.3-16redhat1) stable; urgency=medium
 
   * osd/osd_types: conditional pg_pool_t encoding (rhbz#1402185)
