@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RBD" "8" "September 21, 2016" "dev" "Ceph"
+.TH "RBD" "8" "December 09, 2016" "dev" "Ceph"
 .SH NAME
 rbd \- manage rados block device (RBD) images
 .
@@ -33,7 +33,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .SH SYNOPSIS
 .nf
 \fBrbd\fP [ \-c \fIceph.conf\fP ] [ \-m \fImonaddr\fP ] [\-\-cluster \fIcluster name\fP]
-[ \-p | \-\-pool \fIpool\fP ] [\-\-size \fIsize\fP ] [ \-\-object\-size \fIB/K/M\fP ] [ \fIcommand\fP ... ]
+[ \-p | \-\-pool \fIpool\fP ] [ \fIcommand\fP ... ]
 .fi
 .sp
 .SH DESCRIPTION
@@ -90,19 +90,22 @@ features in the future.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-size size\-in\-M/G/T
-Specifies the size (in M/G/T) of the new rbd image.
+.B \-s size\-in\-M/G/T, \-\-size size\-in\-M/G/T
+Specifies the size of the new rbd image or the new size of the existing rbd
+image in M/G/T.  If no suffix is given, unit M is assumed.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-object\-size B/K/M
-Specifies the object size in B/K/M, it will be rounded up the nearest power of two.
-The default object size is 4 MB, smallest is 4K and maximum is 32M.
+.B \-\-object\-size size\-in\-B/K/M
+Specifies the object size in B/K/M.  Object size will be rounded up the
+nearest power of two; if no suffix is given, unit B is assumed.  The default
+object size is 4M, smallest is 4K and maximum is 32M.
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-\-stripe\-unit size\-in\-B/K/M
-Specifies the stripe unit size in B/K/M.  See striping section (below) for more details.
+Specifies the stripe unit size in B/K/M.  If no suffix is given, unit B is
+assumed.  See striping section (below) for more details.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -155,10 +158,11 @@ Make json or xml formatted output more human\-readable.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-o map\-options, \-\-options map\-options
-Specifies which options to use when mapping an image.  map\-options is
-a comma\-separated string of options (similar to mount(8) mount options).
-See map options section below for more details.
+.B \-o krbd\-options, \-\-options krbd\-options
+Specifies which options to use when mapping or unmapping an image via the
+rbd kernel driver.  krbd\-options is a comma\-separated list of options
+(similar to mount(8) mount options).  See kernel rbd (krbd) options section
+below for more details.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -226,11 +230,11 @@ Will dump information (such as size and object size) about a specific rbd image.
 If image is a clone, information about its parent is also displayed.
 If a snapshot is specified, whether it is protected is shown as well.
 .TP
-.B \fBcreate\fP (\-s | \-\-size \fIsize\-in\-M/G/T\fP) [\-\-image\-format \fIformat\-id\fP] [\-\-object\-size \fIB/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIimage\-spec\fP
+.B \fBcreate\fP (\-s | \-\-size \fIsize\-in\-M/G/T\fP) [\-\-image\-format \fIformat\-id\fP] [\-\-object\-size \fIsize\-in\-B/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIimage\-spec\fP
 Will create a new rbd image. You must also specify the size via \-\-size.  The
 \-\-stripe\-unit and \-\-stripe\-count arguments are optional, but must be used together.
 .TP
-.B \fBclone\fP [\-\-object\-size \fIB/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP] [\-\-image\-shared] \fIparent\-snap\-spec\fP \fIchild\-image\-spec\fP
+.B \fBclone\fP [\-\-object\-size \fIsize\-in\-B/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP] [\-\-image\-shared] \fIparent\-snap\-spec\fP \fIchild\-image\-spec\fP
 Will create a clone (copy\-on\-write child) of the parent snapshot.
 Object size will be identical to that of the parent image unless
 specified. Size will be the same as the parent snapshot. The \-\-stripe\-unit
@@ -264,7 +268,7 @@ snapshots, this fails and nothing is deleted.
 .B \fBexport\fP (\fIimage\-spec\fP | \fIsnap\-spec\fP) [\fIdest\-path\fP]
 Exports image to dest path (use \- for stdout).
 .TP
-.B \fBimport\fP [\-\-image\-format \fIformat\-id\fP] [\-\-object\-size \fIB/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIsrc\-path\fP [\fIimage\-spec\fP]
+.B \fBimport\fP [\-\-image\-format \fIformat\-id\fP] [\-\-object\-size \fIsize\-in\-B/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIsrc\-path\fP [\fIimage\-spec\fP]
 Creates a new image and imports its data from path (use \- for
 stdin).  The import operation will try to create sparse rbd images
 if possible.  For import from stdin, the sparsification unit is
@@ -357,10 +361,10 @@ in different pools than the parent snapshot.)
 .sp
 This requires image format 2.
 .TP
-.B \fBmap\fP [\-o | \-\-options \fImap\-options\fP ] [\-\-read\-only] \fIimage\-spec\fP | \fIsnap\-spec\fP
+.B \fBmap\fP [\-o | \-\-options \fIkrbd\-options\fP ] [\-\-read\-only] \fIimage\-spec\fP | \fIsnap\-spec\fP
 Maps the specified image to a block device via the rbd kernel module.
 .TP
-.B \fBunmap\fP \fIimage\-spec\fP | \fIsnap\-spec\fP | \fIdevice\-path\fP
+.B \fBunmap\fP [\-o | \-\-options \fIkrbd\-options\fP ] \fIimage\-spec\fP | \fIsnap\-spec\fP | \fIdevice\-path\fP
 Unmaps the block device that was mapped via the rbd kernel module.
 .TP
 .B \fBshowmapped\fP
@@ -402,9 +406,10 @@ protect an image from being deleted.
 Release a lock on an image. The lock id and locker are
 as output by lock ls.
 .TP
-.B \fBbench\-write\fP [\-\-io\-size \fIsize\-in\-B/K/M/G/T\fP] [\-\-io\-threads \fInum\-ios\-in\-flight\fP] [\-\-io\-total \fItotal\-size\-to\-write\-in\-B/K/M/G/T\fP] [\-\-io\-pattern seq | rand] \fIimage\-spec\fP
+.B \fBbench\-write\fP [\-\-io\-size \fIsize\-in\-B/K/M/G/T\fP] [\-\-io\-threads \fInum\-ios\-in\-flight\fP] [\-\-io\-total \fIsize\-in\-B/K/M/G/T\fP] [\-\-io\-pattern seq | rand] \fIimage\-spec\fP
 Generate a series of writes to the image and measure the write throughput and
-latency.  Defaults are: \-\-io\-size 4096, \-\-io\-threads 16, \-\-io\-total 1G,
+latency.  If no suffix is given, unit B is assumed for both \-\-io\-size and
+\-\-io\-total.  Defaults are: \-\-io\-size 4096, \-\-io\-threads 16, \-\-io\-total 1G,
 \-\-io\-pattern seq.
 .UNINDENT
 .SH IMAGE AND SNAP SPECS
@@ -451,13 +456,13 @@ we move on to the next [\fIstripe_count\fP] objects.
 By default, [\fIstripe_unit\fP] is the same as the object size and [\fIstripe_count\fP] is 1.  Specifying a different
 [\fIstripe_unit\fP] requires that the STRIPINGV2 feature be supported (added in Ceph v0.53) and format 2 images be
 used.
-.SH MAP OPTIONS
+.SH KERNEL RBD (KRBD) OPTIONS
 .sp
 Most of these options are useful mainly for debugging and benchmarking.  The
 default values are set in the kernel and may therefore depend on the version of
 the running kernel.
 .sp
-libceph (per client instance) options:
+Per client instance \fIrbd map\fP options:
 .INDENT 0.0
 .IP \(bu 2
 fsid=aaaaaaaa\-bbbb\-cccc\-dddd\-eeeeeeeeeeee \- FSID that should be assumed by
@@ -498,7 +503,7 @@ osdkeepalive=x \- OSD keepalive timeout (default is 5 seconds).
 osd_idle_ttl=x \- OSD idle TTL (default is 60 seconds).
 .UNINDENT
 .sp
-Mapping (per block device) options:
+Per mapping (block device) \fIrbd map\fP options:
 .INDENT 0.0
 .IP \(bu 2
 rw \- Map the image read\-write (default).
@@ -506,6 +511,17 @@ rw \- Map the image read\-write (default).
 ro \- Map the image read\-only.  Equivalent to \-\-read\-only.
 .IP \(bu 2
 queue_depth=x \- queue depth (since 4.2, default is 128 requests).
+.IP \(bu 2
+lock_on_read \- Acquire exclusive lock on reads, in addition to writes and
+discards (since 4.9).
+.UNINDENT
+.sp
+\fIrbd unmap\fP options:
+.INDENT 0.0
+.IP \(bu 2
+force \- Force the unmapping of a block device that is open (since 4.9).  The
+driver will wait for running requests to complete and then unmap; requests
+sent to the driver after initiating the unmap will be failed.
 .UNINDENT
 .SH EXAMPLES
 .sp

@@ -97,7 +97,7 @@ void OSDMonitor::_get_pending_crush(CrushWrapper& newcrush)
   if (pending_inc.crush.length())
     bl = pending_inc.crush;
   else
-    osdmap.crush->encode(bl);
+    osdmap.crush->encode(bl, CEPH_FEATURES_SUPPORTED_DEFAULT);
 
   bufferlist::iterator p = bl.begin();
   newcrush.decode(p);
@@ -790,8 +790,15 @@ protected:
 
   bool get_bucket_utilization(int id, int64_t* kb, int64_t* kb_used,
 			      int64_t* kb_avail) const {
-    if (id >= 0)
+    if (id >= 0) {
+      if (osdmap->is_out(id)) {
+        *kb = 0;
+        *kb_used = 0;
+        *kb_avail = 0;
+        return true;
+      }
       return get_osd_utilization(id, kb, kb_used, kb_avail);
+    }
 
     *kb = 0;
     *kb_used = 0;
@@ -799,7 +806,7 @@ protected:
 
     for (int k = osdmap->crush->get_bucket_size(id) - 1; k >= 0; k--) {
       int item = osdmap->crush->get_bucket_item(id, k);
-      int64_t kb_i = 0, kb_used_i = 0, kb_avail_i;
+      int64_t kb_i = 0, kb_used_i = 0, kb_avail_i = 0;
       if (!get_bucket_utilization(item, &kb_i, &kb_used_i, &kb_avail_i))
 	return false;
       *kb += kb_i;
@@ -1196,13 +1203,24 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
     }
   }
 
+  // features for osdmap and its incremental
+  uint64_t features = mon->quorum_features;
+
   // encode full map and determine its crc
   OSDMap tmp;
   {
     tmp.deepish_copy_from(osdmap);
     tmp.apply_incremental(pending_inc);
+
+    // determine appropriate features
+    if (!tmp.test_flag(CEPH_OSDMAP_REQUIRE_JEWEL)) {
+      dout(10) << __func__ << " encoding without feature SERVER_JEWEL" << dendl;
+      features &= ~CEPH_FEATURE_SERVER_JEWEL;
+    }
+    dout(10) << __func__ << " encoding full map with " << features << dendl;
+
     bufferlist fullbl;
-    ::encode(tmp, fullbl, mon->quorum_features | CEPH_FEATURE_RESERVED);
+    ::encode(tmp, fullbl, features | CEPH_FEATURE_RESERVED);
     pending_inc.full_crc = tmp.get_crc();
 
     // include full map in the txn.  note that old monitors will
@@ -1213,7 +1231,7 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
 
   // encode
   assert(get_last_committed() + 1 == pending_inc.epoch);
-  ::encode(pending_inc, bl, mon->quorum_features | CEPH_FEATURE_RESERVED);
+  ::encode(pending_inc, bl, features | CEPH_FEATURE_RESERVED);
 
   dout(20) << " full_crc " << tmp.get_crc()
 	   << " inc_crc " << pending_inc.inc_crc << dendl;
@@ -1726,9 +1744,10 @@ bool OSDMonitor::check_failure(utime_t now, int target_osd, failure_info_t& fi)
 
   utime_t grace = orig_grace;
   double my_grace = 0, peer_grace = 0;
+  double decay_k = 0;
   if (g_conf->mon_osd_adjust_heartbeat_grace) {
     double halflife = (double)g_conf->mon_osd_laggy_halflife;
-    double decay_k = ::log(.5) / halflife;
+    decay_k = ::log(.5) / halflife;
 
     // scale grace period based on historical probability of 'lagginess'
     // (false positive failures due to slowness).
@@ -1738,31 +1757,35 @@ bool OSDMonitor::check_failure(utime_t now, int target_osd, failure_info_t& fi)
 	     << " failed_for " << failed_for << " decay " << decay << dendl;
     my_grace = decay * (double)xi.laggy_interval * xi.laggy_probability;
     grace += my_grace;
+  }
 
-    // consider the peers reporting a failure a proxy for a potential
-    // 'subcluster' over the overall cluster that is similarly
-    // laggy.  this is clearly not true in all cases, but will sometimes
-    // help us localize the grace correction to a subset of the system
-    // (say, a rack with a bad switch) that is unhappy.
-    assert(fi.reporters.size());
-    for (map<int,failure_reporter_t>::iterator p = fi.reporters.begin();
-	 p != fi.reporters.end();
-	 ++p) {
-      // get the parent bucket whose type matches with "reporter_subtree_level".
-      // fall back to OSD if the level doesn't exist.
-      map<string, string> reporter_loc = osdmap.crush->get_full_location(p->first);
-      map<string, string>::iterator iter = reporter_loc.find(reporter_subtree_level);
-      if (iter == reporter_loc.end()) {
-	reporters_by_subtree.insert("osd." + to_string(p->first));
-      } else {
-	reporters_by_subtree.insert(iter->second);
-      }
-
+  // consider the peers reporting a failure a proxy for a potential
+  // 'subcluster' over the overall cluster that is similarly
+  // laggy.  this is clearly not true in all cases, but will sometimes
+  // help us localize the grace correction to a subset of the system
+  // (say, a rack with a bad switch) that is unhappy.
+  assert(fi.reporters.size());
+  for (map<int,failure_reporter_t>::iterator p = fi.reporters.begin();
+	p != fi.reporters.end();
+	++p) {
+    // get the parent bucket whose type matches with "reporter_subtree_level".
+    // fall back to OSD if the level doesn't exist.
+    map<string, string> reporter_loc = osdmap.crush->get_full_location(p->first);
+    map<string, string>::iterator iter = reporter_loc.find(reporter_subtree_level);
+    if (iter == reporter_loc.end()) {
+      reporters_by_subtree.insert("osd." + to_string(p->first));
+    } else {
+      reporters_by_subtree.insert(iter->second);
+    }
+    if (g_conf->mon_osd_adjust_heartbeat_grace) {
       const osd_xinfo_t& xi = osdmap.get_xinfo(p->first);
       utime_t elapsed = now - xi.down_stamp;
       double decay = exp((double)elapsed * decay_k);
       peer_grace += decay * (double)xi.laggy_interval * xi.laggy_probability;
     }
+  }
+  
+  if (g_conf->mon_osd_adjust_heartbeat_grace) {
     peer_grace /= (double)fi.reporters.size();
     grace += peer_grace;
   }
@@ -2019,7 +2042,8 @@ bool OSDMonitor::preprocess_boot(MonOpRequestRef op)
   }
 
   if (osdmap.exists(from) &&
-      osdmap.get_info(from).up_from > m->version) {
+      osdmap.get_info(from).up_from > m->version &&
+      osdmap.get_most_recent_inst(from) == m->get_orig_source_inst()) {
     dout(7) << "prepare_boot msg from before last up_from, ignoring" << dendl;
     send_latest(op, m->sb.current_epoch+1);
     return true;
@@ -2797,9 +2821,20 @@ void OSDMonitor::tick()
       dout(10) << "No full osds, removing full flag" << dendl;
       remove_flag(CEPH_OSDMAP_FULL);
     }
+
+    if (!mon->pgmon()->pg_map.nearfull_osds.empty()) {
+      dout(5) << "There are near full osds, setting nearfull flag" << dendl;
+      add_flag(CEPH_OSDMAP_NEARFULL);
+    } else if (osdmap.test_flag(CEPH_OSDMAP_NEARFULL)){
+      dout(10) << "No near full osds, removing nearfull flag" << dendl;
+      remove_flag(CEPH_OSDMAP_NEARFULL);
+    }
     if (pending_inc.new_flags != -1 &&
-	(pending_inc.new_flags ^ osdmap.flags) & CEPH_OSDMAP_FULL) {
-      dout(1) << "New setting for CEPH_OSDMAP_FULL -- doing propose" << dendl;
+       (pending_inc.new_flags ^ osdmap.flags) & (CEPH_OSDMAP_FULL | CEPH_OSDMAP_NEARFULL)) {
+      dout(1) << "New setting for" <<
+              (pending_inc.new_flags & CEPH_OSDMAP_FULL ? " CEPH_OSDMAP_FULL" : "") <<
+              (pending_inc.new_flags & CEPH_OSDMAP_NEARFULL ? " CEPH_OSDMAP_NEARFULL" : "")
+              << " -- doing propose" << dendl;
       do_propose = true;
     }
   }
@@ -2920,7 +2955,8 @@ void OSDMonitor::get_health(list<pair<health_status_t,string> >& summary,
     }
 
     // warn about flags
-    if (osdmap.test_flag(CEPH_OSDMAP_PAUSERD |
+    if (osdmap.test_flag(CEPH_OSDMAP_FULL |
+			 CEPH_OSDMAP_PAUSERD |
 			 CEPH_OSDMAP_PAUSEWR |
 			 CEPH_OSDMAP_NOUP |
 			 CEPH_OSDMAP_NODOWN |
@@ -3021,6 +3057,17 @@ void OSDMonitor::get_health(list<pair<health_status_t,string> >& summary,
       if (detail) {
         ss << "; this has the same effect as the 'noout' flag";
         detail->push_back(make_pair(HEALTH_WARN, ss.str()));
+      }
+    }
+
+    // warn about upgrade flags that can be set but are not.
+    if ((osdmap.get_up_osd_features() & CEPH_FEATURE_SERVER_JEWEL) &&
+	       !osdmap.test_flag(CEPH_OSDMAP_REQUIRE_JEWEL)) {
+      string msg = "all OSDs are running jewel or later but the"
+	" 'require_jewel_osds' osdmap flag is not set";
+      summary.push_back(make_pair(HEALTH_WARN, msg));
+      if (detail) {
+	detail->push_back(make_pair(HEALTH_WARN, msg));
       }
     }
 
@@ -3223,7 +3270,7 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
       rdata.append(osdmap_bl);
       ss << "got osdmap epoch " << p->get_epoch();
     } else if (prefix == "osd getcrushmap") {
-      p->crush->encode(rdata);
+      p->crush->encode(rdata, mon->quorum_features);
       ss << "got crush map from osdmap epoch " << p->get_epoch();
     }
     if (p != &osdmap)
@@ -3315,7 +3362,6 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
             // Drop error, continue to get other daemons' metadata
             dout(4) << "No metadata for osd." << i << dendl;
             r = 0;
-            continue;
           } else if (r < 0) {
             // Unexpected error
             goto reply;
@@ -4376,7 +4422,7 @@ int OSDMonitor::crush_rename_bucket(const string& srcname,
     return ret;
 
   pending_inc.crush.clear();
-  newcrush.encode(pending_inc.crush);
+  newcrush.encode(pending_inc.crush, mon->quorum_features);
   *ss << "renamed bucket " << srcname << " into " << dstname;
   return 0;
 }
@@ -4426,7 +4472,7 @@ int OSDMonitor::crush_ruleset_create_erasure(const string &name,
       return err;
     *ruleset = err;
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     return 0;
   }
 }
@@ -4501,7 +4547,7 @@ bool OSDMonitor::validate_crush_against_features(const CrushWrapper *newcrush,
                                                  stringstream& ss)
 {
   OSDMap::Incremental new_pending = pending_inc;
-  ::encode(*newcrush, new_pending.crush);
+  ::encode(*newcrush, new_pending.crush, mon->quorum_features);
   OSDMap newmap;
   newmap.deepish_copy_from(osdmap);
   newmap.apply_incremental(new_pending);
@@ -4793,18 +4839,11 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
     dout(10) << " prepare_pool_size returns " << r << dendl;
     return r;
   }
-  const int64_t minsize = osdmap.crush->get_rule_mask_min_size(crush_ruleset);
-  if ((int64_t)size < minsize) {
-    *ss << "pool size " << size << " is smaller than crush ruleset name "
-        << crush_ruleset_name << " min size " << minsize;
+
+  if (!osdmap.crush->check_crush_rule(crush_ruleset, pool_type, size, *ss)) {
     return -EINVAL;
   }
-  const int64_t maxsize = osdmap.crush->get_rule_mask_max_size(crush_ruleset);
-  if ((int64_t)size > maxsize) {
-    *ss << "pool size " << size << " is bigger than crush ruleset name "
-        << crush_ruleset_name << " max size " << maxsize;
-    return -EINVAL;
-  }
+
   uint32_t stripe_width = 0;
   r = prepare_pool_stripe_width(pool_type, erasure_code_profile, &stripe_width, ss);
   if (r) {
@@ -5148,17 +5187,8 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       ss << "crush ruleset " << n << " does not exist";
       return -ENOENT;
     }
-    const int64_t poolsize = p.get_size();
-    const int64_t minsize = osdmap.crush->get_rule_mask_min_size(n);
-    if (poolsize < minsize) {
-      ss << "pool size " << poolsize << " is smaller than crush ruleset " 
-         << n << " min size " << minsize;
-      return -EINVAL;
-    }
-    const int64_t maxsize = osdmap.crush->get_rule_mask_max_size(n);
-    if (poolsize > maxsize) {
-      ss << "pool size " << poolsize << " is bigger than crush ruleset " 
-         << n << " max size " << maxsize;
+
+    if (!osdmap.crush->check_crush_rule(n, p.get_type(), p.get_size(), ss)) {
       return -EINVAL;
     }
     p.crush_ruleset = n;
@@ -5540,7 +5570,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     ss << "added bucket " << name << " type " << typestr
        << " to crush map";
     goto update;
@@ -5619,7 +5649,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     ss << action << " item id " << osdid << " name '" << name << "' weight "
       << weight << " at location " << loc << " to crush map";
     getline(ss, rs);
@@ -5664,7 +5694,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       }
       if (err > 0) {
 	pending_inc.crush.clear();
-	newcrush.encode(pending_inc.crush);
+	newcrush.encode(pending_inc.crush, mon->quorum_features);
 	ss << "create-or-move updating item name '" << name << "' weight " << weight
 	   << " at location " << loc << " to crush map";
 	getline(ss, rs);
@@ -5701,7 +5731,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	if (err >= 0) {
 	  ss << "moved item id " << id << " name '" << name << "' to location " << loc << " in crush map";
 	  pending_inc.crush.clear();
-	  newcrush.encode(pending_inc.crush);
+	  newcrush.encode(pending_inc.crush, mon->quorum_features);
 	  getline(ss, rs);
 	  wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
 						   get_last_committed() + 1));
@@ -5754,7 +5784,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	  ss << "linked item id " << id << " name '" << name
              << "' to location " << loc << " in crush map";
 	  pending_inc.crush.clear();
-	  newcrush.encode(pending_inc.crush);
+	  newcrush.encode(pending_inc.crush, mon->quorum_features);
 	} else {
 	  ss << "cannot link item id " << id << " name '" << name
              << "' to location " << loc;
@@ -5815,7 +5845,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       }
       if (err == 0) {
 	pending_inc.crush.clear();
-	newcrush.encode(pending_inc.crush);
+	newcrush.encode(pending_inc.crush, mon->quorum_features);
 	ss << "removed item id " << id << " name '" << name << "' from crush map";
 	getline(ss, rs);
 	wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
@@ -5831,7 +5861,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
     newcrush.reweight(g_ceph_context);
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     ss << "reweighted crush hierarchy";
     getline(ss, rs);
     wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
@@ -5868,7 +5898,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     if (err < 0)
       goto reply;
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     ss << "reweighted item id " << id << " name '" << name << "' to " << w
        << " in crush map";
     getline(ss, rs);
@@ -5906,7 +5936,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     if (err < 0)
       goto reply;
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     ss << "reweighted subtree id " << id << " name '" << name << "' to " << w
        << " in crush map";
     getline(ss, rs);
@@ -5946,7 +5976,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     ss << "adjusted tunables profile to " << profile;
     getline(ss, rs);
     wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
@@ -5986,7 +6016,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     pending_inc.crush.clear();
-    newcrush.encode(pending_inc.crush);
+    newcrush.encode(pending_inc.crush, mon->quorum_features);
     ss << "adjusted tunable " << tunable << " to " << value;
     getline(ss, rs);
     wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
@@ -6027,7 +6057,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       }
 
       pending_inc.crush.clear();
-      newcrush.encode(pending_inc.crush);
+      newcrush.encode(pending_inc.crush, mon->quorum_features);
     }
     getline(ss, rs);
     wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
@@ -6239,7 +6269,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       }
 
       pending_inc.crush.clear();
-      newcrush.encode(pending_inc.crush);
+      newcrush.encode(pending_inc.crush, mon->quorum_features);
     }
     getline(ss, rs);
     wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,

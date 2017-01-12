@@ -1493,7 +1493,14 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
-  ENCODE_START(24, 5, bl);
+  uint8_t v = 24;
+  if (!(features & CEPH_FEATURE_NEW_OSDOP_ENCODING)) {
+    // this was the first post-hammer thing we added; if it's missing, encode
+    // like hammer.
+    v = 21;
+  }
+
+  ENCODE_START(v, 5, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1535,13 +1542,25 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(last_force_op_resend, bl);
   ::encode(min_read_recency_for_promote, bl);
   ::encode(expected_num_objects, bl);
-  ::encode(cache_target_dirty_high_ratio_micro, bl);
-  ::encode(min_write_recency_for_promote, bl);
-  ::encode(use_gmt_hitset, bl);
-  ::encode(fast_read, bl);
-  ::encode(hit_set_grade_decay_rate, bl);
-  ::encode(hit_set_search_last_n, bl);
-  ::encode(opts, bl);
+  if (v >= 19) {
+    ::encode(cache_target_dirty_high_ratio_micro, bl);
+  }
+  if (v >= 20) {
+    ::encode(min_write_recency_for_promote, bl);
+  }
+  if (v >= 21) {
+    ::encode(use_gmt_hitset, bl);
+  }
+  if (v >= 22) {
+    ::encode(fast_read, bl);
+  }
+  if (v >= 23) {
+    ::encode(hit_set_grade_decay_rate, bl);
+    ::encode(hit_set_search_last_n, bl);
+  }
+  if (v >= 24) {
+    ::encode(opts, bl);
+  }
   ENCODE_FINISH(bl);
 }
 
@@ -5292,9 +5311,9 @@ void ScrubMap::decode(bufferlist::iterator& bl, int64_t pool)
 
   // handle hobject_t upgrade
   if (struct_v < 3) {
-    map<hobject_t, object, hobject_t::BitwiseComparator> tmp;
+    map<hobject_t, object, hobject_t::ComparatorWithDefault> tmp(objects.key_comp());
     tmp.swap(objects);
-    for (map<hobject_t, object, hobject_t::BitwiseComparator>::iterator i = tmp.begin();
+    for (map<hobject_t, object, hobject_t::ComparatorWithDefault>::iterator i = tmp.begin();
 	 i != tmp.end();
 	 ++i) {
       hobject_t first(i->first);
@@ -5310,7 +5329,7 @@ void ScrubMap::dump(Formatter *f) const
   f->dump_stream("valid_through") << valid_through;
   f->dump_stream("incremental_since") << incr_since;
   f->open_array_section("objects");
-  for (map<hobject_t,object, hobject_t::BitwiseComparator>::const_iterator p = objects.begin(); p != objects.end(); ++p) {
+  for (map<hobject_t,object, hobject_t::ComparatorWithDefault>::const_iterator p = objects.begin(); p != objects.end(); ++p) {
     f->open_object_section("object");
     f->dump_string("name", p->first.oid.name);
     f->dump_unsigned("hash", p->first.get_hash());

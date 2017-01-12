@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "CEPH-DEPLOY" "8" "September 21, 2016" "dev" "Ceph"
+.TH "CEPH-DEPLOY" "8" "December 09, 2016" "dev" "Ceph"
 .SH NAME
 ceph-deploy \- Ceph deployment tool
 .
@@ -233,7 +233,7 @@ were created then a concatenated keyring is used for deployment of monitors. In
 this process a keyring parser is used which looks for \fB[entity]\fP sections in
 monitor keyrings and returns a list of those sections. A helper is then used to
 collect all keyrings into a single blob that will be used to inject it to monitors
-with \fI\-\-mkfs\fP on remote nodes. All keyring files are concatenated to be
+with \fB\-\-mkfs\fP on remote nodes. All keyring files are concatenated to be
 in a directory ending with \fB\&.keyring\fP\&. During this process the helper uses list
 of sections returned by keyring parser to check if an entity is already present
 in a keyring and if not, adds it. The concatenated keyring is used for deployment

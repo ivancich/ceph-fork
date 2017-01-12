@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "MOUNT.CEPH" "8" "September 21, 2016" "dev" "Ceph"
+.TH "MOUNT.CEPH" "8" "December 09, 2016" "dev" "Ceph"
 .SH NAME
 mount.ceph \- mount a ceph file system
 .
@@ -74,12 +74,15 @@ passed only after these fixed arguments.
 .INDENT 0.0
 .TP
 .B \fBwsize\fP
-int, max write size. Default: none (writeback uses smaller of wsize
+int (bytes), max write size. Default: none (writeback uses smaller of wsize
 and stripe unit)
 .TP
 .B \fBrsize\fP
-int (bytes), max readahead, multiple of 1024, Default: 524288
-(512*1024)
+int (bytes), max read size. Default: none
+.TP
+.B \fBrasize\fP
+int (bytes), max readahead, multiple of 1024, Default: 8388608
+(8192*1024)
 .TP
 .B \fBosdtimeout\fP
 int (seconds), Default: 60

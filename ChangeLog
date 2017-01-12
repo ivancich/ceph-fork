@@ -1,4 +1,247 @@
-ecc2377 (HEAD, tag: v10.2.3, origin/jewel) 10.2.3
+c461ee1 (HEAD, tag: v10.2.5, origin/jewel) 10.2.5
+f7abffe msg/simple/Pipe: avoid returning 0 on poll timeout
+9411351 (tag: v10.2.4) 10.2.4
+d194db8 OSDMonitor: only reject MOSDBoot based on up_from if inst matches
+00de014 mon: MonmapMonitor: drop unnecessary 'goto' statements
+25f1b39 mon: MonmapMonitor: return success when monitor will be removed
+79be070 librados: remove new setxattr overload to avoid breaking the C++ ABI
+4d6f848 crush: condition latest tunable encoding on features
+bf96b30 crush/CrushWrapper: encode with features
+c5f5b94 crush/CrushWrapper: drop unused 'lean' encode() argument
+c66c556 osd/osd_types: encode pg_pool_t like hammer if features indicate hammer
+85caf34 osd/osd_types: conditional pg_pool_t encoding
+3cc29c6 os/filestore/HashIndex: fix list_by_hash_* termination on reaching end
+8b595f5 ceph-create-keys: add missing argument comma
+eea546f mon: expose require_jewel_osds flag to user
+f8ee076 mon/OSDMonitor: encode OSDMap::Incremental with same features as OSDMap
+1f629b2 mon/OSDMonitor: health warn if require_{jewel,kraken} flags aren't set
+34555f1 mon/OSDMonitor: encode canonical full osdmap based on osdmap flags
+eb30cc5 ceph-post-file: Ignore keys offered by ssh-agent
+43282b0 ceph-post-file: migrate to RSA SSH keys
+d48e603 msg: adjust byte_throttler from Message::encode
+1bc6161 msg/Message: fix set_middle vs throttler
+5d5b595 messages/MForward: reencode forwarded message if target has differing features
+e068c92 messages/MForward: fix encoding features
+158b003 all: add const to operator<< param
+3e1edde test/ceph_test_msgr: do not use Message::middle for holding transient data
+8f75bd6 test/ceph_test_msgr: fix circular locking dependency
+f960db4 ceph_test_msgr: use ceph log infrastructure to output
+39b8e78 rgw: fix put_acls for objects starting and ending with underscore
+779af22 qa: remove EnumerateObjects from librados upgrade tests
+4cb83c1 librbd: discard after write can result in assertion failure
+dc2ffda rgw: handle empty POST condition
+cd99a64 ceph-disk: allow using a regular file as a journal
+a800402 ceph-disk: PEP8ify
+e200b17 ceph-disk: Set space_symlink to the path, not file object
+9191825 ceph-disk: Use os.path.isabs instead of .startswith('/')
+f1c2de7 ceph-disk: Use context manager with FileLock
+26cb5b6 ceph-disk: Fix bug in FileLock
+91a9ca3 ceph-disk: Use true integer division in get_dev_size
+2373ccb ceph-disk: Compatibility fixes for Python 3
+79cf633 ceph-disk: change ownership of init file to ceph:ceph
+7964187 rgw: Do not archive metadata by default
+1eedf18 mon: fix missing osd metadata (again)
+f5e37ab journal: do not prematurely flag object recorder as closed
+2f9a5be Don't loop forever when reading data from 0 sized segment.
+4f9e02c test: TestJournalReplay test cases need to wait for committed journal event
+e8e1acb librbd: ignore cache busy errors when shrinking an image
+ba2e87e librbd: invalidate cache before trimming image
+d7c0873 rbd-nbd: mask out-of-bounds IO errors caused by image shrink
+0ce342d rbd-nbd: fix kernel deadlock during teuthology testing
+eb6c3cb rgw: set correct instance on the object
+084108e rgw: fix regression with handling double underscore
+f400ff2 tests: ceph-disk: force debug monc = 0
+25a35d4 doc: fill keyring with caps before passing it to ceph-monstore-tool
+73ea926 tools/ceph_monstore_tool: bail out if no caps found for a key
+4ebf87b tools/ceph_monstore_tool: update pgmap_meta also when rebuilding store.db
+d2deed6 tools/rebuild_mondb: kill compiling warning
+0970126 tools/rebuild_mondb: avoid unnecessary result code cast
+5191b06 doc: add rados/operations/disaster-recovery.rst
+8c8d5ce tools/ceph_monstore_tool: add "rebuild" command
+1fcb0bb tools/ceph-objectstore-tool: add "update-mon-db" command
+4167502 mon/AuthMonitor: make AuthMonitor::IncType public
+caf08d7 rgw: avoid corruption when running old radosgw-admin on a newer rgw
+e5f7854 rgw: Fix missing master zone for default region conversion
+ec2fb02 rgw: mark configuration as converted to avoid corruption when running older admins
+91bd342 AArch64: Detect crc32 extension support from assembler
+d205b74 tests: populate /dev/disk/by-partuuid for scsi_debug
+86eef27 Allow building RGW with LDAP disabled
+6575545 doc: Modification for "TEST S3 ACCESS" section
+50fd48f rgw:response information is error when geting token of swift account The header is X-Trans-Id instead of x-amz-request-id in the response header
+7423661 doc: Radosgw multitenancy config paramater change
+6356664 rgw: fix versioned object IO error
+40689d1 rgw: don't fail if lost race when setting acls
+5a53ffa rgw: remove user email index using helper function
+ad54bf9 rgw:user email can modify to empty
+4babd3f librbd: corrected use-after-free in ImageWatcher
+1ca4dc6 librbd: possible deadlock if cluster connection closed after image
+b73356b librbd: block name prefix might overflow fixed size C-string
+b410c8e librbd: potential deadlock closing image with in-flight readahead
+32d84e0 librbd: update_features should handle Infernalis OSDs
+b4e1380 cls/rbd: set_features should adjust the mask to known features
+dd93e00 rbd: cleanup - Proxied operations shouldn't result in error messages if replayed
+391936a librbd: enable/disable of features is not allowed when already enabled/disabled
+7d6801b rbd: restrict mirror enable/disable actions on parents/clones
+cf47628 rgw: Add documentation for RGW default quota
+2234815 rgw: Do not bother to check against conf values during quota handling
+0b8ecce rgw: Let the default quota settings take effect during user creation
+1c76ef4 journal: ensure in-flight ops are complete destroying journaler
+9bc5e44 journal: complete action only after notification completed
+7487332 qa/workunits: reduce amount of client IO for rbd-mirror stress
+d51a2f6 rbd-mirror: potential race allocating tag during shut down
+cea000c librbd: ignore attempts to request lock if already lock owner
+912ce37 journal: clean up object recorder closed/overflow callback
+310f3f7 journal: delay moving overflowed buffers until quiesced
+9f36143 journal: use reverse iterator search to find flush record
+21502d9 journal: avoid holding lock while sending journal append
+e0de824 rbd-mirror: wait for in-flight event commit notifications
+efa12f7 journal: fix AsyncOpTracker compiler error
+2460a3d common: move AsyncOpTracker to common library
+1748b38 librbd: support deleting image by id instead of name
+bb5f6b6 rbd-mirror: use pool id + global image id as deletion primary key
+96d551d rbd-mirror: concurrent access of event might result in heap corruption
+8070d6a rbd-mirror: test: Fixed timeout problem in rbd_mirror_stress.sh
+6ea4cde rbd: Fix race between journal flush and append events
+180a86b journal: make librados call async in ObjectRecorder
+5edbfe2 journal: increase concurrency of journal recorder
+9ad132e journal: send update notification when tag allocated
+f9aae06 librbd: new journal listener event for force promotion
+4f5ce86 librbd: helper class for quiescing in-flight async ops
+829ff8c librbd: unify journal event callbacks into single interface
+41cf3d9 journal: expose ability to retrieve partial tag list
+2f9e641 qa/workunits/rbd: fix remove mirrored image race conditions
+2ec5e93 qa/workunits/rbd: new mirroring forced promotion test
+5d1d898 test/rbd: fix possible mock journal race conditions
+775a999 qa/workunits/rbd: before removing image make sure it is not bootstrapped
+3bbd8ba librbd: fix journal create compilation error
+89c6618 test: fixed unused function warnings in unittest_rbd_mirror
+ca94f25 rbd-mirror: prevent syncing to non-primary image after failover
+7a43484 rbd-mirror: demote/promote in same cluster results in split-brain
+f8f3bbd librbd: normalize journal promotion/demotion events
+4baea6a librbd: block RPC requests when demoting the image
+8ccdad6 librbd: separate journal::TagData predecessor data into new struct
+13daaff rbd-mirror: include tag tid in bootstrap debug log messages
+d775680 qa/workunits/rbd: demote/promote image on same cluster
+f7ffbfa rbd-mirror: option to automatically resync after journal client disconnect
+0b40239 rbd-mirror: stop replay when client is disconnected
+80aa7e0 rbd-mirror: resync was possible only when image replayer start had succeeded
+170476e rbd-mirror: decode_client_meta should return false on error
+7382e1a rbd: new command to disconnect journal client
+d3ad2ff librbd: optionally flag "laggy" journal clients disconnected
+4056e36 journal: allow to trim journal for "laggy" clients
+3aec576 cls/journal: add async client_update_state method
+d66bb7a build: include more files in "make dist" tarball
+3bb2a9e librbd: ignore notify errors on missing image header
+5173563 client: properly set inode number of created inode in replay request
+2c4e1c1 mds: log path with CDir damage messages
+d52f190 mds: s/used_ions/used_inos/
+494687b rbd: expose rbd unmap options
+6b02267 rbd: fix up terminology in help texts
+071bd47 rbd: recognize lock_on_read option
+7d0714e doc: clarify rbd size units
+ca8fc6f ceph-create-keys: fix existing-but-different case
+0a17741 client: fix readdir vs fragmentation race
+3a79db1 mds: remove fail-safe queueing replay request
+10e603b client: fix segment fault in Client::_invalidate_kernel_dcache().
+3320da0 mds: catch duplicates in DamageTable
+5d0e2f8 common: only call crypto::init once per CephContext
+483d8c4 cephx: Fix multiple segfaults due to attempts to encrypt or decrypt an empty secret and a null CryptoKeyHandler
+5ae4f31 os/filestore/FileJournal: fail out if FileJournal is not block device or regular file
+c2d4239 mds: remove max_mds config option
+57f08fe mds: make mds_role_t member order match constructor
+c19326c mon: don't crash on invalid standby_for_fscid
+cbd9a39 messages: fix MMDSBeacon constructor
+cca589f init-radosgw: do not use systemd-run in sysvinit
+83a91ba rgw: forward input data when forwarding set_bucket_version to master
+0986aff rgw: set args when rebuilding req_info
+bb81f9d librbd: permit disabling journaling if in corrupt state
+b14d7f1 librbd: new journal policy to disable initializing the journal
+77ea511 doc/radosgw: fix description of response elements 'Part'
+1a7faefd rgw_file:  pre-assign times
+0c932b9 rgw_file: fix set_attrs operation
+0de3390 rgw_file: implement rgw_setattr
+00f3fbe rgw: remove duplicated calls to getattr
+c539928 rgw: rgw file fix bug of rgw_lookup can not exact match file name
+9f5c737 rgw: fix the wrong return value
+cf1353c rgw_file: restore local definition of RGWLibFS gc interval
+7a648ed rgw_file:  explain semantics of RGWFileHandle::commit
+0135da7 ceph_timer: prefer using directive to typedef
+2a9233f librgw: add API version defines for librgw and rgw_file
+2d6966f rgw file: allow RGWLibFS::write_completion_interval_s to be set in conf
+7071845 rgw_file:  log on write completion events at level 10
+95310c7 rgw_file: add RGW_OPEN_FLAG_STATELESS as a synonym for V3
+697d4ef rgw_file: implement stateless write completion timer
+4a31509 rgw_file: fix/update rgw_create flag arguments
+73f9a0b rgw_file: fix/update rgw_open flag arguments
+4ceb70e rgw file: remove busy-wait in RGWLibFS::gc()
+8e1515b rgw_file: unlock() must precede out label
+88eeaa9 rgw nfs: fix write continuations
+f0b1799 rgw nfs: don't leak fh->mtx in lookup_handle()
+f16ac90 rgw file: refuse to rename directories
+23b749f rgw_file: refuse ops on deleted targets
+345de45 rgw_file: implement rgw_setattr
+88b5027 rgw_file: refuse partial, out-of-order writes
+be24369 rgw_file: fix rename cases and unify unlink
+a10d700 add ldap auth custom search filter feature patch - http://tracker.ceph.com/issues/17185
+7486638 rgw ldap:  protect rgw::from_base64 from non-base64 input
+68788fb rgw ldap: enforce simple_bind w/LDAPv3
+871caeb rgw: add reinit/rebind logic (ldap)
+de0c4e1 rgw: RGWDataSyncCR fails on errors from RGWListBucketIndexesCR
+8833c64 PG: block writes and scan log for scrub using inclusive upper bound
+0e2338e osd_types,PG: force the map used in _scrub to be sorted correctly
+16f9d95 src/osd: relax the requirement that we scrub a whole hash value
+2176c84 hobject: clarify is_snap and has_snapset for max
+35660d1 mon: OSDMonitor: Missing nearfull flag set
+3cb0a5e ceph-objectstore-tool: add a way to split filestore directories offline
+de672a0 logrotate: Run as root/ceph
+9cb45e1 log: Log.cc: Assign LOG_INFO priority to syslog calls
+165e5ab librados: modify Pipe::connect() to return the error code
+5ab5e82 doc: fix description for rsize and rasize
+ecc2377 (tag: v10.2.3) 10.2.3
+c94244d Add Install section to systemd rbdmap.service file
+e2ce857 Add two options to radosgw-admin.rst manpage
+4e66f9e radosgw-admin: add "--orphan-stale-secs" to --help
+bfa90a1 doc: add "--orphan-stale-secs" to radosgw-admin(8)
+cefd6f5 rgw: fix collection of object sync errors
+aa36981 rgw: fix marker tracker completion handling
+bce19a3 rgw: collect() stops if error encoutered
+f82b593 rgw: back off bucket sync on failures, don't store marker
+f337a07 krbd: don't segfault if images are unmapped concurrently
+2399d4a qa: rbd/simple_big.sh: drop extraneous sudo
+472cb29 qa: rbd/concurrent.sh: suppress rbd map output
+667d42a qa: rbd: don't modprobe, chown sysfs files or udevadm settle
+866c3e5 qa: rbd/map-snapshot-io.sh: don't chown sysfs files
+cf211d7 client: fix shutdown with open inodes
+1bc047b client: add missing client_lock for get_root
+086f6e0 rgw: fix upgrade from old multisite to new multisite configuration
+23d73dc rgw: delete region map after upgrade to zonegroup map
+27626ba rgw_file: restore local definition of RGWLibFS gc interval
+91b65e7 rgw file: remove busy-wait in RGWLibFS::gc()
+e72e7a2 qa/workunits: support filtering cls_rbd unit test cases
+a25a483 ReplicatedPG: call op_applied for submit_log_entries based repops
+5ef9085 Cleanup: delete find_best_info again
+dea93dc ceph-disk: do not activate device that is not ready
+58b7c52 PG: use upset rather than up for _update_calc_stats
+4e2b491 PG: introduce and maintain upset
+c0db9fb ceph: don't fudge the ctime in stat() unless it's really older than the mtime
+66cd43b client: only skip querying the MDS in _lookup when we have the necessary caps
+fb4a939 client: plumb a mask argument into _lookup
+b5cbd57 client: add mask parameter to _do_lookup
+416ec6f rgw: fix radosgw daemon core when reopen logs
+f034fd0 rgw: fix period update --commit return error
+457d78f rgw: adjust manifest head object
+77e497d rgw: adjust objs when copying obj with explicit_objs set
+c1250ee rgw: patch manifest to handle explicit objs copy issue
+2311ab2 ObjectCacher: fix last_write check in bh_write_adjacencies()
+c3c2910 rpm: proper packaging of udev directories
+7d92e2e crush: When consider rule size use the correct method.
+c2cf21d mon/PGMonitor: calc the %USED of pool using used/(used+avail)
+109da6f mon/PGMonitor: mark dump_object_stat_sum() as static
+bd63666 librbd: fix possible inconsistent state when disabling mirroring
+117aa35 common: instantiate strict_si_cast<long> not strict_si_cast<int64_t>
+d93eda8 common: add int64_t template for strict_si_cast()
+f7cd284 common/config: cast OPT_U32 options using uint32_t
+518883d Revert "common: add int64_t template for strict_si_cast()"
 577336e mds: fix double-unlock on shutdown
 21da103 rgw: collect skips a specific coroutine stack
 98779c3 rgw: fix compilation
@@ -18,6 +261,7 @@ ac557e0 rgw: data sync debug logging
 ecea6dc librbd: delay acquiring exclusive lock if watch has failed
 49a39eb librbd: convert ImageWatcher class to template
 f4fb598 build/ops: bump rocksdb submodule
+29a8701 ceph-osd-prestart.sh: check existence of OSD data directory
 1cbc839 osd: set objecter.osdmap when starts
 4d37cfb mon/MonClient: should update sub_sent with sub_new
 5498377 librbd: cache was not switching to writeback after first flush
@@ -42,11 +286,14 @@ d0c0c2f librbd: discard hangs when 'rbd_skip_partial_discard' is enabled
 5bf4398 librbd: object_may_exist always return true when you write an empty object
 6786106 librbd: ensure that AIO ops are started prior to request
 47279f8 librbd: helper method for creating and starting AioCompletions
+80e25b0 rbd: bench io-size should not be larger than image size
+f7d23d5 LTTng-UST disabled for openSUSE
 d336735 rbd-mirror: potential assertion failure during error-induced shutdown
 d1e0512 rbd-mirror: potential race condition during failure shutdown
 48ee3aa rbd-mirror: replaying state should include flush action
 e098fb1 doc: added rbdmap man page to RBD restructured index
 b7793d7 rbdmap: specify bash shell interpreter
+e6ac214 librbd: request exclusive lock if current owner cannot execute op
 92d7882 rbd-mirror: remove ceph_test_rbd_mirror_image_replay test case
 0d9d573 qa/workunits/rbd: override rbd-mirror integration test poll frequency
 96cdb11 rbd-mirror: do not cancel maintenance ops with missing finish events
@@ -82,7 +329,12 @@ b88a851 rbd-mirror: image deleter should use provided librados connection
 f298643 rgw: ONLY improve code formatting in rgw_object_expirer_core.{cc,h}.
 e7be5a5 rgw: fix skipping some objects to delete by RadosGW's object expirer.
 af7e1e0 rgw: fix trimming object expirer's hints.
+0b93a9a fast dispatch heartbeat message
 dc154cd osd: fix the mem leak of RepGather
+0dcefd2 mon/osdmonitor: fix incorrect output of "osd df" due to osd out
+ac27352 mon/osdmonitor: initialize local variable "kb_avail_i"
+430ab1b ceph-disk: timeout ceph-disk to avoid blocking forever
+0b30a1d mon/osdmonitor: decouple adjust_heartbeat_grace and min_down_reporters
 96ad2d1 rgw: can set negative max_buckets on RGWUserInfo
 dbf8cf0 rgw: improve support for Swift's object versioning.
 5ffdc34 doc: format 2 now is the default image format
@@ -121,16 +373,21 @@ ce986aa rgw: RGWMetaSyncCR holds refs to stacks for wakeup
 2485efc rgw: clear realm watch on failed watch_restart
 fa2e42d rgw: use endpoints from master zone instead of zonegroup
 a865f26 radosgw-admin: zone[group] modify can change realm id
+92581a3 rgw: fix marker tracker completion handling
+fb36dd0 rgw: fix potential memory leaks in RGWPutCORS_ObjStore_S3::get_params
 f5db5a4 mon: tolerate missing osd metadata
 36e5c86 mon: fix metadata dumps for empty lists
 de99bd5 mon: 'std::move` Metadata when updating it
 828df39 mon: fix 'mon metadata' for lone monitors
 308f514 ceph.spec.in: fix rpm package building error as follows:
 727a704 udev: always populate /dev/disk/by-parttypeuuid
+775c78d librbd: prevent creation of v2 image ids that are too large
+2b27212 librbd: prevent creation of clone from non-primary mirrored image
 9fc5b41 librbd: optimize away unnecessary object map updates
 81a2534 rbd-replay: decode and replay discard IO operations
 5968664 librbd: failed assertion after shrinking a clone image twice
 8316b6a rbd-mirror: gracefully fail if object map is unavailable
+18a66cb librbd: journal::Replay no longer holds lock while completing callback
 5ae0e43 subman: use replace instead of format
 0ca2772 cmake: script that sets env vars for unit tests
 0ff0960 ExclusiveArch for suse_version
@@ -173,6 +430,7 @@ fe57ace rgw ldap: fix ldap bindpw parsing
 8cd7f44 rgw: aws4: add STREAMING-AWS4-HMAC-SHA256-PAYLOAD support
 276ec72 rgw: use std::unique_ptr for rgw_aws4_auth management.
 2c422e3 rgw: add handling of memory allocation failure in AWS4 auth.
+79e2acb crush: reset bucket->h.items[i] when removing tree item
 2cd3ed8 ceph_volume_client: allow read-only authorization for volumes
 46246e3 osd: increment stas on recovery pull also
 3da251f pybind/ceph_argparse: handle non ascii unicode args
@@ -220,6 +478,7 @@ c34dbd4 rgw: data sync squash, prioritize object removal
 9591e50 rgw: dont need atomic RGWRados::next_rados_handle
 047379c rgw: remove unneeded RGWRados::num_rados_handles
 7848482 rgw: use vector for librados handles
+d94e5bc common: fix value of CINIT_FLAG_DEFER_DROP_PRIVILEGES
 2c39d36 rgw: Add documentation for the Multi-tenancy feature
 9e5a3ae RGW:add socket backlog setting for via ceph.conf http://tracker.ceph.com/issues/16406
 aa39361 mds: disallow 'open truncate' non-regular inode
@@ -232,6 +491,7 @@ a7987f0 MDSMonitor.cc: fix mdsmap.<namespace> subscriptions
 d244b7a mds: add maximum fragment size constraint
 64d99b1 mds: fix Session::check_access()
 bce5646 client: skip executing async invalidates while umounting
+54b6b5e client: kill QuotaTree
 fd7ff96 ceph-fuse: add option to disable kernel pagecache
 3f76e4a rgw: finish error_repo cr in stop_spawned_services()
 a5f5513 test: fix CMake build of ceph_test_objectcacher_stress
@@ -284,9 +544,11 @@ b751d48 librbd: flag image as updated after proxying maintenance op
 a34b227 xio: add MNop.h to dist tarball
 393bf7e rgw: check for -ERR_NOT_MODIFIED in rgw_rest_s3.cc
 6b41d76 TaskFinisher: cancel all tasks wait until finisher done
+47605a2 msg/msg_types: update sockaddr, sockaddr_storage accessors
 762db30 rgw: support size suffixes for --max-size in radosgw-admin command
 e3a99c0 common: add int64_t template for strict_si_cast()
 f8e4911 rados: Add cleanup message with time to rados bench output
+d5c77c8 osd: add peer_addr in heartbeat_check log message
 8b82bb8 qa/workunits/rbd: respect RBD_CREATE_ARGS environment variable
 9415d38 rados: Improve list-inconsistent json format
 2fd6e7c test: Fix test to not use jq -S which isn't avail in all distributions
@@ -470,6 +732,7 @@ e9f9916 rgw: add missing metadata_heap pool to old zones
 2266287 mds: wrongly treat symlink inode as normal file/dir when symlink inode is stale on kcephfs
 be9e85d tests: rm -fr /tmp/*virtualenv*
 0bdc8fd rgw : cleanup radosgw-admin temp command as it was deprecated and also implementation code for this command was removed in commit 8d7c8828b02c46e119adc4b9e8f655551512fc2d
+5ffee35 mon : Display full flag in ceph status if full flag is set
 8fbb555 cls_journal: Select min commit position for new clients
 576ff0c cls_journal: remove duplicated key generation
 fae360f rgw: fix manager selection when APIs customized
@@ -5133,7 +5396,7 @@ b48f3d7 rgw: fix wrong length in Content-Range HTTP header of Swift's DLO.
 94be452 rgw: refactor arrangement of parameters for rgw_read_user_buckets().
 58addda rgw: add support for "end_marker" on listing Swift account.
 1b6a7e3 doc: note that cephfs auth stuff is new in jewel
-2c7c712 tests: osd-scrub-snaps.sh to display full osd logs on error
+2c7c7129 tests: osd-scrub-snaps.sh to display full osd logs on error
 71690e7 rbd: add --object-size option
 a69367d ceph-mds:add --help/-h
 07c334a doc:file must be empty when writing layout fields of file use "setfattr"
@@ -5208,7 +5471,7 @@ c3524d7 librados: new style pgls
 3ee7731 osd: set handle to start of next PG on pgnls end of pg
 fc8ea3f osd/osd_types: add pg_t::get_hobj_{start,end} methods
 91f01bd librbd: partial revert of commit 9b0e359
-4e15c03 pybind/rbd.pyx: Return something useful from str() and repr()
+4e15c0399 pybind/rbd.pyx: Return something useful from str() and repr()
 6e7f9c8 doc/dev/index.rst: start writing Bugfixing chapter
 b328131 cmake: add rgw_basic_types.cc to librgw.a
 002d26b doc/dev/index.rst: rewrite introductory material
@@ -12935,7 +13198,7 @@ ca10ce4 Add one more case ( "=" ) and test get_str_vec as well. Signed-off-by: Y
 1858f06 Crush: Ensuring at most num-rep osds are selected
 01e389a Crush: Ensuring at most num-rep osds are selected
 f1becf9 qa: ceph tell must retry on ENXIO
-234b066 Crush: Ensuring at most num-rep osds are selected
+234b066b Crush: Ensuring at most num-rep osds are selected
 5c6c366 debian/control: fix python-ceph -> ceph file move to allow upgrades
 35fd272 messages: provide an explicit COMPAT_VERSION in MMDSBeacon
 177a33b MemStore: Need set/get_allow_sharded_objects() to work for ceph_objectstore_tool
@@ -23016,7 +23279,7 @@ dd855b3 monmaptool.cc: use empty() instead of size() to check for emptiness
 6f0175e OSDMonitor.cc: use !empty() instead of size()
 8fcd31f Monitor.cc: use empty() instead of size()
 f7078b4 MonCaps.cc: use !empty() instead of size()
-d7705ed OSDMonitor.h: use !reporters.empty() instead of size()
+d7705edf OSDMonitor.h: use !reporters.empty() instead of size()
 180cae5 AuthMonitor.cc: use !pending_auth.empty() instead of 'size() > 0'
 6b8458d CInode.h: use !old_inodes.empty() instead of size()
 a3970e5 CephxProtocol.h: pass CryptoKey by reference to decode_decrypt()
@@ -39977,7 +40240,7 @@ a418ff1 kclient: mark debug vars __read_mostly
 058b9ea initscript: --btrfs flag
 cfb33b7 mds: flush journal on truncate if readers/writers are waiting
 7846f51 kclient: include ceph_ver.h in kernel patch series, package
-1b6450b kclient: remove /sys/fs/ceph when doing cleanup
+1b6450b2 kclient: remove /sys/fs/ceph when doing cleanup
 2727657 mds: logger typo
 97ec829 cosd: fixes
 7762ea9 mkcephfs: bit more verbose
@@ -40419,7 +40682,7 @@ d7ecf25 mds: end of traverse may be indoe or projected_inode
 698400c kclient: use CEPH_INO_ROOT constant
 b2d23ad mds: include projected dn+inode to client if xlock_done
 b0f2842 mds: fix LOCK_LOCK -> LOCK_LOCK_SYNC issue_lease transition logic
-5e9be53 mds: allow FileLock wrlock when client holding FILE_EXCL
+5e9be53f mds: allow FileLock wrlock when client holding FILE_EXCL
 c7c72b4 mds: issue cap on mkdir; set authlock to EXCL on open O_CREAT.
 ddb07d9 mds: fix encode_inode caps issue logic
 94f28a9 mds: loner if only client with cap on a dir

@@ -440,8 +440,7 @@
 /* Define to 1 if the system has the type `__u8'. */
 #undef HAVE___U8
 
-/* Define to the sub-directory in which libtool stores uninstalled libraries.
-   */
+/* Define to the sub-directory where libtool stores uninstalled libraries. */
 #undef LT_OBJDIR
 
 /* Defined if you do not have atomic_ops */
