@@ -1,0 +1,51 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Tue, 27 Sep 2016 14:35:31 -0700
+Subject: rgw_admin: better bucket reshard logging
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+Signed-off-by: Daniel Gryniewicz <dang@redhat.com>
+(cherry picked from commit cd5e8c84be60632d4bc9a2d420a0b862b76ab780)
+
+Resolves: rhbz#1380601
+---
+ src/rgw/rgw_admin.cc | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 6cb4597..39d0541 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -4828,6 +4828,8 @@ next:
+ 
+     formatter->open_array_section("entries");
+ 
++    uint64_t total_entries = 0;
++
+     for (int i = 0; i < num_source_shards; ++i) {
+       bool is_truncated = true;
+       marker.clear();
+@@ -4841,6 +4843,12 @@ next:
+ 
+         list<rgw_cls_bi_entry>::iterator iter;
+         for (iter = entries.begin(); iter != entries.end(); ++iter) {
++          formatter->open_object_section("entry");
++
++          encode_json("shard_id", i, formatter);
++          encode_json("num_entry", total_entries, formatter);
++          total_entries++;
++
+           rgw_cls_bi_entry& entry = *iter;
+           encode_json("entry", entry, formatter);
+           marker = entry.idx;
+@@ -4864,9 +4872,9 @@ next:
+           if (ret < 0) {
+             return ret;
+           }
++          formatter->close_section();
++          formatter->flush(cout);
+         }
+-
+-        formatter->flush(cout);
+       }
+     }
+     formatter->close_section();

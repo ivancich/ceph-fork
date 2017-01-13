@@ -24,7 +24,7 @@ contain these files:
  src/include/rados/librados.hpp                |    6 -
  src/include/radosstriper/libradosstriper.h    |  574 -------------
  src/include/radosstriper/libradosstriper.hpp  |  224 -----
- src/libradosstriper/Makefile.am               |   27 -
+ src/libradosstriper/Makefile.am               |   29 -
  src/libradosstriper/MultiAioCompletionImpl.cc |   61 --
  src/libradosstriper/MultiAioCompletionImpl.h  |  174 ----
  src/libradosstriper/RadosStriperImpl.cc       | 1096 -------------------------
@@ -37,7 +37,7 @@ contain these files:
  src/test/libradosstriper/aio.cc               |  575 -------------
  src/test/libradosstriper/io.cc                |  406 ---------
  src/test/libradosstriper/striping.cc          |  319 -------
- 20 files changed, 1 insertion(+), 4661 deletions(-)
+ 20 files changed, 1 insertion(+), 4663 deletions(-)
  delete mode 100644 src/include/radosstriper/libradosstriper.h
  delete mode 100644 src/include/radosstriper/libradosstriper.hpp
  delete mode 100644 src/libradosstriper/Makefile.am
@@ -53,10 +53,10 @@ contain these files:
  delete mode 100644 src/test/libradosstriper/striping.cc
 
 diff --git a/ceph.spec.in b/ceph.spec.in
-index b2e4b12..93f034a 100644
+index 9ddd75f..d1e3311 100644
 --- a/ceph.spec.in
 +++ b/ceph.spec.in
-@@ -408,27 +408,6 @@ Obsoletes:	python-ceph < %{epoch}:%{version}-%{release}
+@@ -411,27 +411,6 @@ Obsoletes:	python-ceph < %{epoch}:%{version}-%{release}
  This package contains Python libraries for interacting with Cephs RADOS
  object store.
  
@@ -84,7 +84,7 @@ index b2e4b12..93f034a 100644
  %package -n librbd1
  Summary:	RADOS block device client library
  Group:		System Environment/Libraries
-@@ -589,7 +568,6 @@ Group:		Development/Libraries
+@@ -592,7 +571,6 @@ Group:		Development/Libraries
  License:	LGPL-2.0
  Obsoletes:	ceph-devel
  Requires:	librados2-devel = %{epoch}:%{version}-%{release}
@@ -92,7 +92,7 @@ index b2e4b12..93f034a 100644
  Requires:	librbd1-devel = %{epoch}:%{version}-%{release}
  Requires:	libcephfs1-devel = %{epoch}:%{version}-%{release}
  %if 0%{with cephfs_java}
-@@ -600,7 +578,7 @@ Provides:	ceph-devel
+@@ -603,7 +581,7 @@ Provides:	ceph-devel
  This is a compatibility package to accommodate ceph-devel split into
  librados2-devel, librbd1-devel and libcephfs1-devel. Packages still depending
  on ceph-devel should be fixed to depend on librados2-devel, librbd1-devel,
@@ -101,7 +101,7 @@ index b2e4b12..93f034a 100644
  
  %package -n python-ceph-compat
  Summary:	Compatibility package for Cephs python libraries
-@@ -1263,25 +1241,6 @@ fi
+@@ -1268,25 +1246,6 @@ fi
  %{python_sitearch}/rados-*.egg-info
  
  #################################################################################
@@ -140,7 +140,7 @@ index 4771bad..d426c37 100644
  LIBCIVETWEB = libcivetweb.la
  LIBRBD = librbd.la
 diff --git a/src/Makefile.am b/src/Makefile.am
-index a11325e..959926e 100644
+index a3d0ecd..e12d69f 100644
 --- a/src/Makefile.am
 +++ b/src/Makefile.am
 @@ -53,7 +53,6 @@ include msg/Makefile.am
@@ -1016,10 +1016,10 @@ index 6352d58..0000000
 -#endif
 diff --git a/src/libradosstriper/Makefile.am b/src/libradosstriper/Makefile.am
 deleted file mode 100644
-index 13b8b28..0000000
+index 293c8a5..0000000
 --- a/src/libradosstriper/Makefile.am
 +++ /dev/null
-@@ -1,27 +0,0 @@
+@@ -1,29 +0,0 @@
 -if ENABLE_CLIENT
 -if WITH_RADOS
 -if WITH_RADOSSTRIPER
@@ -1047,6 +1047,8 @@ index 13b8b28..0000000
 -endif # WITH_RADOSSTRIPER
 -endif # WITH_RADOS
 -endif # ENABLE_CLIENT
+-
+-EXTRA_DIST += libradosstriper/CMakeLists.txt
 diff --git a/src/libradosstriper/MultiAioCompletionImpl.cc b/src/libradosstriper/MultiAioCompletionImpl.cc
 deleted file mode 100644
 index 2701829..0000000
@@ -3402,10 +3404,10 @@ index 6eade23..f7ae18a 100644
  
  if WITH_BUILD_TESTS
 diff --git a/src/test/Makefile.am b/src/test/Makefile.am
-index 8057e1d..b930668 100644
+index 2b566d3..bf2b9ba 100644
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
-@@ -486,7 +486,6 @@ noinst_HEADERS += \
+@@ -523,7 +523,6 @@ noinst_HEADERS += \
  	test/kv_store_bench.h \
  	test/librados/test.h \
  	test/librados/TestCase.h \

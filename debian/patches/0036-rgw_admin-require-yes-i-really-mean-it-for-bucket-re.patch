@@ -1,0 +1,32 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Tue, 27 Sep 2016 15:13:37 -0700
+Subject: rgw_admin: require --yes-i-really-mean-it for bucket reshard
+
+in the case where num shards are less or equal to current bucket
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+Signed-off-by: Daniel Gryniewicz <dang@redhat.com>
+(cherry picked from commit 0be03713270ef44c69a9a79c70bf47d022b2d822)
+
+Resolves: rhbz#1380601
+---
+ src/rgw/rgw_admin.cc | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 39d0541..1274da6 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -4798,6 +4798,12 @@ next:
+ 
+     int num_source_shards = (bucket_info.num_shards > 0 ? bucket_info.num_shards : 1);
+ 
++    if (num_shards <= num_source_shards && !yes_i_really_mean_it) {
++      cerr << "num shards is less or equal to current shards count" << std::endl
++           << "do you really mean it? (requires --yes-i-really-mean-it)" << std::endl;
++      return EINVAL;
++    }
++
+     RGWBucketInfo new_bucket_info(bucket_info);
+     store->create_bucket_id(&new_bucket_info.bucket.bucket_id);
+     new_bucket_info.bucket.oid.clear();

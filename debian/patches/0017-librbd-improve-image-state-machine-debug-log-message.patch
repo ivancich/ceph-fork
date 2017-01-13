@@ -1,0 +1,26 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Wed, 31 Aug 2016 20:56:54 -0400
+Subject: librbd: improve image state machine debug log messages
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit c71182a73146c65dfe7bf955ad67ebeebcf7b1fd)
+(cherry picked from commit a03f2ef4cf51a7408eccc5434f44da4ac9044ac3)
+
+Resolves: rhbz#1379837
+---
+ src/librbd/ImageState.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/librbd/ImageState.cc b/src/librbd/ImageState.cc
+index da9f6d9..3204307 100644
+--- a/src/librbd/ImageState.cc
++++ b/src/librbd/ImageState.cc
+@@ -16,7 +16,7 @@
+ 
+ #define dout_subsys ceph_subsys_rbd
+ #undef dout_prefix
+-#define dout_prefix *_dout << "librbd::ImageState: "
++#define dout_prefix *_dout << "librbd::ImageState: " << this << " "
+ 
+ namespace librbd {
+ 

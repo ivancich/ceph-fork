@@ -37,10 +37,10 @@ index 2243a5e..b40236f 100644
  Global commands
  ===============
 diff --git a/src/test/Makefile.am b/src/test/Makefile.am
-index c865b68..8057e1d 100644
+index ce6fc20..2b566d3 100644
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
-@@ -91,7 +91,6 @@ check_SCRIPTS += \
+@@ -128,7 +128,6 @@ check_SCRIPTS += \
  	test/osd/osd-copy-from.sh \
  	test/osd/osd-markdown.sh \
  	test/mon/mon-handle-forward.sh \
