@@ -1,0 +1,549 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 3 Jan 2017 14:51:14 -0500
+Subject: librbd: add new lock_get_owners / lock_break_lock API methods
+
+If the client application supports failover, let the application
+force break the current lock and blacklist the owner. This is
+required in case the current lock owner is alive from the point-of-view
+of librbd but failover was required due to a higher level reason.
+
+Fixes: http://tracker.ceph.com/issues/18327
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 9a5a8c75a025143cee6f92f3dbc3a12f2b6a9ad7)
+
+Conflicts:
+	src/pybind/rbd/rbd.pyx: trivial resolution
+	src/test/pybind/test_rbd.py: skipped
+
+(cherry picked from commit e91db5ae3d21645d73be28bef74eae51d44cb27a)
+
+Resolves: rhbz#1408226
+---
+ src/include/rbd/librbd.h       |   9 ++++
+ src/include/rbd/librbd.hpp     |   3 ++
+ src/librbd/internal.cc         |  83 +++++++++++++++++++++++++++++-
+ src/librbd/internal.h          |   4 ++
+ src/librbd/librbd.cc           |  63 ++++++++++++++++++++++-
+ src/pybind/rbd/rbd.pyx         | 114 ++++++++++++++++++++++++++++++++++++++++-
+ src/test/librbd/test_librbd.cc |  22 ++++++++
+ src/tracing/librbd.tp          |  40 +++++++++++++++
+ 8 files changed, 335 insertions(+), 3 deletions(-)
+
+diff --git a/src/include/rbd/librbd.h b/src/include/rbd/librbd.h
+index e90779e..e1e7fa2 100644
+--- a/src/include/rbd/librbd.h
++++ b/src/include/rbd/librbd.h
+@@ -42,6 +42,7 @@ extern "C" {
+ #define LIBRBD_SUPPORTS_AIO_FLUSH 1
+ #define LIBRBD_SUPPORTS_INVALIDATE 1
+ #define LIBRBD_SUPPORTS_AIO_OPEN 1
++#define LIBRBD_SUPPORTS_LOCKING 1
+ 
+ #if __GNUC__ >= 4
+   #define CEPH_RBD_API    __attribute__ ((visibility ("default")))
+@@ -304,6 +305,14 @@ CEPH_RBD_API int rbd_set_image_notification(rbd_image_t image, int fd, int type)
+ CEPH_RBD_API int rbd_is_exclusive_lock_owner(rbd_image_t image, int *is_owner);
+ CEPH_RBD_API int rbd_lock_acquire(rbd_image_t image, rbd_lock_mode_t lock_mode);
+ CEPH_RBD_API int rbd_lock_release(rbd_image_t image);
++CEPH_RBD_API int rbd_lock_get_owners(rbd_image_t image,
++                                     rbd_lock_mode_t *lock_mode,
++                                     char **lock_owners,
++                                     size_t *max_lock_owners);
++CEPH_RBD_API void rbd_lock_get_owners_cleanup(char **lock_owners,
++                                              size_t lock_owner_count);
++CEPH_RBD_API int rbd_lock_break(rbd_image_t image, rbd_lock_mode_t lock_mode,
++                                const char *lock_owner);
+ 
+ /* object map feature */
+ CEPH_RBD_API int rbd_rebuild_object_map(rbd_image_t image,
+diff --git a/src/include/rbd/librbd.hpp b/src/include/rbd/librbd.hpp
+index 072641e..fd02582 100644
+--- a/src/include/rbd/librbd.hpp
++++ b/src/include/rbd/librbd.hpp
+@@ -211,6 +211,9 @@ public:
+   int is_exclusive_lock_owner(bool *is_owner);
+   int lock_acquire(rbd_lock_mode_t lock_mode);
+   int lock_release();
++  int lock_get_owners(rbd_lock_mode_t *lock_mode,
++                      std::list<std::string> *lock_owners);
++  int lock_break(rbd_lock_mode_t lock_mode, const std::string &lock_owner);
+ 
+   /* object map feature */
+   int rebuild_object_map(ProgressContext &prog_ctx);
+diff --git a/src/librbd/internal.cc b/src/librbd/internal.cc
+index 93bb6ae..c044945 100644
+--- a/src/librbd/internal.cc
++++ b/src/librbd/internal.cc
+@@ -39,7 +39,10 @@
+ #include "librbd/parent_types.h"
+ #include "librbd/Utils.h"
+ #include "librbd/exclusive_lock/AutomaticPolicy.h"
++#include "librbd/exclusive_lock/BreakRequest.h"
++#include "librbd/exclusive_lock/GetLockerRequest.h"
+ #include "librbd/exclusive_lock/StandardPolicy.h"
++#include "librbd/exclusive_lock/Types.h"
+ #include "librbd/operation/TrimRequest.h"
+ #include "include/util.h"
+ 
+@@ -2091,11 +2094,14 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+ 
+   int lock_acquire(ImageCtx *ictx, rbd_lock_mode_t lock_mode)
+   {
++    CephContext *cct = ictx->cct;
++    ldout(cct, 20) << __func__ << ": ictx=" << ictx << ", "
++                   << "lock_mode=" << lock_mode << dendl;
++
+     if (lock_mode != RBD_LOCK_MODE_EXCLUSIVE) {
+       return -EOPNOTSUPP;
+     }
+ 
+-    CephContext *cct = ictx->cct;
+     C_SaferCond lock_ctx;
+     {
+       RWLock::WLocker l(ictx->owner_lock);
+@@ -2138,6 +2144,8 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+   int lock_release(ImageCtx *ictx)
+   {
+     CephContext *cct = ictx->cct;
++    ldout(cct, 20) << __func__ << ": ictx=" << ictx << dendl;
++
+     C_SaferCond lock_ctx;
+     {
+       RWLock::WLocker l(ictx->owner_lock);
+@@ -2160,6 +2168,79 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+     return 0;
+   }
+ 
++  int lock_get_owners(ImageCtx *ictx, rbd_lock_mode_t *lock_mode,
++                      std::list<std::string> *lock_owners)
++  {
++    CephContext *cct = ictx->cct;
++    ldout(cct, 20) << __func__ << ": ictx=" << ictx << dendl;
++
++    exclusive_lock::Locker locker;
++    C_SaferCond get_owner_ctx;
++    auto get_owner_req = exclusive_lock::GetLockerRequest<>::create(
++      *ictx, &locker, &get_owner_ctx);
++    get_owner_req->send();
++
++    int r = get_owner_ctx.wait();
++    if (r == -ENOENT) {
++      return r;
++    } else if (r < 0) {
++      lderr(cct) << "failed to determine current lock owner: "
++                 << cpp_strerror(r) << dendl;
++      return r;
++    }
++
++    *lock_mode = RBD_LOCK_MODE_EXCLUSIVE;
++    lock_owners->clear();
++    lock_owners->emplace_back(locker.address);
++    return 0;
++  }
++
++  int lock_break(ImageCtx *ictx, rbd_lock_mode_t lock_mode,
++                 const std::string &lock_owner)
++  {
++    CephContext *cct = ictx->cct;
++    ldout(cct, 20) << __func__ << ": ictx=" << ictx << ", "
++                   << "lock_mode=" << lock_mode << ", "
++                   << "lock_owner=" << lock_owner << dendl;
++
++    if (lock_mode != RBD_LOCK_MODE_EXCLUSIVE) {
++      return -EOPNOTSUPP;
++    }
++
++    exclusive_lock::Locker locker;
++    C_SaferCond get_owner_ctx;
++    auto get_owner_req = exclusive_lock::GetLockerRequest<>::create(
++      *ictx, &locker, &get_owner_ctx);
++    get_owner_req->send();
++
++    int r = get_owner_ctx.wait();
++    if (r == -ENOENT) {
++      return r;
++    } else if (r < 0) {
++      lderr(cct) << "failed to determine current lock owner: "
++                 << cpp_strerror(r) << dendl;
++      return r;
++    }
++
++    if (locker.address != lock_owner) {
++      return -EBUSY;
++    }
++
++    C_SaferCond break_ctx;
++    auto break_req = exclusive_lock::BreakRequest<>::create(
++      *ictx, locker, ictx->blacklist_on_break_lock, true, &break_ctx);
++    break_req->send();
++
++    r = break_ctx.wait();
++    if (r == -ENOENT) {
++      return r;
++    } else if (r < 0) {
++      lderr(cct) << "failed to break lock: " << cpp_strerror(r) << dendl;
++      return r;
++    }
++    return 0;
++  }
++
+   int remove(IoCtx& io_ctx, const std::string &image_name,
+              const std::string &image_id, ProgressContext& prog_ctx,
+              bool force)
+diff --git a/src/librbd/internal.h b/src/librbd/internal.h
+index f442462..c08ad9f 100644
+--- a/src/librbd/internal.h
++++ b/src/librbd/internal.h
+@@ -137,6 +137,10 @@ namespace librbd {
+   int is_exclusive_lock_owner(ImageCtx *ictx, bool *is_owner);
+   int lock_acquire(ImageCtx *ictx, rbd_lock_mode_t lock_mode);
+   int lock_release(ImageCtx *ictx);
++  int lock_get_owners(ImageCtx *ictx, rbd_lock_mode_t *lock_mode,
++                      std::list<std::string> *lock_owners);
++  int lock_break(ImageCtx *ictx, rbd_lock_mode_t lock_mode,
++                 const std::string &lock_owner);
+ 
+   int remove(librados::IoCtx& io_ctx, const std::string &image_name,
+              const std::string &image_id, ProgressContext& prog_ctx,
+diff --git a/src/librbd/librbd.cc b/src/librbd/librbd.cc
+index 6370620..311f8cb 100644
+--- a/src/librbd/librbd.cc
++++ b/src/librbd/librbd.cc
+@@ -27,7 +27,6 @@
+ #include "librbd/ImageState.h"
+ #include "librbd/internal.h"
+ #include "librbd/Operations.h"
+-
+ #include <algorithm>
+ #include <string>
+ #include <vector>
+@@ -734,6 +733,26 @@ namespace librbd {
+     return r;
+   }
+ 
++  int Image::lock_get_owners(rbd_lock_mode_t *lock_mode,
++                             std::list<std::string> *lock_owners)
++  {
++    ImageCtx *ictx = (ImageCtx *)ctx;
++    tracepoint(librbd, lock_get_owners_enter, ictx);
++    int r = librbd::lock_get_owners(ictx, lock_mode, lock_owners);
++    tracepoint(librbd, lock_get_owners_exit, ictx, r);
++    return r;
++  }
++
++  int Image::lock_break(rbd_lock_mode_t lock_mode,
++                        const std::string &lock_owner)
++  {
++    ImageCtx *ictx = (ImageCtx *)ctx;
++    tracepoint(librbd, lock_break_enter, ictx, lock_mode, lock_owner.c_str());
++    int r = librbd::lock_break(ictx, lock_mode, lock_owner);
++    tracepoint(librbd, lock_break_exit, ictx, r);
++    return r;
++  }
++
+   int Image::rebuild_object_map(ProgressContext &prog_ctx)
+   {
+     ImageCtx *ictx = reinterpret_cast<ImageCtx*>(ctx);
+@@ -2132,6 +2151,48 @@ extern "C" int rbd_lock_release(rbd_image_t image)
+   return r;
+ }
+ 
++extern "C" int rbd_lock_get_owners(rbd_image_t image,
++                                   rbd_lock_mode_t *lock_mode,
++                                   char **lock_owners,
++                                   size_t *max_lock_owners)
++{
++  librbd::ImageCtx *ictx = reinterpret_cast<librbd::ImageCtx*>(image);
++  tracepoint(librbd, lock_get_owners_enter, ictx);
++  std::list<std::string> lock_owner_list;
++  int r = librbd::lock_get_owners(ictx, lock_mode, &lock_owner_list);
++  if (r >= 0) {
++    if (*max_lock_owners >= lock_owner_list.size()) {
++      *max_lock_owners = 0;
++      for (auto &lock_owner : lock_owner_list) {
++        lock_owners[(*max_lock_owners)++] = strdup(lock_owner.c_str());
++      }
++    } else {
++      *max_lock_owners = lock_owner_list.size();
++      r = -ERANGE;
++    }
++  }
++  tracepoint(librbd, lock_get_owners_exit, ictx, r);
++  return r;
++}
++
++extern "C" void rbd_lock_get_owners_cleanup(char **lock_owners,
++                                            size_t lock_owner_count)
++{
++  for (size_t i = 0; i < lock_owner_count; ++i) {
++    free(lock_owners[i]);
++  }
++}
++
++extern "C" int rbd_lock_break(rbd_image_t image, rbd_lock_mode_t lock_mode,
++                              const char *lock_owner)
++{
++  librbd::ImageCtx *ictx = reinterpret_cast<librbd::ImageCtx*>(image);
++  tracepoint(librbd, lock_break_enter, ictx, lock_mode, lock_owner);
++  int r = librbd::lock_break(ictx, lock_mode, lock_owner);
++  tracepoint(librbd, lock_break_exit, ictx, r);
++  return r;
++}
++
+ extern "C" int rbd_rebuild_object_map(rbd_image_t image,
+                                       librbd_progress_fn_t cb, void *cbdata)
+ {
+diff --git a/src/pybind/rbd/rbd.pyx b/src/pybind/rbd/rbd.pyx
+index 5dadc37..99762cb 100644
+--- a/src/pybind/rbd/rbd.pyx
++++ b/src/pybind/rbd/rbd.pyx
+@@ -123,6 +123,10 @@ cdef extern from "rbd/librbd.h" nogil:
+         time_t last_update
+         bint up
+ 
++    ctypedef enum rbd_lock_mode_t:
++        _RBD_LOCK_MODE_EXCLUSIVE "RBD_LOCK_MODE_EXCLUSIVE"
++        _RBD_LOCK_MODE_SHARED "RBD_LOCK_MODE_SHARED"
++
+     void rbd_version(int *major, int *minor, int *extra)
+ 
+     void rbd_image_options_create(rbd_image_options_t* opts)
+@@ -195,7 +199,6 @@ cdef extern from "rbd/librbd.h" nogil:
+                             char *parent_name, size_t pnamelen,
+                             char *parent_snapname, size_t psnapnamelen)
+     int rbd_get_flags(rbd_image_t image, uint64_t *flags)
+-    int rbd_is_exclusive_lock_owner(rbd_image_t image, int *is_owner)
+     ssize_t rbd_read2(rbd_image_t image, uint64_t ofs, size_t len,
+                       char *buf, int op_flags)
+     ssize_t rbd_write2(rbd_image_t image, uint64_t ofs, size_t len,
+@@ -233,6 +236,16 @@ cdef extern from "rbd/librbd.h" nogil:
+     int rbd_break_lock(rbd_image_t image, const char *client,
+                        const char *cookie)
+ 
++    int rbd_is_exclusive_lock_owner(rbd_image_t image, int *is_owner)
++    int rbd_lock_acquire(rbd_image_t image, rbd_lock_mode_t lock_mode)
++    int rbd_lock_release(rbd_image_t image)
++    int rbd_lock_get_owners(rbd_image_t image, rbd_lock_mode_t *lock_mode,
++                            char **lock_owners, size_t *max_lock_owners)
++    void rbd_lock_get_owners_cleanup(char **lock_owners,
++                                     size_t lock_owner_count)
++    int rbd_lock_break(rbd_image_t image, rbd_lock_mode_t lock_mode,
++                       char *lock_owner)
++
+     # We use -9000 to propagate Python exceptions. We use except? to make sure
+     # things still work as intended if -9000 happens to be a valid errno value
+     # somewhere.
+@@ -290,6 +303,9 @@ MIRROR_IMAGE_STATUS_STATE_REPLAYING = _MIRROR_IMAGE_STATUS_STATE_REPLAYING
+ MIRROR_IMAGE_STATUS_STATE_STOPPING_REPLAY = _MIRROR_IMAGE_STATUS_STATE_STOPPING_REPLAY
+ MIRROR_IMAGE_STATUS_STATE_STOPPED = _MIRROR_IMAGE_STATUS_STATE_STOPPED
+ 
++RBD_LOCK_MODE_EXCLUSIVE = _RBD_LOCK_MODE_EXCLUSIVE
++RBD_LOCK_MODE_SHARED = _RBD_LOCK_MODE_SHARED
++
+ RBD_IMAGE_OPTION_FORMAT = _RBD_IMAGE_OPTION_FORMAT
+ RBD_IMAGE_OPTION_FEATURES = _RBD_IMAGE_OPTION_FEATURES
+ RBD_IMAGE_OPTION_ORDER = _RBD_IMAGE_OPTION_ORDER
+@@ -1747,6 +1763,54 @@ written." % (self.name, ret, length))
+             free(c_addrs)
+             free(c_tag)
+ 
++    def lock_acquire(self, lock_mode):
++        """
++        Acquire a managed lock on the image.
++
++        :param lock_mode: lock mode to set
++        :type lock_mode: int
++        :raises: :class:`ImageBusy` if the lock could not be acquired
++        """
++        cdef:
++            rbd_lock_mode_t _lock_mode = lock_mode
++        with nogil:
++            ret = rbd_lock_acquire(self.image, _lock_mode)
++        if ret < 0:
++            raise make_ex(ret, 'error acquiring lock on image')
++
++    def lock_release(self):
++        """
++        Release a managed lock on the image that was previously acquired.
++        """
++        with nogil:
++            ret = rbd_lock_release(self.image)
++        if ret < 0:
++            raise make_ex(ret, 'error releasing lock on image')
++
++    def lock_get_owners(self):
++        """
++        Iterate over the lock owners of an image.
++
++        :returns: :class:`LockOwnerIterator`
++        """
++        return LockOwnerIterator(self)
++
++    def lock_break(self, lock_mode, lock_owner):
++        """
++        Break the image lock held by a another client.
++
++        :param lock_owner: the owner of the lock to break
++        :type lock_owner: str
++        """
++        lock_owner = cstr(lock_owner, 'lock_owner')
++        cdef:
++            rbd_lock_mode_t _lock_mode = lock_mode
++            char *_lock_owner = lock_owner
++        with nogil:
++            ret = rbd_lock_break(self.image, _lock_mode, _lock_owner)
++        if ret < 0:
++            raise make_ex(ret, 'error breaking lock on image')
++
+     def lock_exclusive(self, cookie):
+         """
+         Take an exclusive lock on the image.
+@@ -1929,6 +1993,54 @@ written." % (self.name, ret, length))
+         free(c_status.description)
+         return status
+ 
++cdef class LockOwnerIterator(object):
++    """
++    Iterator over managed lock owners for an image
++
++    Yields a dictionary containing information about the image's lock
++
++    Keys are:
++
++    * ``mode`` (int) - active lock mode
++
++    * ``owner`` (str) - lock owner name
++    """
++
++    cdef:
++        rbd_lock_mode_t lock_mode
++        char **lock_owners
++        size_t num_lock_owners
++        object image
++
++    def __init__(self, Image image):
++        self.image = image
++        self.lock_owners = NULL
++        self.num_lock_owners = 8
++        while True:
++            self.lock_owners = <char**>realloc_chk(self.lock_owners,
++                                                   self.num_lock_owners *
++                                                   sizeof(char*))
++            with nogil:
++                ret = rbd_lock_get_owners(image.image, &self.lock_mode,
++                                          self.lock_owners,
++                                          &self.num_lock_owners)
++            if ret >= 0:
++                break
++            elif ret != -errno.ERANGE:
++                raise make_ex(ret, 'error listing lock owners for image %s' % (image.name,))
++
++    def __iter__(self):
++        for i in range(self.num_lock_owners):
++            yield {
++                'mode'  : int(self.lock_mode),
++                'owner' : decode_cstr(self.lock_owners[i]),
++                }
++
++    def __dealloc__(self):
++        if self.lock_owners:
++            rbd_lock_get_owners_cleanup(self.lock_owners, self.num_lock_owners)
++            free(self.lock_owners)
++
+ cdef class SnapIterator(object):
+     """
+     Iterator over snapshot info for an image.
+diff --git a/src/test/librbd/test_librbd.cc b/src/test/librbd/test_librbd.cc
+index 0a0d68d..673d8a0 100644
+--- a/src/test/librbd/test_librbd.cc
++++ b/src/test/librbd/test_librbd.cc
+@@ -4422,16 +4422,38 @@ TEST_F(TestLibRBD, ExclusiveLock)
+   ASSERT_EQ(0, rbd_is_exclusive_lock_owner(image1, &lock_owner));
+   ASSERT_TRUE(lock_owner);
+ 
++  rbd_lock_mode_t lock_mode;
++  char *lock_owners[1];
++  size_t max_lock_owners = 0;
++  ASSERT_EQ(-ERANGE, rbd_lock_get_owners(image1, &lock_mode, lock_owners,
++                                         &max_lock_owners));
++  ASSERT_EQ(1U, max_lock_owners);
++
++  max_lock_owners = 2;
++  ASSERT_EQ(0, rbd_lock_get_owners(image1, &lock_mode, lock_owners,
++                                   &max_lock_owners));
++  ASSERT_EQ(RBD_LOCK_MODE_EXCLUSIVE, lock_mode);
++  ASSERT_STRNE("", lock_owners[0]);
++  ASSERT_EQ(1U, max_lock_owners);
++
+   rbd_image_t image2;
+   ASSERT_EQ(0, rbd_open(ioctx, name.c_str(), &image2, NULL));
+ 
+   ASSERT_EQ(0, rbd_is_exclusive_lock_owner(image2, &lock_owner));
+   ASSERT_FALSE(lock_owner);
+ 
++  ASSERT_EQ(-EOPNOTSUPP, rbd_lock_break(image1, RBD_LOCK_MODE_SHARED, ""));
++  ASSERT_EQ(-EBUSY, rbd_lock_break(image1, RBD_LOCK_MODE_EXCLUSIVE,
++                                   "not the owner"));
++
+   ASSERT_EQ(0, rbd_lock_release(image1));
+   ASSERT_EQ(0, rbd_is_exclusive_lock_owner(image1, &lock_owner));
+   ASSERT_FALSE(lock_owner);
+ 
++  ASSERT_EQ(-ENOENT, rbd_lock_break(image1, RBD_LOCK_MODE_EXCLUSIVE,
++                                    lock_owners[0]));
++  rbd_lock_get_owners_cleanup(lock_owners, max_lock_owners);
++
+   ASSERT_EQ(-EROFS, rbd_write(image1, 0, sizeof(buf), buf));
+   ASSERT_EQ((ssize_t)sizeof(buf), rbd_write(image2, 0, sizeof(buf), buf));
+ 
+diff --git a/src/tracing/librbd.tp b/src/tracing/librbd.tp
+index bdc4959..668fed5 100644
+--- a/src/tracing/librbd.tp
++++ b/src/tracing/librbd.tp
+@@ -1804,6 +1804,46 @@ TRACEPOINT_EVENT(librbd, lock_release_exit,
+     )
+ )
+ 
++TRACEPOINT_EVENT(librbd, lock_get_owners_enter,
++    TP_ARGS(
++        void*, imagectx),
++    TP_FIELDS(
++        ctf_integer_hex(void*, imagectx, imagectx)
++    )
++)
++
++TRACEPOINT_EVENT(librbd, lock_get_owners_exit,
++    TP_ARGS(
++        void*, imagectx,
++        int, retval),
++    TP_FIELDS(
++        ctf_integer_hex(void*, imagectx, imagectx)
++        ctf_integer(int, retval, retval)
++    )
++)
++
++TRACEPOINT_EVENT(librbd, lock_break_enter,
++    TP_ARGS(
++        void*, imagectx,
++        int, lock_mode,
++	const char*, lock_owner),
++    TP_FIELDS(
++        ctf_integer_hex(void*, imagectx, imagectx)
++        ctf_integer(int, lock_mode, lock_mode)
++        ctf_string(lock_owner, lock_owner)
++    )
++)
++
++TRACEPOINT_EVENT(librbd, lock_break_exit,
++    TP_ARGS(
++        void*, imagectx,
++        int, retval),
++    TP_FIELDS(
++        ctf_integer_hex(void*, imagectx, imagectx)
++        ctf_integer(int, retval, retval)
++    )
++)
++
+ TRACEPOINT_EVENT(librbd, stat_enter,
+     TP_ARGS(
+         void*, imagectx,

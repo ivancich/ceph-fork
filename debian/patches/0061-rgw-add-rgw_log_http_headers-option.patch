@@ -1,0 +1,375 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Fri, 12 Feb 2016 17:02:53 -0500
+Subject: rgw: add rgw_log_http_headers option
+
+Tracks headers that should be handled conditionally (currently,
+can only log, so using minimal structure to represent the
+mapping).
+
+Adds map of custom headers to rgw_log_entry, and populate it with
+headers pre-selected for custom logging in RGWREST.  Added to encoder
+and Formatter output.
+
+Some additional optimization possible.
+
+(cherry picked from commit b82919a152217b3cd49afdc28bb890f329c2742a)
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 8838bcbabcd2c9b3d7aec2403cad0bad4ad9a057)
+
+Resolves: rhbz#1298571
+---
+ src/common/config_opts.h      |  1 +
+ src/include/str_list.h        |  8 ++++++++
+ src/rgw/librgw.cc             |  3 ++-
+ src/rgw/rgw_env.cc            |  2 ++
+ src/rgw/rgw_log.cc            | 25 ++++++++++++++++++++++++-
+ src/rgw/rgw_log.h             | 21 +++++++++++++++++----
+ src/rgw/rgw_main.cc           |  3 +++
+ src/rgw/rgw_metadata.cc       |  2 ++
+ src/rgw/rgw_period_history.cc |  2 ++
+ src/rgw/rgw_process.cc        |  3 ++-
+ src/rgw/rgw_rest.cc           | 10 ++++++++++
+ src/rgw/rgw_rest.h            | 19 +++++++++++++++++++
+ 12 files changed, 92 insertions(+), 7 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index b28f207..97f8222 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1422,6 +1422,7 @@ OPTION(rgw_objexp_hints_num_shards, OPT_U32, 127) // maximum number of parts in
+ OPTION(rgw_objexp_chunk_size, OPT_U32, 100) // maximum number of entries in a single operation when processing objexp data
+ 
+ OPTION(rgw_enable_static_website, OPT_BOOL, false) // enable static website feature
++OPTION(rgw_log_http_headers, OPT_STR, "" ) // list of HTTP headers to log when seen, ignores case (e.g., http_x_forwarded_for
+ 
+ OPTION(rgw_num_async_rados_threads, OPT_INT, 32) // num of threads to use for async rados operations
+ OPTION(rgw_md_notify_interval_msec, OPT_INT, 200) // metadata changes notification interval to followers
+diff --git a/src/include/str_list.h b/src/include/str_list.h
+index 4ba0cad..12cf128 100644
+--- a/src/include/str_list.h
++++ b/src/include/str_list.h
+@@ -91,4 +91,12 @@ inline std::string str_join(const std::vector<std::string>& v, std::string sep)
+   return r;
+ }
+ 
++static inline std::vector<std::string> get_str_vec(const std::string& str)
++{
++  std::vector<std::string> str_vec;
++  const char *delims = ";,= \t";
++  get_str_vec(str, delims, str_vec);
++  return std::move(str_vec);
++}
++
+ #endif
+diff --git a/src/rgw/librgw.cc b/src/rgw/librgw.cc
+index 1b4decc..288365e 100644
+--- a/src/rgw/librgw.cc
++++ b/src/rgw/librgw.cc
+@@ -286,7 +286,8 @@ namespace rgw {
+       dout(0) << "ERROR: io->complete_request() returned " << r << dendl;
+     }
+     if (should_log) {
+-      rgw_log_op(store, s, (op ? op->name() : "unknown"), olog);
++      rgw_log_op(store, nullptr /* !rest */, s,
++		 (op ? op->name() : "unknown"), olog);
+     }
+ 
+     int http_ret = s->err.http_ret;
+diff --git a/src/rgw/rgw_env.cc b/src/rgw/rgw_env.cc
+index ffa479b..6436ee8 100644
+--- a/src/rgw/rgw_env.cc
++++ b/src/rgw/rgw_env.cc
+@@ -7,6 +7,8 @@
+ #include <string>
+ #include <map>
+ 
++#include "include/assert.h"
++
+ #define dout_subsys ceph_subsys_rgw
+ 
+ RGWEnv::RGWEnv()
+diff --git a/src/rgw/rgw_log.cc b/src/rgw/rgw_log.cc
+index 3bef606..c444c27 100644
+--- a/src/rgw/rgw_log.cc
++++ b/src/rgw/rgw_log.cc
+@@ -12,6 +12,7 @@
+ #include "rgw_acl.h"
+ #include "rgw_rados.h"
+ #include "rgw_client_io.h"
++#include "rgw_rest.h"
+ 
+ #define dout_subsys ceph_subsys_rgw
+ 
+@@ -250,6 +251,15 @@ void rgw_format_ops_log_entry(struct rgw_log_entry& entry, Formatter *formatter)
+   formatter->dump_int("total_time", total_time);
+   formatter->dump_string("user_agent",  entry.user_agent);
+   formatter->dump_string("referrer",  entry.referrer);
++  if (entry.x_headers.size() > 0) {
++    formatter->open_array_section("http_x_headers");
++    for (const auto& iter: entry.x_headers) {
++      formatter->open_object_section(iter.first.c_str());
++      formatter->dump_string(iter.first.c_str(), iter.second);
++      formatter->close_section();
++    }
++    formatter->close_section();
++  }
+   formatter->close_section();
+ }
+ 
+@@ -290,7 +300,8 @@ void OpsLogSocket::log(struct rgw_log_entry& entry)
+   append_output(bl);
+ }
+ 
+-int rgw_log_op(RGWRados *store, struct req_state *s, const string& op_name, OpsLogSocket *olog)
++int rgw_log_op(RGWRados *store, RGWREST* const rest, struct req_state *s,
++	       const string& op_name, OpsLogSocket *olog)
+ {
+   struct rgw_log_entry entry;
+   string bucket_id;
+@@ -339,6 +350,18 @@ int rgw_log_op(RGWRados *store, struct req_state *s, const string& op_name, OpsL
+   set_param_str(s, "REQUEST_URI", entry.uri);
+   set_param_str(s, "REQUEST_METHOD", entry.op);
+ 
++  /* custom header logging */
++  if (rest) {
++    if (rest->log_x_headers()) {
++      for (const auto& iter : s->info.env->get_map()) {
++	if (rest->log_x_header(iter.first)) {
++	  entry.x_headers.insert(
++	    rgw_log_entry::headers_map::value_type(iter.first, iter.second));
++	}
++      }
++    }
++  }
++
+   entry.user = s->user->user_id.to_str();
+   if (s->object_acl)
+     entry.object_owner = s->object_acl->get_owner().get_id();
+diff --git a/src/rgw/rgw_log.h b/src/rgw/rgw_log.h
+index 51acfdf..ab800c7 100644
+--- a/src/rgw/rgw_log.h
++++ b/src/rgw/rgw_log.h
+@@ -4,6 +4,7 @@
+ #ifndef CEPH_RGW_LOG_H
+ #define CEPH_RGW_LOG_H
+ 
++#include <boost/container/flat_set.hpp>
+ #include "rgw_common.h"
+ #include "include/utime.h"
+ #include "common/Formatter.h"
+@@ -12,6 +13,9 @@
+ class RGWRados;
+ 
+ struct rgw_log_entry {
++
++  using headers_map = std::map<std::string, std::string>;
++
+   rgw_user object_owner;
+   rgw_user bucket_owner;
+   string bucket;
+@@ -30,9 +34,10 @@ struct rgw_log_entry {
+   string user_agent;
+   string referrer;
+   string bucket_id;
++  headers_map x_headers;
+ 
+   void encode(bufferlist &bl) const {
+-    ENCODE_START(8, 5, bl);
++    ENCODE_START(9, 5, bl);
+     ::encode(object_owner.id, bl);
+     ::encode(bucket_owner.id, bl);
+     ::encode(bucket, bl);
+@@ -54,6 +59,7 @@ struct rgw_log_entry {
+     ::encode(obj, bl);
+     ::encode(object_owner, bl);
+     ::encode(bucket_owner, bl);
++    ::encode(x_headers, bl);
+     ENCODE_FINISH(bl);
+   }
+   void decode(bufferlist::iterator &p) {
+@@ -100,6 +106,9 @@ struct rgw_log_entry {
+       ::decode(object_owner, p);
+       ::decode(bucket_owner, p);
+     }
++    if (struct_v >= 9) {
++      ::decode(x_headers, p);
++    }
+     DECODE_FINISH(p);
+   }
+   void dump(Formatter *f) const;
+@@ -123,10 +132,14 @@ public:
+   void log(struct rgw_log_entry& entry);
+ };
+ 
+-int rgw_log_op(RGWRados *store, struct req_state *s, const string& op_name, OpsLogSocket *olog);
++class RGWREST;
++
++int rgw_log_op(RGWRados *store, RGWREST* const rest, struct req_state *s,
++	       const string& op_name, OpsLogSocket *olog);
+ void rgw_log_usage_init(CephContext *cct, RGWRados *store);
+ void rgw_log_usage_finalize();
+-void rgw_format_ops_log_entry(struct rgw_log_entry& entry, Formatter *formatter);
++void rgw_format_ops_log_entry(struct rgw_log_entry& entry,
++			      Formatter *formatter);
+ 
+-#endif
++#endif /* CEPH_RGW_LOG_H */
+ 
+diff --git a/src/rgw/rgw_main.cc b/src/rgw/rgw_main.cc
+index b5adf5e..d9de145 100644
+--- a/src/rgw/rgw_main.cc
++++ b/src/rgw/rgw_main.cc
+@@ -356,6 +356,9 @@ int main(int argc, const char **argv)
+     rest.register_resource(g_conf->rgw_admin_entry, admin_resource);
+   }
+ 
++  /* Header custom behavior */
++  rest.register_x_headers(g_conf->rgw_log_http_headers);
++
+   OpsLogSocket *olog = NULL;
+ 
+   if (!g_conf->rgw_ops_log_socket_path.empty()) {
+diff --git a/src/rgw/rgw_metadata.cc b/src/rgw/rgw_metadata.cc
+index ea6e793..cad0831 100644
+--- a/src/rgw/rgw_metadata.cc
++++ b/src/rgw/rgw_metadata.cc
+@@ -13,6 +13,8 @@
+ #include "rgw_cr_rados.h"
+ #include "rgw_boost_asio_yield.h"
+ 
++#include "include/assert.h"
++
+ #define dout_subsys ceph_subsys_rgw
+ 
+ void LogStatusDump::dump(Formatter *f) const {
+diff --git a/src/rgw/rgw_period_history.cc b/src/rgw/rgw_period_history.cc
+index 2992623..eff0e78 100644
+--- a/src/rgw/rgw_period_history.cc
++++ b/src/rgw/rgw_period_history.cc
+@@ -4,6 +4,8 @@
+ #include "rgw_period_history.h"
+ #include "rgw_rados.h"
+ 
++#include "include/assert.h"
++
+ #define dout_subsys ceph_subsys_rgw
+ 
+ #undef dout_prefix
+diff --git a/src/rgw/rgw_process.cc b/src/rgw/rgw_process.cc
+index 6a92c49..97b4d13 100644
+--- a/src/rgw/rgw_process.cc
++++ b/src/rgw/rgw_process.cc
+@@ -81,6 +81,7 @@ int process_request(RGWRados* store, RGWREST* rest, RGWRequest* req,
+     abort_early(s, NULL, -ERR_METHOD_NOT_ALLOWED, handler);
+     goto done;
+   }
++
+   req->op = op;
+   dout(10) << "op=" << typeid(*op).name() << dendl;
+ 
+@@ -180,7 +181,7 @@ done:
+     dout(0) << "ERROR: client_io->complete_request() returned " << r << dendl;
+   }
+   if (should_log) {
+-    rgw_log_op(store, s, (op ? op->name() : "unknown"), olog);
++    rgw_log_op(store, rest, s, (op ? op->name() : "unknown"), olog);
+   }
+ 
+   int http_ret = s->err.http_ret;
+diff --git a/src/rgw/rgw_rest.cc b/src/rgw/rgw_rest.cc
+index e485d99..41bf657 100644
+--- a/src/rgw/rgw_rest.cc
++++ b/src/rgw/rgw_rest.cc
+@@ -4,6 +4,7 @@
+ #include <errno.h>
+ #include <limits.h>
+ 
++#include <boost/algorithm/string.hpp>
+ #include "common/Formatter.h"
+ #include "common/HTMLFormatter.h"
+ #include "common/utf8.h"
+@@ -1635,6 +1636,15 @@ RGWRESTMgr *RGWRESTMgr::get_resource_mgr(struct req_state *s, const string& uri,
+   return this;
+ }
+ 
++void RGWREST::register_x_headers(const string& s_headers)
++{
++  std::vector<std::string> hdrs = get_str_vec(s_headers);
++  for (auto& hdr : hdrs) {
++    boost::algorithm::to_upper(hdr); // XXX
++    (void) x_headers.insert(hdr);
++  }
++}
++
+ RGWRESTMgr::~RGWRESTMgr()
+ {
+   map<string, RGWRESTMgr *>::iterator iter;
+diff --git a/src/rgw/rgw_rest.h b/src/rgw/rgw_rest.h
+index 96947b3..ba22c1d 100644
+--- a/src/rgw/rgw_rest.h
++++ b/src/rgw/rgw_rest.h
+@@ -6,6 +6,9 @@
+ 
+ #define TIME_BUF_SIZE 128
+ 
++#include <boost/utility/string_ref.hpp>
++#include <boost/container/flat_set.hpp>
++#include "common/sstring.hh"
+ #include "common/ceph_json.h"
+ #include "include/assert.h" /* needed because of common/ceph_json.h */
+ #include "rgw_op.h"
+@@ -370,6 +373,7 @@ public:
+ 
+ class RGWHandler_REST : public RGWHandler {
+ protected:
++
+   virtual bool is_obj_update_op() { return false; }
+   virtual RGWOp *op_get() { return NULL; }
+   virtual RGWOp *op_put() { return NULL; }
+@@ -411,6 +415,7 @@ class RGWHandler_REST_S3;
+ 
+ class RGWRESTMgr {
+   bool should_log;
++
+ protected:
+   map<string, RGWRESTMgr *> resource_mgrs;
+   multimap<size_t, string> resources_by_size;
+@@ -435,6 +440,8 @@ public:
+ class RGWLibIO;
+ 
+ class RGWREST {
++  using x_header = basic_sstring<char, uint16_t, 32>;
++  boost::container::flat_set<x_header> x_headers;
+   RGWRESTMgr mgr;
+ 
+   static int preprocess(struct req_state *s, RGWClientIO *sio);
+@@ -448,6 +455,7 @@ public:
+ 			  RGWLibIO *io, RGWRESTMgr **pmgr,
+ 			  int *init_error);
+ #endif
++
+   void put_handler(RGWHandler_REST *handler) {
+     mgr.put_handler(handler);
+   }
+@@ -459,9 +467,20 @@ public:
+ 
+     mgr.register_resource(resource, m);
+   }
++
+   void register_default_mgr(RGWRESTMgr *m) {
+     mgr.register_default_mgr(m);
+   }
++
++  void register_x_headers(const std::string& headers);
++
++  bool log_x_headers(void) {
++    return (x_headers.size() > 0);
++  }
++
++  bool log_x_header(const std::string& header) {
++    return (x_headers.find(header) != x_headers.end());
++  }
+ };
+ 
+ static constexpr int64_t NO_CONTENT_LENGTH = -1;

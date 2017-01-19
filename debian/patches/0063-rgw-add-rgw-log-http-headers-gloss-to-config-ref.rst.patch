@@ -1,0 +1,37 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Thu, 8 Dec 2016 10:11:42 -0500
+Subject: rgw: add 'rgw log http headers' gloss to config-ref.rst
+
+Explain the option for upstream doc.
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 04bf0f8ca1dfb949bc912b93a4ff84bf8bac57aa)
+(cherry picked from commit 384e5c05b4986e19a0ca45173d23da7d573d894a)
+
+Resolves: rhbz#1298571
+---
+ doc/radosgw/config-ref.rst | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/doc/radosgw/config-ref.rst b/doc/radosgw/config-ref.rst
+index b8e4b44..44da04c 100644
+--- a/doc/radosgw/config-ref.rst
++++ b/doc/radosgw/config-ref.rst
+@@ -929,6 +929,17 @@ Logging Settings
+ :Default: ``30``
+ 
+ 
++``rgw log http headers``
++
++:Description: Comma-delimited list of HTTP headers to include with ops
++	      log entries.  Header names are case insensitive, and use
++	      the full header name with words separated by underscores.
++
++:Type: String
++:Default: None
++:Example: "http_x_forwarded_for, http_x_special_k"
++
++
+ ``rgw intent log object name``
+ 
+ :Description: The logging format for the intent log object name. See manpage 

@@ -1,0 +1,33 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Fri, 6 Jan 2017 11:17:10 -0500
+Subject: librados: blacklist_add should wait for latest OSD map
+
+This ensures that future operations against the OSDs force
+a OSD map update to notice the blacklisted client.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 9242a2e4e1a5a9fcea48d8135b1589493fc28242)
+(cherry picked from commit 668c7999bfb0e5c3baf60b3d8d271323520980d3)
+
+Resolves: rhbz#1408226
+---
+ src/librados/RadosClient.cc | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/librados/RadosClient.cc b/src/librados/RadosClient.cc
+index 38dcb09..51bc0be 100644
+--- a/src/librados/RadosClient.cc
++++ b/src/librados/RadosClient.cc
+@@ -758,6 +758,12 @@ int librados::RadosClient::blacklist_add(const string& client_address,
+   cmds.push_back(cmd.str());
+   bufferlist inbl;
+   int r = mon_command(cmds, inbl, NULL, NULL);
++  if (r < 0) {
++    return r;
++  }
++
++  // ensure we have the latest osd map epoch before proceeding
++  r = wait_for_latest_osdmap();
+   return r;
+ }
+ 

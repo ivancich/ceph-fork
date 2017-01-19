@@ -1,0 +1,1392 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 22 Dec 2016 15:00:23 -0500
+Subject: librbd: separate break lock logic into standalone state machine
+
+The current lockers are now queried before the lock is attempted to
+prevent any possible race conditions when one or more clients attempt
+to break the lock of a dead client.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 23f60fee86d1ff9b261fbb6411746a2a9479cf19)
+(cherry picked from commit 9b9eef8f7297cddb483c9cc0aefe8b7d99a4f5fa)
+
+Conflicts:
+	src/librbd/CMakeLists.txt: skipped
+	src/test/librbd/CMakeLists.txt: skipped
+
+Resolves: rhbz#1408226
+---
+ src/librbd/Makefile.am                             |   2 +
+ src/librbd/exclusive_lock/AcquireRequest.cc        | 200 ++++-------------
+ src/librbd/exclusive_lock/AcquireRequest.h         |  53 ++---
+ src/librbd/exclusive_lock/BreakRequest.cc          | 184 +++++++++++++++
+ src/librbd/exclusive_lock/BreakRequest.h           |  95 ++++++++
+ src/test/Makefile-client.am                        |   1 +
+ .../exclusive_lock/test_mock_AcquireRequest.cc     | 237 +++++---------------
+ .../exclusive_lock/test_mock_BreakRequest.cc       | 249 +++++++++++++++++++++
+ 8 files changed, 653 insertions(+), 368 deletions(-)
+ create mode 100644 src/librbd/exclusive_lock/BreakRequest.cc
+ create mode 100644 src/librbd/exclusive_lock/BreakRequest.h
+ create mode 100644 src/test/librbd/exclusive_lock/test_mock_BreakRequest.cc
+
+diff --git a/src/librbd/Makefile.am b/src/librbd/Makefile.am
+index f5b943a..dbc7dac 100644
+--- a/src/librbd/Makefile.am
++++ b/src/librbd/Makefile.am
+@@ -33,6 +33,7 @@ librbd_internal_la_SOURCES = \
+ 	librbd/Utils.cc \
+ 	librbd/exclusive_lock/AcquireRequest.cc \
+ 	librbd/exclusive_lock/AutomaticPolicy.cc \
++	librbd/exclusive_lock/BreakRequest.cc \
+ 	librbd/exclusive_lock/GetLockerRequest.cc \
+ 	librbd/exclusive_lock/ReacquireRequest.cc \
+ 	librbd/exclusive_lock/ReleaseRequest.cc \
+@@ -122,6 +123,7 @@ noinst_HEADERS += \
+ 	librbd/WatchNotifyTypes.h \
+ 	librbd/exclusive_lock/AcquireRequest.h \
+ 	librbd/exclusive_lock/AutomaticPolicy.h \
++	librbd/exclusive_lock/BreakRequest.h \
+ 	librbd/exclusive_lock/GetLockerRequest.h \
+ 	librbd/exclusive_lock/Policy.h \
+ 	librbd/exclusive_lock/ReacquireRequest.h \
+diff --git a/src/librbd/exclusive_lock/AcquireRequest.cc b/src/librbd/exclusive_lock/AcquireRequest.cc
+index 7549c16..5a49580 100644
+--- a/src/librbd/exclusive_lock/AcquireRequest.cc
++++ b/src/librbd/exclusive_lock/AcquireRequest.cc
+@@ -15,6 +15,7 @@
+ #include "librbd/Journal.h"
+ #include "librbd/ObjectMap.h"
+ #include "librbd/Utils.h"
++#include "librbd/exclusive_lock/BreakRequest.h"
+ #include "librbd/exclusive_lock/GetLockerRequest.h"
+ #include "librbd/image/RefreshRequest.h"
+ #include "librbd/journal/Policy.h"
+@@ -31,30 +32,6 @@ using util::create_context_callback;
+ using util::create_rados_ack_callback;
+ using util::create_rados_safe_callback;
+ 
+-namespace {
+-
+-template <typename I>
+-struct C_BlacklistClient : public Context {
+-  I &image_ctx;
+-  std::string locker_address;
+-  Context *on_finish;
+-
+-  C_BlacklistClient(I &image_ctx, const std::string &locker_address,
+-                    Context *on_finish)
+-    : image_ctx(image_ctx), locker_address(locker_address),
+-      on_finish(on_finish) {
+-  }
+-
+-  virtual void finish(int r) override {
+-    librados::Rados rados(image_ctx.md_ctx);
+-    r = rados.blacklist_add(locker_address,
+-                            image_ctx.blacklist_expire_seconds);
+-    on_finish->complete(r);
+-  }
+-};
+-
+-} // anonymous namespace
+-
+ template <typename I>
+ AcquireRequest<I>* AcquireRequest<I>::create(I &image_ctx,
+                                              const std::string &cookie,
+@@ -121,6 +98,39 @@ Context *AcquireRequest<I>::handle_flush_notifies(int *ret_val) {
+   ldout(cct, 10) << __func__ << dendl;
+ 
+   assert(*ret_val == 0);
++  send_get_locker();
++  return nullptr;
++}
++
++template <typename I>
++void AcquireRequest<I>::send_get_locker() {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << __func__ << dendl;
++
++  Context *ctx = create_context_callback<
++    AcquireRequest<I>, &AcquireRequest<I>::handle_get_locker>(this);
++  auto req = GetLockerRequest<I>::create(m_image_ctx, &m_locker, ctx);
++  req->send();
++}
++
++template <typename I>
++Context *AcquireRequest<I>::handle_get_locker(int *ret_val) {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
++
++  if (*ret_val == -ENOENT) {
++    ldout(cct, 20) << "no lockers detected" << dendl;
++    m_locker = {};
++    *ret_val = 0;
++  } else if (*ret_val == -EBUSY) {
++    ldout(cct, 5) << "incompatible lock detected" << dendl;
++    return m_on_finish;
++  } else if (*ret_val < 0) {
++    lderr(cct) << "failed to retrieve lockers: " << cpp_strerror(*ret_val)
++               << dendl;
++    return m_on_finish;
++  }
++
+   send_lock();
+   return nullptr;
+ }
+@@ -150,12 +160,16 @@ Context *AcquireRequest<I>::handle_lock(int *ret_val) {
+ 
+   if (*ret_val == 0) {
+     return send_refresh();
++  } else if (*ret_val == -EBUSY && m_locker.cookie.empty()) {
++    ldout(cct, 5) << "already locked, refreshing locker" << dendl;
++    send_get_locker();
++    return nullptr;
+   } else if (*ret_val != -EBUSY) {
+     lderr(cct) << "failed to lock: " << cpp_strerror(*ret_val) << dendl;
+     return m_on_finish;
+   }
+ 
+-  send_get_locker();
++  send_break_lock();
+   return nullptr;
+ }
+ 
+@@ -394,149 +408,31 @@ Context *AcquireRequest<I>::handle_unlock(int *ret_val) {
+ }
+ 
+ template <typename I>
+-void AcquireRequest<I>::send_get_locker() {
++void AcquireRequest<I>::send_break_lock() {
+   CephContext *cct = m_image_ctx.cct;
+   ldout(cct, 10) << __func__ << dendl;
+ 
+   Context *ctx = create_context_callback<
+-    AcquireRequest<I>, &AcquireRequest<I>::handle_get_locker>(this);
+-  auto req = GetLockerRequest<I>::create(m_image_ctx, &m_locker, ctx);
++    AcquireRequest<I>, &AcquireRequest<I>::handle_break_lock>(this);
++  auto req = BreakRequest<I>::create(
++    m_image_ctx, m_locker, m_image_ctx.blacklist_on_break_lock, false, ctx);
+   req->send();
+ }
+ 
+ template <typename I>
+-Context *AcquireRequest<I>::handle_get_locker(int *ret_val) {
+-  CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+-
+-  if (*ret_val == -ENOENT) {
+-    ldout(cct, 20) << "no lockers detected" << dendl;
+-    send_lock();
+-    return nullptr;
+-  } else if (*ret_val == -EBUSY) {
+-    ldout(cct, 5) << "incompatible lock detected" << dendl;
+-    return m_on_finish;
+-  } else if (*ret_val < 0) {
+-    lderr(cct) << "failed to retrieve lockers: " << cpp_strerror(*ret_val)
+-               << dendl;
+-    return m_on_finish;
+-  }
+-
+-  send_get_watchers();
+-  return nullptr;
+-}
+-
+-template <typename I>
+-void AcquireRequest<I>::send_get_watchers() {
+-  CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 10) << __func__ << dendl;
+-
+-  librados::ObjectReadOperation op;
+-  op.list_watchers(&m_watchers, &m_watchers_ret_val);
+-
+-  using klass = AcquireRequest<I>;
+-  librados::AioCompletion *rados_completion =
+-    create_rados_ack_callback<klass, &klass::handle_get_watchers>(this);
+-  m_out_bl.clear();
+-  int r = m_image_ctx.md_ctx.aio_operate(m_image_ctx.header_oid,
+-                                         rados_completion, &op, &m_out_bl);
+-  assert(r == 0);
+-  rados_completion->release();
+-}
+-
+-template <typename I>
+-Context *AcquireRequest<I>::handle_get_watchers(int *ret_val) {
+-  CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+-
+-  if (*ret_val == 0) {
+-    *ret_val = m_watchers_ret_val;
+-  }
+-  if (*ret_val < 0) {
+-    lderr(cct) << "failed to retrieve watchers: " << cpp_strerror(*ret_val)
+-               << dendl;
+-    return m_on_finish;
+-  }
+-
+-  for (auto &watcher : m_watchers) {
+-    if ((strncmp(m_locker.address.c_str(),
+-                 watcher.addr, sizeof(watcher.addr)) == 0) &&
+-        (m_locker.handle == watcher.cookie)) {
+-      ldout(cct, 10) << "lock owner is still alive" << dendl;
+-
+-      *ret_val = -EAGAIN;
+-      return m_on_finish;
+-    }
+-  }
+-
+-  send_blacklist();
+-  return nullptr;
+-}
+-
+-template <typename I>
+-void AcquireRequest<I>::send_blacklist() {
+-  if (!m_image_ctx.blacklist_on_break_lock) {
+-    send_break_lock();
+-    return;
+-  }
+-
+-  CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 10) << __func__ << dendl;
+-
+-  // TODO: need async version of RadosClient::blacklist_add
+-  using klass = AcquireRequest<I>;
+-  Context *ctx = create_context_callback<klass, &klass::handle_blacklist>(
+-    this);
+-  m_image_ctx.op_work_queue->queue(new C_BlacklistClient<I>(m_image_ctx,
+-                                                            m_locker.address,
+-                                                            ctx), 0);
+-}
+-
+-template <typename I>
+-Context *AcquireRequest<I>::handle_blacklist(int *ret_val) {
+-  CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+-
+-  if (*ret_val < 0) {
+-    lderr(cct) << "failed to blacklist lock owner: " << cpp_strerror(*ret_val)
+-               << dendl;
+-    return m_on_finish;
+-  }
+-  send_break_lock();
+-  return nullptr;
+-}
+-
+-template <typename I>
+-void AcquireRequest<I>::send_break_lock() {
+-  CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 10) << __func__ << dendl;
+-
+-  librados::ObjectWriteOperation op;
+-  rados::cls::lock::break_lock(&op, RBD_LOCK_NAME, m_locker.cookie,
+-                               m_locker.entity);
+-
+-  using klass = AcquireRequest<I>;
+-  librados::AioCompletion *rados_completion =
+-    create_rados_safe_callback<klass, &klass::handle_break_lock>(this);
+-  int r = m_image_ctx.md_ctx.aio_operate(m_image_ctx.header_oid,
+-                                         rados_completion, &op);
+-  assert(r == 0);
+-  rados_completion->release();
+-}
+-
+-template <typename I>
+ Context *AcquireRequest<I>::handle_break_lock(int *ret_val) {
+   CephContext *cct = m_image_ctx.cct;
+   ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+ 
+-  if (*ret_val == -ENOENT) {
+-    *ret_val = 0;
++  if (*ret_val == -EAGAIN) {
++    ldout(cct, 5) << "lock owner is still alive" << dendl;
++    return m_on_finish;
+   } else if (*ret_val < 0) {
+-    lderr(cct) << "failed to break lock: " << cpp_strerror(*ret_val) << dendl;
++    lderr(cct) << "failed to break lock : " << cpp_strerror(*ret_val) << dendl;
+     return m_on_finish;
+   }
+ 
+-  send_lock();
++  send_get_locker();
+   return nullptr;
+ }
+ 
+diff --git a/src/librbd/exclusive_lock/AcquireRequest.h b/src/librbd/exclusive_lock/AcquireRequest.h
+index a348609..694b698 100644
+--- a/src/librbd/exclusive_lock/AcquireRequest.h
++++ b/src/librbd/exclusive_lock/AcquireRequest.h
+@@ -40,24 +40,24 @@ private:
+    *    v
+    * FLUSH_NOTIFIES
+    *    |
+-   *    |     /-----------------------------------------------------------\
+-   *    |     |                                                           |
+-   *    |     |             (no lockers)                                  |
+-   *    |     |   . . . . . . . . . . . . . . . . . . . . . .             |
+-   *    |     |   .                                         .             |
+-   *    |     v   v      (EBUSY)                            .             |
+-   *    \--> LOCK_IMAGE * * * * * * * * > GET_LOCKERS . . . .             |
+-   *              |                         |                             |
+-   *              v                         v                             |
+-   *         REFRESH (skip if not         GET_WATCHERS                    |
+-   *              |   needed)               |                             |
+-   *              v                         v                             |
+-   *         OPEN_OBJECT_MAP (skip if     BLACKLIST (skip if blacklist    |
+-   *              |           disabled)     |        disabled)            |
+-   *              v                         v                             |
+-   *         OPEN_JOURNAL (skip if        BREAK_LOCK                      |
+-   *              |   *     disabled)       |                             |
+-   *              |   *                     \-----------------------------/
++   *    v
++   * GET_LOCKERS <--------------------------------------\
++   *    |     ^                                         |
++   *    |     . (EBUSY && no cached locker)             |
++   *    |     .                                         |
++   *    |     .          (EBUSY && cached locker)       |
++   *    \--> LOCK_IMAGE * * * * * * * * > BREAK_LOCK ---/
++   *              |
++   *              v
++   *         REFRESH (skip if not
++   *              |   needed)
++   *              v
++   *         OPEN_OBJECT_MAP (skip if
++   *              |           disabled)
++   *              v
++   *         OPEN_JOURNAL (skip if
++   *              |   *     disabled)
++   *              |   *
+    *              |   * * * * * * * *
+    *              v                 *
+    *          ALLOCATE_JOURNAL_TAG  *
+@@ -86,11 +86,6 @@ private:
+   Context *m_on_acquire;
+   Context *m_on_finish;
+ 
+-  bufferlist m_out_bl;
+-
+-  std::list<obj_watch_t> m_watchers;
+-  int m_watchers_ret_val;
+-
+   decltype(m_image_ctx.object_map) m_object_map;
+   decltype(m_image_ctx.journal) m_journal;
+ 
+@@ -105,6 +100,9 @@ private:
+   void send_flush_notifies();
+   Context *handle_flush_notifies(int *ret_val);
+ 
++  void send_get_locker();
++  Context *handle_get_locker(int *ret_val);
++
+   void send_lock();
+   Context *handle_lock(int *ret_val);
+ 
+@@ -129,15 +127,6 @@ private:
+   void send_unlock();
+   Context *handle_unlock(int *ret_val);
+ 
+-  void send_get_locker();
+-  Context *handle_get_locker(int *ret_val);
+-
+-  void send_get_watchers();
+-  Context *handle_get_watchers(int *ret_val);
+-
+-  void send_blacklist();
+-  Context *handle_blacklist(int *ret_val);
+-
+   void send_break_lock();
+   Context *handle_break_lock(int *ret_val);
+ 
+diff --git a/src/librbd/exclusive_lock/BreakRequest.cc b/src/librbd/exclusive_lock/BreakRequest.cc
+new file mode 100644
+index 0000000..8b889e7
+--- /dev/null
++++ b/src/librbd/exclusive_lock/BreakRequest.cc
+@@ -0,0 +1,184 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#include "librbd/exclusive_lock/BreakRequest.h"
++#include "common/dout.h"
++#include "common/errno.h"
++#include "common/WorkQueue.h"
++#include "include/stringify.h"
++#include "cls/lock/cls_lock_client.h"
++#include "cls/lock/cls_lock_types.h"
++#include "librbd/ExclusiveLock.h"
++#include "librbd/Utils.h"
++#include "librbd/exclusive_lock/Types.h"
++
++#define dout_subsys ceph_subsys_rbd
++#undef dout_prefix
++#define dout_prefix *_dout << "librbd::exclusive_lock::BreakRequest: " << this \
++                           << " " << __func__ << ": "
++
++namespace librbd {
++namespace exclusive_lock {
++
++using util::create_context_callback;
++using util::create_rados_ack_callback;
++using util::create_rados_safe_callback;
++
++namespace {
++
++template <typename I>
++struct C_BlacklistClient : public Context {
++  I &image_ctx;
++  std::string locker_address;
++  Context *on_finish;
++
++  C_BlacklistClient(I &image_ctx, const std::string &locker_address,
++                    Context *on_finish)
++    : image_ctx(image_ctx), locker_address(locker_address),
++      on_finish(on_finish) {
++  }
++
++  virtual void finish(int r) override {
++    librados::Rados rados(image_ctx.md_ctx);
++    r = rados.blacklist_add(locker_address,
++                            image_ctx.blacklist_expire_seconds);
++    on_finish->complete(r);
++  }
++};
++
++} // anonymous namespace
++
++template <typename I>
++void BreakRequest<I>::send() {
++  send_get_watchers();
++}
++
++template <typename I>
++void BreakRequest<I>::send_get_watchers() {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << dendl;
++
++  librados::ObjectReadOperation op;
++  op.list_watchers(&m_watchers, &m_watchers_ret_val);
++
++  using klass = BreakRequest<I>;
++  librados::AioCompletion *rados_completion =
++    create_rados_ack_callback<klass, &klass::handle_get_watchers>(this);
++  m_out_bl.clear();
++  int r = m_image_ctx.md_ctx.aio_operate(m_image_ctx.header_oid,
++                                         rados_completion, &op, &m_out_bl);
++  assert(r == 0);
++  rados_completion->release();
++}
++
++template <typename I>
++void BreakRequest<I>::handle_get_watchers(int r) {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << "r=" << r << dendl;
++
++  if (r == 0) {
++    r = m_watchers_ret_val;
++  }
++  if (r < 0) {
++    lderr(cct) << "failed to retrieve watchers: " << cpp_strerror(r)
++               << dendl;
++    finish(r);
++    return;
++  }
++
++  for (auto &watcher : m_watchers) {
++    if ((strncmp(m_locker.address.c_str(),
++                 watcher.addr, sizeof(watcher.addr)) == 0) &&
++        (m_locker.handle == watcher.cookie)) {
++      ldout(cct, 10) << "lock owner is still alive" << dendl;
++
++      if (m_force_break_lock) {
++        break;
++      } else {
++        finish(-EAGAIN);
++        return;
++      }
++    }
++  }
++
++  send_blacklist();
++}
++
++template <typename I>
++void BreakRequest<I>::send_blacklist() {
++  if (!m_blacklist_locker) {
++    send_break_lock();
++    return;
++  }
++
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << dendl;
++
++  // TODO: need async version of RadosClient::blacklist_add
++  using klass = BreakRequest<I>;
++  Context *ctx = create_context_callback<klass, &klass::handle_blacklist>(
++    this);
++  m_image_ctx.op_work_queue->queue(new C_BlacklistClient<I>(m_image_ctx,
++                                                            m_locker.address,
++                                                            ctx), 0);
++}
++
++template <typename I>
++void BreakRequest<I>::handle_blacklist(int r) {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << "r=" << r << dendl;
++
++  if (r < 0) {
++    lderr(cct) << "failed to blacklist lock owner: " << cpp_strerror(r)
++               << dendl;
++    finish(r);
++    return;
++  }
++  send_break_lock();
++}
++
++template <typename I>
++void BreakRequest<I>::send_break_lock() {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << dendl;
++
++  librados::ObjectWriteOperation op;
++  rados::cls::lock::break_lock(&op, RBD_LOCK_NAME, m_locker.cookie,
++                               m_locker.entity);
++
++  using klass = BreakRequest<I>;
++  librados::AioCompletion *rados_completion =
++    create_rados_safe_callback<klass, &klass::handle_break_lock>(this);
++  int r = m_image_ctx.md_ctx.aio_operate(m_image_ctx.header_oid,
++                                         rados_completion, &op);
++  assert(r == 0);
++  rados_completion->release();
++}
++
++template <typename I>
++void BreakRequest<I>::handle_break_lock(int r) {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << "r=" << r << dendl;
++
++  if (r < 0 && r != -ENOENT) {
++    lderr(cct) << "failed to break lock: " << cpp_strerror(r) << dendl;
++    finish(r);
++    return;
++  }
++
++  finish(0);
++}
++
++template <typename I>
++void BreakRequest<I>::finish(int r) {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << "r=" << r << dendl;
++
++  m_on_finish->complete(r);
++  delete this;
++}
++
++} // namespace exclusive_lock
++} // namespace librbd
++
++template class librbd::exclusive_lock::BreakRequest<librbd::ImageCtx>;
+diff --git a/src/librbd/exclusive_lock/BreakRequest.h b/src/librbd/exclusive_lock/BreakRequest.h
+new file mode 100644
+index 0000000..05bfe38
+--- /dev/null
++++ b/src/librbd/exclusive_lock/BreakRequest.h
+@@ -0,0 +1,95 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#ifndef CEPH_LIBRBD_EXCLUSIVE_LOCK_BREAK_REQUEST_H
++#define CEPH_LIBRBD_EXCLUSIVE_LOCK_BREAK_REQUEST_H
++
++#include "include/int_types.h"
++#include "include/buffer.h"
++#include "msg/msg_types.h"
++#include "librbd/ImageCtx.h"
++#include <list>
++#include <string>
++#include <boost/optional.hpp>
++
++class Context;
++
++namespace librbd {
++
++template <typename> class Journal;
++
++namespace exclusive_lock {
++
++struct Locker;
++
++template <typename ImageCtxT = ImageCtx>
++class BreakRequest {
++public:
++  static BreakRequest* create(ImageCtxT &image_ctx, const Locker &locker,
++                              bool blacklist_locker, bool force_break_lock,
++                              Context *on_finish) {
++    return new BreakRequest(image_ctx, locker, blacklist_locker,
++                            force_break_lock, on_finish);
++  }
++
++  void send();
++
++private:
++  /**
++   * @verbatim
++   *
++   * <start>
++   *    |
++   *    v
++   * GET_WATCHERS
++   *    |
++   *    v
++   * BLACKLIST (skip if disabled)
++   *    |
++   *    v
++   * BREAK_LOCK
++   *    |
++   *    v
++   * <finish>
++   *
++   * @endvertbatim
++   */
++
++  ImageCtxT &m_image_ctx;
++  const Locker &m_locker;
++  bool m_blacklist_locker;
++  bool m_force_break_lock;
++  Context *m_on_finish;
++
++  bufferlist m_out_bl;
++
++  std::list<obj_watch_t> m_watchers;
++  int m_watchers_ret_val;
++
++  BreakRequest(ImageCtxT &image_ctx, const Locker &locker,
++               bool blacklist_locker, bool force_break_lock,
++               Context *on_finish)
++    : m_image_ctx(image_ctx), m_locker(locker),
++      m_blacklist_locker(blacklist_locker),
++      m_force_break_lock(force_break_lock), m_on_finish(on_finish) {
++  }
++
++  void send_get_watchers();
++  void handle_get_watchers(int r);
++
++  void send_blacklist();
++  void handle_blacklist(int r);
++
++  void send_break_lock();
++  void handle_break_lock(int r);
++
++  void finish(int r);
++
++};
++
++} // namespace exclusive_lock
++} // namespace librbd
++
++extern template class librbd::exclusive_lock::BreakRequest<librbd::ImageCtx>;
++
++#endif // CEPH_LIBRBD_EXCLUSIVE_LOCK_BREAK_REQUEST_H
+diff --git a/src/test/Makefile-client.am b/src/test/Makefile-client.am
+index 7b2c066..78e845d 100644
+--- a/src/test/Makefile-client.am
++++ b/src/test/Makefile-client.am
+@@ -389,6 +389,7 @@ unittest_librbd_SOURCES = \
+ 	test/librbd/test_mock_Journal.cc \
+ 	test/librbd/test_mock_ObjectWatcher.cc \
+ 	test/librbd/exclusive_lock/test_mock_AcquireRequest.cc \
++	test/librbd/exclusive_lock/test_mock_BreakRequest.cc \
+ 	test/librbd/exclusive_lock/test_mock_GetLockerRequest.cc \
+ 	test/librbd/exclusive_lock/test_mock_ReacquireRequest.cc \
+ 	test/librbd/exclusive_lock/test_mock_ReleaseRequest.cc \
+diff --git a/src/test/librbd/exclusive_lock/test_mock_AcquireRequest.cc b/src/test/librbd/exclusive_lock/test_mock_AcquireRequest.cc
+index c9de4d5..00f03cf 100644
+--- a/src/test/librbd/exclusive_lock/test_mock_AcquireRequest.cc
++++ b/src/test/librbd/exclusive_lock/test_mock_AcquireRequest.cc
+@@ -13,6 +13,7 @@
+ #include "cls/lock/cls_lock_ops.h"
+ #include "librbd/ExclusiveLock.h"
+ #include "librbd/exclusive_lock/AcquireRequest.h"
++#include "librbd/exclusive_lock/BreakRequest.h"
+ #include "librbd/exclusive_lock/GetLockerRequest.h"
+ #include "librbd/image/RefreshRequest.h"
+ #include "gmock/gmock.h"
+@@ -33,6 +34,26 @@ struct MockTestImageCtx : public librbd::MockImageCtx {
+ 
+ namespace exclusive_lock {
+ 
++template<>
++struct BreakRequest<librbd::MockTestImageCtx> {
++  Context *on_finish = nullptr;
++  static BreakRequest *s_instance;
++  static BreakRequest *create(librbd::MockTestImageCtx &image_ctx,
++                              const Locker &locker, bool blacklist_locker,
++                              bool force_break_lock, Context *on_finish) {
++    EXPECT_EQ(image_ctx.blacklist_on_break_lock, blacklist_locker);
++    EXPECT_FALSE(force_break_lock);
++    assert(s_instance != nullptr);
++    s_instance->on_finish = on_finish;
++    return s_instance;
++  }
++
++  BreakRequest() {
++    s_instance = this;
++  }
++  MOCK_METHOD0(send, void());
++};
++
+ template <>
+ struct GetLockerRequest<librbd::MockTestImageCtx> {
+   Locker *locker;
+@@ -54,6 +75,7 @@ struct GetLockerRequest<librbd::MockTestImageCtx> {
+   MOCK_METHOD0(send, void());
+ };
+ 
++BreakRequest<librbd::MockTestImageCtx> *BreakRequest<librbd::MockTestImageCtx>::s_instance = nullptr;
+ GetLockerRequest<librbd::MockTestImageCtx> *GetLockerRequest<librbd::MockTestImageCtx>::s_instance = nullptr;
+ 
+ } // namespace exclusive_lock
+@@ -107,6 +129,7 @@ static const std::string TEST_COOKIE("auto 123");
+ class TestMockExclusiveLockAcquireRequest : public TestMockFixture {
+ public:
+   typedef AcquireRequest<MockTestImageCtx> MockAcquireRequest;
++  typedef BreakRequest<MockTestImageCtx> MockBreakRequest;
+   typedef GetLockerRequest<MockTestImageCtx> MockGetLockerRequest;
+   typedef ExclusiveLock<MockTestImageCtx> MockExclusiveLock;
+   typedef librbd::image::RefreshRequest<MockTestImageCtx> MockRefreshRequest;
+@@ -213,33 +236,11 @@ public:
+         }));
+   }
+ 
+-  void expect_list_watchers(MockTestImageCtx &mock_image_ctx, int r,
+-                            const std::string &address, uint64_t watch_handle) {
+-    auto &expect = EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
+-                               list_watchers(mock_image_ctx.header_oid, _));
+-    if (r < 0) {
+-      expect.WillOnce(Return(r));
+-    } else {
+-      obj_watch_t watcher;
+-      strcpy(watcher.addr, (address + ":0/0").c_str());
+-      watcher.cookie = watch_handle;
+-
+-      std::list<obj_watch_t> watchers;
+-      watchers.push_back(watcher);
+-
+-      expect.WillOnce(DoAll(SetArgPointee<1>(watchers), Return(0)));
+-    }
+-  }
+-
+-  void expect_blacklist_add(MockTestImageCtx &mock_image_ctx, int r) {
+-    EXPECT_CALL(get_mock_rados_client(), blacklist_add(_, _))
+-                  .WillOnce(Return(r));
+-  }
+-
+-  void expect_break_lock(MockTestImageCtx &mock_image_ctx, int r) {
+-    EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
+-                exec(mock_image_ctx.header_oid, _, StrEq("lock"), StrEq("break_lock"), _, _, _))
+-                  .WillOnce(Return(r));
++  void expect_break_lock(MockTestImageCtx &mock_image_ctx,
++                         MockBreakRequest &mock_break_request, int r) {
++    EXPECT_CALL(mock_break_request, send())
++                  .WillOnce(FinishRequest(&mock_break_request, r,
++                                          &mock_image_ctx));
+   }
+ 
+   void expect_flush_notifies(MockTestImageCtx &mock_image_ctx) {
+@@ -267,11 +268,13 @@ TEST_F(TestMockExclusiveLockAcquireRequest, Success) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, false);
+ 
+@@ -309,12 +312,14 @@ TEST_F(TestMockExclusiveLockAcquireRequest, SuccessRefresh) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   MockRefreshRequest mock_refresh_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, true);
+   expect_refresh(mock_image_ctx, mock_refresh_request, 0);
+@@ -342,11 +347,13 @@ TEST_F(TestMockExclusiveLockAcquireRequest, SuccessJournalDisabled) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, false);
+ 
+@@ -376,11 +383,13 @@ TEST_F(TestMockExclusiveLockAcquireRequest, SuccessObjectMapDisabled) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, false);
+ 
+@@ -415,12 +424,14 @@ TEST_F(TestMockExclusiveLockAcquireRequest, RefreshError) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   MockRefreshRequest mock_refresh_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, true);
+   expect_refresh(mock_image_ctx, mock_refresh_request, -EINVAL);
+@@ -443,12 +454,14 @@ TEST_F(TestMockExclusiveLockAcquireRequest, RefreshLockDisabled) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   MockRefreshRequest mock_refresh_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, true);
+   expect_refresh(mock_image_ctx, mock_refresh_request, -ERESTART);
+@@ -476,11 +489,13 @@ TEST_F(TestMockExclusiveLockAcquireRequest, JournalError) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, false);
+ 
+@@ -518,11 +533,13 @@ TEST_F(TestMockExclusiveLockAcquireRequest, AllocateJournalTagError) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, false);
+ 
+@@ -563,18 +580,18 @@ TEST_F(TestMockExclusiveLockAcquireRequest, LockBusy) {
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
+   MockGetLockerRequest mock_get_locker_request;
++  MockBreakRequest mock_break_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+   expect_get_locker(mock_image_ctx, mock_get_locker_request,
+                     {entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123},
+                     0);
+-  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
+-  expect_blacklist_add(mock_image_ctx, 0);
+-  expect_break_lock(mock_image_ctx, 0);
++  expect_lock(mock_image_ctx, -EBUSY);
++  expect_break_lock(mock_image_ctx, mock_break_request, 0);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, -ENOENT);
+   expect_handle_prepare_lock_complete(mock_image_ctx);
+ 
+@@ -599,7 +616,6 @@ TEST_F(TestMockExclusiveLockAcquireRequest, GetLockInfoError) {
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+   expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, -EINVAL);
+   expect_handle_prepare_lock_complete(mock_image_ctx);
+ 
+@@ -624,7 +640,6 @@ TEST_F(TestMockExclusiveLockAcquireRequest, GetLockInfoEmpty) {
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+   expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, -ENOENT);
+   expect_lock(mock_image_ctx, -EINVAL);
+   expect_handle_prepare_lock_complete(mock_image_ctx);
+@@ -637,153 +652,6 @@ TEST_F(TestMockExclusiveLockAcquireRequest, GetLockInfoEmpty) {
+   ASSERT_EQ(-EINVAL, ctx.wait());
+ }
+ 
+-TEST_F(TestMockExclusiveLockAcquireRequest, GetWatchersError) {
+-  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+-
+-  librbd::ImageCtx *ictx;
+-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+-
+-  MockTestImageCtx mock_image_ctx(*ictx);
+-  MockGetLockerRequest mock_get_locker_request;
+-  expect_op_work_queue(mock_image_ctx);
+-
+-  InSequence seq;
+-  expect_prepare_lock(mock_image_ctx);
+-  expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+-  expect_get_locker(mock_image_ctx, mock_get_locker_request,
+-                    {entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123},
+-                    0);
+-  expect_list_watchers(mock_image_ctx, -EINVAL, "dead client", 123);
+-  expect_handle_prepare_lock_complete(mock_image_ctx);
+-
+-  C_SaferCond ctx;
+-  MockAcquireRequest *req = MockAcquireRequest::create(mock_image_ctx,
+-                                                       TEST_COOKIE,
+-                                                       nullptr, &ctx);
+-  req->send();
+-  ASSERT_EQ(-EINVAL, ctx.wait());
+-}
+-
+-TEST_F(TestMockExclusiveLockAcquireRequest, GetWatchersAlive) {
+-  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+-
+-  librbd::ImageCtx *ictx;
+-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+-
+-  MockTestImageCtx mock_image_ctx(*ictx);
+-  MockGetLockerRequest mock_get_locker_request;
+-  expect_op_work_queue(mock_image_ctx);
+-
+-  InSequence seq;
+-  expect_prepare_lock(mock_image_ctx);
+-  expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+-  expect_get_locker(mock_image_ctx, mock_get_locker_request,
+-                    {entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123},
+-                    0);
+-  expect_list_watchers(mock_image_ctx, 0, "1.2.3.4", 123);
+-  expect_handle_prepare_lock_complete(mock_image_ctx);
+-
+-  C_SaferCond ctx;
+-  MockAcquireRequest *req = MockAcquireRequest::create(mock_image_ctx,
+-                                                       TEST_COOKIE,
+-                                                       nullptr, &ctx);
+-  req->send();
+-  ASSERT_EQ(-EAGAIN, ctx.wait());
+-}
+-
+-TEST_F(TestMockExclusiveLockAcquireRequest, BlacklistDisabled) {
+-  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+-
+-  librbd::ImageCtx *ictx;
+-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+-
+-  MockTestImageCtx mock_image_ctx(*ictx);
+-  MockGetLockerRequest mock_get_locker_request;
+-  expect_op_work_queue(mock_image_ctx);
+-  mock_image_ctx.blacklist_on_break_lock = false;
+-
+-  InSequence seq;
+-  expect_prepare_lock(mock_image_ctx);
+-  expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+-  expect_get_locker(mock_image_ctx, mock_get_locker_request,
+-                    {entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123},
+-                    0);
+-  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
+-  expect_break_lock(mock_image_ctx, 0);
+-  expect_lock(mock_image_ctx, -ENOENT);
+-  expect_handle_prepare_lock_complete(mock_image_ctx);
+-
+-  C_SaferCond ctx;
+-  MockAcquireRequest *req = MockAcquireRequest::create(mock_image_ctx,
+-                                                       TEST_COOKIE,
+-                                                       nullptr, &ctx);
+-  req->send();
+-  ASSERT_EQ(-ENOENT, ctx.wait());
+-}
+-
+-TEST_F(TestMockExclusiveLockAcquireRequest, BlacklistError) {
+-  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+-
+-  librbd::ImageCtx *ictx;
+-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+-
+-  MockTestImageCtx mock_image_ctx(*ictx);
+-  MockGetLockerRequest mock_get_locker_request;
+-  expect_op_work_queue(mock_image_ctx);
+-
+-  InSequence seq;
+-  expect_prepare_lock(mock_image_ctx);
+-  expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+-  expect_get_locker(mock_image_ctx, mock_get_locker_request,
+-                    {entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123},
+-                    0);
+-  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
+-  expect_blacklist_add(mock_image_ctx, -EINVAL);
+-  expect_handle_prepare_lock_complete(mock_image_ctx);
+-
+-  C_SaferCond ctx;
+-  MockAcquireRequest *req = MockAcquireRequest::create(mock_image_ctx,
+-                                                       TEST_COOKIE,
+-                                                       nullptr, &ctx);
+-  req->send();
+-  ASSERT_EQ(-EINVAL, ctx.wait());
+-}
+-
+-TEST_F(TestMockExclusiveLockAcquireRequest, BreakLockMissing) {
+-  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+-
+-  librbd::ImageCtx *ictx;
+-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+-
+-  MockTestImageCtx mock_image_ctx(*ictx);
+-  MockGetLockerRequest mock_get_locker_request;
+-  expect_op_work_queue(mock_image_ctx);
+-
+-  InSequence seq;
+-  expect_prepare_lock(mock_image_ctx);
+-  expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+-  expect_get_locker(mock_image_ctx, mock_get_locker_request,
+-                    {entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123},
+-                    0);
+-  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
+-  expect_blacklist_add(mock_image_ctx, 0);
+-  expect_break_lock(mock_image_ctx, -ENOENT);
+-  expect_lock(mock_image_ctx, -EINVAL);
+-  expect_handle_prepare_lock_complete(mock_image_ctx);
+-
+-  C_SaferCond ctx;
+-  MockAcquireRequest *req = MockAcquireRequest::create(mock_image_ctx,
+-                                                       TEST_COOKIE,
+-                                                       nullptr, &ctx);
+-  req->send();
+-  ASSERT_EQ(-EINVAL, ctx.wait());
+-}
+-
+ TEST_F(TestMockExclusiveLockAcquireRequest, BreakLockError) {
+   REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+ 
+@@ -792,18 +660,17 @@ TEST_F(TestMockExclusiveLockAcquireRequest, BreakLockError) {
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
+   MockGetLockerRequest mock_get_locker_request;
++  MockBreakRequest mock_break_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
+-  expect_lock(mock_image_ctx, -EBUSY);
+   expect_get_locker(mock_image_ctx, mock_get_locker_request,
+                     {entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123},
+                     0);
+-  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
+-  expect_blacklist_add(mock_image_ctx, 0);
+-  expect_break_lock(mock_image_ctx, -EINVAL);
++  expect_lock(mock_image_ctx, -EBUSY);
++  expect_break_lock(mock_image_ctx, mock_break_request, -EINVAL);
+   expect_handle_prepare_lock_complete(mock_image_ctx);
+ 
+   C_SaferCond ctx;
+@@ -821,11 +688,13 @@ TEST_F(TestMockExclusiveLockAcquireRequest, OpenObjectMapError) {
+   ASSERT_EQ(0, open_image(m_image_name, &ictx));
+ 
+   MockTestImageCtx mock_image_ctx(*ictx);
++  MockGetLockerRequest mock_get_locker_request;
+   expect_op_work_queue(mock_image_ctx);
+ 
+   InSequence seq;
+   expect_prepare_lock(mock_image_ctx);
+   expect_flush_notifies(mock_image_ctx);
++  expect_get_locker(mock_image_ctx, mock_get_locker_request, {}, 0);
+   expect_lock(mock_image_ctx, 0);
+   expect_is_refresh_required(mock_image_ctx, false);
+ 
+diff --git a/src/test/librbd/exclusive_lock/test_mock_BreakRequest.cc b/src/test/librbd/exclusive_lock/test_mock_BreakRequest.cc
+new file mode 100644
+index 0000000..27bb8e1
+--- /dev/null
++++ b/src/test/librbd/exclusive_lock/test_mock_BreakRequest.cc
+@@ -0,0 +1,249 @@
++// -*- mode:C; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#include "test/librbd/test_mock_fixture.h"
++#include "test/librbd/test_support.h"
++#include "test/librbd/mock/MockImageCtx.h"
++#include "test/librados_test_stub/MockTestMemIoCtxImpl.h"
++#include "test/librados_test_stub/MockTestMemRadosClient.h"
++#include "cls/lock/cls_lock_ops.h"
++#include "librbd/ExclusiveLock.h"
++#include "librbd/exclusive_lock/BreakRequest.h"
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++#include <arpa/inet.h>
++#include <list>
++
++namespace librbd {
++namespace {
++
++struct MockTestImageCtx : public librbd::MockImageCtx {
++  MockTestImageCtx(librbd::ImageCtx &image_ctx)
++    : librbd::MockImageCtx(image_ctx) {
++  }
++};
++
++} // anonymous namespace
++} // namespace librbd
++
++// template definitions
++#include "librbd/exclusive_lock/BreakRequest.cc"
++
++namespace librbd {
++namespace exclusive_lock {
++
++using ::testing::_;
++using ::testing::DoAll;
++using ::testing::InSequence;
++using ::testing::Return;
++using ::testing::SetArgPointee;
++using ::testing::StrEq;
++using ::testing::WithArg;
++
++class TestMockExclusiveLockBreakRequest : public TestMockFixture {
++public:
++  typedef BreakRequest<MockTestImageCtx> MockBreakRequest;
++
++  void expect_list_watchers(MockTestImageCtx &mock_image_ctx, int r,
++                            const std::string &address, uint64_t watch_handle) {
++    auto &expect = EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
++                               list_watchers(mock_image_ctx.header_oid, _));
++    if (r < 0) {
++      expect.WillOnce(Return(r));
++    } else {
++      obj_watch_t watcher;
++      strcpy(watcher.addr, (address + ":0/0").c_str());
++      watcher.cookie = watch_handle;
++
++      std::list<obj_watch_t> watchers;
++      watchers.push_back(watcher);
++
++      expect.WillOnce(DoAll(SetArgPointee<1>(watchers), Return(0)));
++    }
++  }
++
++  void expect_blacklist_add(MockTestImageCtx &mock_image_ctx, int r) {
++    EXPECT_CALL(get_mock_rados_client(), blacklist_add(_, _))
++                  .WillOnce(Return(r));
++  }
++
++  void expect_break_lock(MockTestImageCtx &mock_image_ctx, int r) {
++    EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
++                exec(mock_image_ctx.header_oid, _, StrEq("lock"), StrEq("break_lock"), _, _, _))
++                  .WillOnce(Return(r));
++  }
++};
++
++TEST_F(TestMockExclusiveLockBreakRequest, DeadLockOwner) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
++  expect_blacklist_add(mock_image_ctx, 0);
++  expect_break_lock(mock_image_ctx, 0);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   true, false, &ctx);
++  req->send();
++  ASSERT_EQ(0, ctx.wait());
++}
++
++TEST_F(TestMockExclusiveLockBreakRequest, ForceBreak) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, 0, "1.2.3.4", 123);
++  expect_blacklist_add(mock_image_ctx, 0);
++  expect_break_lock(mock_image_ctx, 0);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   true, true, &ctx);
++  req->send();
++  ASSERT_EQ(0, ctx.wait());
++}
++
++TEST_F(TestMockExclusiveLockBreakRequest, GetWatchersError) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, -EINVAL, "dead client", 123);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   true, false, &ctx);
++  req->send();
++  ASSERT_EQ(-EINVAL, ctx.wait());
++}
++
++TEST_F(TestMockExclusiveLockBreakRequest, GetWatchersAlive) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, 0, "1.2.3.4", 123);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   true, false, &ctx);
++  req->send();
++  ASSERT_EQ(-EAGAIN, ctx.wait());
++}
++
++TEST_F(TestMockExclusiveLockBreakRequest, BlacklistDisabled) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
++  expect_break_lock(mock_image_ctx, 0);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   false, false, &ctx);
++  req->send();
++  ASSERT_EQ(0, ctx.wait());
++}
++
++TEST_F(TestMockExclusiveLockBreakRequest, BlacklistError) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
++  expect_blacklist_add(mock_image_ctx, -EINVAL);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   true, false, &ctx);
++  req->send();
++  ASSERT_EQ(-EINVAL, ctx.wait());
++}
++
++TEST_F(TestMockExclusiveLockBreakRequest, BreakLockMissing) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
++  expect_blacklist_add(mock_image_ctx, 0);
++  expect_break_lock(mock_image_ctx, -ENOENT);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   true, false, &ctx);
++  req->send();
++  ASSERT_EQ(0, ctx.wait());
++}
++
++TEST_F(TestMockExclusiveLockBreakRequest, BreakLockError) {
++  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
++
++  librbd::ImageCtx *ictx;
++  ASSERT_EQ(0, open_image(m_image_name, &ictx));
++
++  MockTestImageCtx mock_image_ctx(*ictx);
++  expect_op_work_queue(mock_image_ctx);
++
++  InSequence seq;
++  expect_list_watchers(mock_image_ctx, 0, "dead client", 123);
++  expect_blacklist_add(mock_image_ctx, 0);
++  expect_break_lock(mock_image_ctx, -EINVAL);
++
++  C_SaferCond ctx;
++  Locker locker{entity_name_t::CLIENT(1), "auto 123", "1.2.3.4:0/0", 123};
++  MockBreakRequest *req = MockBreakRequest::create(mock_image_ctx, locker,
++                                                   true, false, &ctx);
++  req->send();
++  ASSERT_EQ(-EINVAL, ctx.wait());
++}
++
++} // namespace exclusive_lock
++} // namespace librbd
++

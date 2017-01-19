@@ -1,0 +1,29 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Fri, 18 Nov 2016 17:04:57 -0500
+Subject: rgw: look for region_map in rgw_region_root_pool
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit b81d88008443cbc1b43ea93a7058284dbc44538f)
+(cherry picked from commit a0b4e60cd33337cb5944aa95b9e22451ea384dec)
+
+Resolves: rhbz#1396956
+---
+ src/rgw/rgw_rados.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 68bb1ac..af3a04e 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -3235,9 +3235,9 @@ int RGWRados::convert_regionmap()
+ {
+   RGWZoneGroupMap zonegroupmap;
+ 
+-  string pool_name = cct->_conf->rgw_zone_root_pool;
++  string pool_name = cct->_conf->rgw_region_root_pool;
+   if (pool_name.empty()) {
+-    pool_name = RGW_DEFAULT_ZONE_ROOT_POOL;
++    pool_name = RGW_DEFAULT_ZONEGROUP_ROOT_POOL;
+   }
+   string oid = region_map_oid; 
+ 
