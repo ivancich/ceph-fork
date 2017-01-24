@@ -1,0 +1,67 @@
+NOTE: this patch was edited by hand to deal with the civetweb.h ->
+include/civetweb.h symlink.
+
+From: Marcus Watts <mwatts@redhat.com>
+Date: Tue, 1 Nov 2016 03:02:24 -0400
+Subject: [PATCH] Add "mg_get_local_addr".  Return the local listening address
+ used.
+
+civetweb can listen to multiple addresses.  Some of these can have
+ssl enabled, and some not.  The "using_ssl" flag is
+already returned to the client, but the local address (lsa) is not,
+This allows a calling application to determine on which local
+address/portno a connection was accepted.
+
+Signed-off-by: Marcus Watts <mwatts@redhat.com>
+---
+ include/civetweb.h | 4 ++++
+ civetweb.h         | 4 ++++
+ src/civetweb.c     | 5 +++++
+ 3 files changed, 13 insertions(+)
+
+diff --git a/include/civetweb.h b/include/civetweb.h
+index ea3ff0c..710e0bb 100644
+--- a/include/civetweb.h
++++ b/include/civetweb.h
+@@ -305,6 +305,10 @@ CIVETWEB_API int mg_modify_passwords_file(const char *passwords_file_name,
+ CIVETWEB_API struct mg_request_info *mg_get_request_info(struct mg_connection *);
+ 
+ 
++/* Return the local address (server side) of the socket for a connection */
++CIVETWEB_API struct sockaddr *
++mg_get_local_addr(struct mg_connection *);
++
+ /* Send data to the client.
+    Return:
+     0   when the connection has been closed
+diff --git a/civetweb.h b/civetweb.h
+index ea3ff0c..710e0bb 100644
+--- a/civetweb.h
++++ b/civetweb.h
+@@ -305,6 +305,10 @@ CIVETWEB_API int mg_modify_passwords_file(const char *passwords_file_name,
+ CIVETWEB_API struct mg_request_info *mg_get_request_info(struct mg_connection *);
+ 
+ 
++/* Return the local address (server side) of the socket for a connection */
++CIVETWEB_API struct sockaddr *
++mg_get_local_addr(struct mg_connection *);
++
+ /* Send data to the client.
+    Return:
+     0   when the connection has been closed
+diff --git a/src/civetweb.c b/src/civetweb.c
+index fbcf514..f80203f 100644
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -1169,6 +1169,11 @@ struct mg_request_info *mg_get_request_info(struct mg_connection *conn)
+     return &conn->request_info;
+ }
+ 
++struct sockaddr *mg_get_local_addr(struct mg_connection *conn)
++{
++    return &conn->client.lsa.sa;
++}
++
+ /* Skip the characters until one of the delimiters characters found.
+    0-terminate resulting word. Skip the delimiter and following whitespaces.
+    Advance pointer to buffer to the next word. Return found 0-terminated word.

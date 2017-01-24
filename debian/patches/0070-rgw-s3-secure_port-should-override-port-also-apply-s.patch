@@ -1,0 +1,42 @@
+From: Marcus Watts <mwatts@redhat.com>
+Date: Tue, 20 Dec 2016 00:22:02 -0500
+Subject: rgw: s3: secure_port should override port,
+ also apply ssl default right.
+
+Without https, only port is set.  With https, secure_port and port are
+both set to the same value.  The previous logic looked at port first and
+had overly simplified conditional logic which was liable to try to apply
+both non-default cases.  The correct behavior is: look secure_port first,
+and if secure_port is set, then only check to see if it's a non-default
+port.
+
+Signed-off-by: Marcus Watts <mwatts@redhat.com>
+(cherry picked from commit a113cf5ff5a642d2ee4cc83f5c7001b4bfe0a5df)
+(cherry picked from commit 698250563ccc4c69e5ca5aebf65dc352d80a8bdd)
+
+Resolves: rhbz#1258961
+---
+ src/rgw/rgw_rest_s3.cc | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index 00b7fd4..c81378f 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -3674,10 +3674,12 @@ int RGW_Auth_S3::authorize_v4(RGWRados *store, struct req_state *s)
+     }
+     string token_value = string(t);
+     if (using_qs && (token == "host")) {
+-      if (!port.empty() && port != "80" && port != "0") {
+-        token_value = token_value + ":" + port;
+-      } else if (!secure_port.empty() && secure_port != "443") {
+-        token_value = token_value + ":" + secure_port;
++      if (!secure_port.empty()) {
++	if (secure_port != "443")
++	  token_value = token_value + ":" + secure_port;
++      } else if (!port.empty()) {
++	if (port != "80")
++	  token_value = token_value + ":" + port;
+       }
+     }
+     canonical_hdrs_map[token] = rgw_trim_whitespace(token_value);

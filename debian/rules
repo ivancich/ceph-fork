@@ -4,7 +4,7 @@ export DH_VERBOSE=1
 export DESTDIR=$(CURDIR)/debian/tmp
 
 # Custom "ceph --version" information:
-export COMMIT=25e537df5591dc8c998407a3fe10b2cebcb3809a
+export COMMIT=11ca6e5a81fbea9ffcc915f9933ab64712fac53f
 export DEB_VERSION := $(shell dpkg-parsechangelog | egrep '^Version:' | cut -f 2 -d ' ')
 
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
@@ -45,6 +45,13 @@ configure-stamp:
 	echo v$(DEB_VERSION) >> src/.git_version
 	# debugging versioning
 	cat src/.git_version
+	# submodule patches must be handled separately
+	# https://github.com/redhat-openstack/rdopkg/issues/16
+	# patch -p1 --fuzz=0 -i debian/submodule-patches/0003-gitignore-Add-one-more-file.patch # .gitignore is not in upstream tarball
+	cd src/civetweb && \
+	  patch -p1 --fuzz=0 -i ../../debian/submodule-patches/0001-fix-defined-but-not-used-warning.patch && \
+	  patch -p1 --fuzz=0 -i ../../debian/submodule-patches/0002-Fixed-compile-warning-when-dynamically-linking-again.patch && \
+	  patch -p1 --fuzz=0 -i ../../debian/submodule-patches/0004-Add-mg_get_local_addr-.-Return-the-local-listening-a.patch
 	./autogen.sh
 	./configure --prefix=/usr --localstatedir=/var \
 	  --sysconfdir=/etc  --libexecdir=/usr/lib $(extraopts) $(confflags) \

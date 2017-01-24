@@ -63,3 +63,9 @@
 0063-rgw-fix-off-by-one-in-RGWDataChangesLog-get_info.patch
 0064-rgw-region-conversion-respects-pre-existing-rgw_regi.patch
 0065-rgw-look-for-region_map-in-rgw_region_root_pool.patch
+0066-rgw-cmake-remove-useless-civetweb-include-path-side-.patch
+0067-rgw-civetweb-openssl-Load-libssl.so-and-libcrypto.so.patch
+0068-rgw-civetweb-openssl-automagic-load-libssl.so-and-li.patch
+0069-rgw-Document-that-radosgw-now-supports-SSL.patch
+0070-rgw-s3-secure_port-should-override-port-also-apply-s.patch
+0071-rgw-Handle-multiple-listening-addreses-w-optional-ss.patch

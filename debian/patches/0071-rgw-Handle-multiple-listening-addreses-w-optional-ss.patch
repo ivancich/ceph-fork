@@ -1,0 +1,139 @@
+From: Marcus Watts <mwatts@redhat.com>
+Date: Wed, 3 Aug 2016 17:36:55 -0400
+Subject: rgw: Handle multiple listening addreses w/ optional ssl "correctly"
+ with civetweb.
+
+For civetweb: accept a range of port numbers joined with '+'.
+Port numbers may include an ipaddress: prefix and 's' suffix.
+Additionally, use "mg_get_local_addr" to correctly deduce host port per
+incoming connection.
+
+civetweb can accept connections on multiple ports, some of which
+might have SSL turned on and some not.  Both s3 and swift have various
+authorization protocols in which the port number matters.  In the generic
+radosgw frontend process, each frontend only has one port number, but
+we should want to have both ssl and non-ssl connections managed within
+one rgw frontend, because the thread pool is also per front-end, and
+that *is* a scarce resource.
+
+So, this patch enables the use of multiple ports with a single civetweb
+frontend.  To indicate https: append an 's' to portno.  To use multiple
+ports, use +.  So 80+443s indicates use of the usual default http ports.
+The parsed port is not stored in the frontend structure,
+
+So instead, this patch adds logic to use the results of
+mg_get_local_addr() on a per-connection basis insetad of the generic
+front-end port number.  This will affect "v4" s3 authorization, and also
+affect swift pre-signed URLs.
+
+mg_get_local_addr() is a new customization to civetweb; that submodule
+was updated (in a temporary repository) by the previous commit to this.
+
+Signed-off-by: Marcus Watts <mwatts@redhat.com>
+(cherry picked from commit 8bc6decc0774fae9ac881f91e73da55deebe3360)
+(cherry picked from commit 14a6aabe22f68436ea3297ce0851700f86ee5b12)
+
+Resolves: rhbz#1258961
+---
+ src/rgw/rgw_civetweb.cc          | 21 +++++++++++++++------
+ src/rgw/rgw_civetweb.h           |  2 +-
+ src/rgw/rgw_civetweb_frontend.cc |  3 ++-
+ src/rgw/rgw_main.cc              |  5 +----
+ 4 files changed, 19 insertions(+), 12 deletions(-)
+
+diff --git a/src/rgw/rgw_civetweb.cc b/src/rgw/rgw_civetweb.cc
+index d4a03e1..6929c66 100644
+--- a/src/rgw/rgw_civetweb.cc
++++ b/src/rgw/rgw_civetweb.cc
+@@ -27,11 +27,22 @@ int RGWMongoose::write_data(const char *buf, int len)
+   return r;
+ }
+ 
+-RGWMongoose::RGWMongoose(mg_connection *_conn, int _port)
+-  : conn(_conn), port(_port), status_num(0), header_done(false),
++RGWMongoose::RGWMongoose(mg_connection *_conn)
++  : conn(_conn), status_num(0), header_done(false),
+     sent_header(false), has_content_length(false),
+     explicit_keepalive(false), explicit_conn_close(false)
+ {
++    sockaddr *lsa = mg_get_local_addr(conn);
++    switch(lsa->sa_family) {
++    case AF_INET:
++	port = ntohs(((struct sockaddr_in*)lsa)->sin_port);
++	break;
++    case AF_INET6:
++	port = ntohs(((struct sockaddr_in6*)lsa)->sin6_port);
++	break;
++    default:
++	port = -1;
++    }
+ }
+ 
+ int RGWMongoose::read_data(char *buf, int len)
+@@ -141,14 +152,12 @@ void RGWMongoose::init_env(CephContext *cct)
+   env.set("REMOTE_USER", info->remote_user);
+   env.set("SCRIPT_URI", info->uri); /* FIXME */
+ 
++  if (port <= 0)
++    lderr(cct) << "init_env: bug: invalid port number" << dendl;
+   char port_buf[16];
+   snprintf(port_buf, sizeof(port_buf), "%d", port);
+   env.set("SERVER_PORT", port_buf);
+-
+   if (info->is_ssl) {
+-    if (port == 0) {
+-      strcpy(port_buf,"443");
+-    }
+     env.set("SERVER_PORT_SECURE", port_buf);
+   }
+ }
+diff --git a/src/rgw/rgw_civetweb.h b/src/rgw/rgw_civetweb.h
+index 6745081..8b55392 100644
+--- a/src/rgw/rgw_civetweb.h
++++ b/src/rgw/rgw_civetweb.h
+@@ -38,7 +38,7 @@ public:
+   int complete_request();
+   int send_content_length(uint64_t len);
+ 
+-  RGWMongoose(mg_connection *_conn, int _port);
++  RGWMongoose(mg_connection *_conn);
+   void flush();
+ };
+ 
+diff --git a/src/rgw/rgw_civetweb_frontend.cc b/src/rgw/rgw_civetweb_frontend.cc
+index e3df80c..8a0e59a 100644
+--- a/src/rgw/rgw_civetweb_frontend.cc
++++ b/src/rgw/rgw_civetweb_frontend.cc
+@@ -18,7 +18,7 @@ static int civetweb_callback(struct mg_connection* conn) {
+     OpsLogSocket* olog = pe->olog;
+ 
+     RGWRequest req(store->get_new_req_id());
+-    RGWMongoose client_io(conn, pe->port);
++    RGWMongoose client_io(conn);
+ 
+     int ret = process_request(pe->store, rest, &req, &client_io, olog);
+     if (ret < 0) {
+@@ -39,6 +39,7 @@ int RGWMongooseFrontend::run() {
+   map<string, string> conf_map = conf->get_config_map();
+   conf->get_val("port", "80", &port_str);
+   conf_map.erase("port");
++  std::replace(port_str.begin(), port_str.end(), '+', ',');
+   conf_map["listening_ports"] = port_str;
+   set_conf_default(conf_map, "enable_keep_alive", "yes");
+   set_conf_default(conf_map, "num_threads", thread_pool_buf);
+diff --git a/src/rgw/rgw_main.cc b/src/rgw/rgw_main.cc
+index ad1eb1e..45be895 100644
+--- a/src/rgw/rgw_main.cc
++++ b/src/rgw/rgw_main.cc
+@@ -405,10 +405,7 @@ int main(int argc, const char **argv)
+ 
+       fe = new RGWFCGXFrontend(fcgi_pe, config);
+     } else if (framework == "civetweb" || framework == "mongoose") {
+-      int port;
+-      config->get_val("port", 80, &port);
+-
+-      RGWProcessEnv env = { store, &rest, olog, port };
++      RGWProcessEnv env = { store, &rest, olog, 0 };
+ 
+       fe = new RGWMongooseFrontend(env, config);
+     } else if (framework == "loadgen") {

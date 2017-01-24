@@ -1,0 +1,33 @@
+From 0622b45fe152c486d8634f8f365146d213c9ab39 Mon Sep 17 00:00:00 2001
+From: Kefu Chai <tchaikov@gmail.com>
+Date: Sun, 31 Jan 2016 17:05:35 +0800
+Subject: [PATCH] fix "defined but not used" warning
+
+"is_valid_http_method" is defined but not used if "RGW" is defined,
+so we can disable it in that case.
+
+Signed-off-by: Kefu Chai <tchaikov@gmail.com>
+---
+ src/civetweb.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/civetweb.c b/src/civetweb.c
+index 967d853..0385b8f 100644
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -3994,6 +3994,7 @@ static void parse_http_headers(char **buf, struct mg_request_info *ri)
+     }
+ }
+ 
++#ifndef RGW
+ static int is_valid_http_method(const char *method)
+ {
+     return !strcmp(method, "GET") || !strcmp(method, "POST") ||
+@@ -4003,6 +4004,7 @@ static int is_valid_http_method(const char *method)
+            || !strcmp(method, "MKCOL")
+            ;
+ }
++#endif
+ 
+ /* Parse HTTP request, fill in mg_request_info structure.
+    This function modifies the buffer by NUL-terminating

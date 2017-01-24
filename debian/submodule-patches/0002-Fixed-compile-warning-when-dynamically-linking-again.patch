@@ -1,0 +1,29 @@
+From 554fa96229bcb2de08c9e9d976a3153d324126b3 Mon Sep 17 00:00:00 2001
+From: Marcus Watts <mwatts@redhat.com>
+Date: Tue, 23 Feb 2016 04:02:41 -0500
+Subject: [PATCH] Fixed compile warning when dynamically linking against -ssl.
+
+When the code is dynamically linked against -lssl, it
+is not at all likely that functions would up at 0.  Furthermore,
+gcc thinks this is impossible and throws a warning.  So, ifdef it out.
+
+Signed-off-by: Marcus Watts <mwatts@redhat.com>
+---
+ src/civetweb.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/civetweb.c b/src/civetweb.c
+index 0385b8f..fbcf514 100644
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -3493,8 +3493,10 @@ static SOCKET conn2(struct mg_context *ctx  /* may be null */, const char *host,
+ 
+     if (host == NULL) {
+         snprintf(ebuf, ebuf_len, "%s", "NULL host");
++#ifndef NO_SSL_DL
+     } else if (use_ssl && SSLv23_client_method == NULL) {
+         snprintf(ebuf, ebuf_len, "%s", "SSL is not initialized");
++#endif
+         /* TODO(lsm): use something threadsafe instead of gethostbyname() */
+     } else if ((he = gethostbyname(host)) == NULL) {
+         snprintf(ebuf, ebuf_len, "gethostbyname(%s): %s", host, strerror(ERRNO));

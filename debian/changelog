@@ -1,3 +1,19 @@
+ceph (10.2.5-4redhat1) stable; urgency=medium
+
+  * rgw: cmake: remove useless civetweb include path side effect.
+    (rhbz#1258961)
+  * rgw: civetweb/openssl: Load libssl.so and libcrypto.so by soname.
+    (rhbz#1258961)
+  * rgw: civetweb/openssl: automagic: load libssl.so and libcrypto.so
+    by soname. (rhbz#1258961)
+  * rgw: Document that radosgw now supports SSL. (rhbz#1258961)
+  * rgw: s3: secure_port should override port, also apply ssl default
+    right. (rhbz#1258961)
+  * rgw: Handle multiple listening addreses w/ optional ssl
+    "correctly" with civetweb. (rhbz#1258961)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 24 Jan 2017 10:13:43 -0700
+
 ceph (10.2.5-3redhat1) stable; urgency=medium
 
   * common: Remove the runtime dependency on lsb_release
