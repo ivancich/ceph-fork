@@ -1,0 +1,148 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Fri, 20 May 2016 15:20:18 -0700
+Subject: osd: Handle recovery read errors
+
+Fixes: http://tracker.ceph.com/issues/13937
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit c51d70e1e837c972e42ddd5fa66f7ca4477b95cc)
+
+Conflicts:
+	src/osd/ReplicatedPG.h (trivial)
+
+(cherry picked from commit f306bbc4748ba0eacc02e701d5d709c2c771fa24)
+
+Resolves: rhbz#1414613
+---
+ src/osd/ECBackend.cc         | 26 +++++++++++++++++++++++---
+ src/osd/ECBackend.h          |  2 ++
+ src/osd/PGBackend.h          |  2 +-
+ src/osd/ReplicatedBackend.cc |  3 ++-
+ src/osd/ReplicatedPG.cc      |  6 +++---
+ src/osd/ReplicatedPG.h       |  2 +-
+ 6 files changed, 32 insertions(+), 9 deletions(-)
+
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index b3a47c3..0d5f9c8 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -187,6 +187,24 @@ PGBackend::RecoveryHandle *ECBackend::open_recovery_op()
+   return new ECRecoveryHandle;
+ }
+ 
++void ECBackend::_failed_push(const hobject_t &hoid,
++  pair<RecoveryMessages *, ECBackend::read_result_t &> &in)
++{
++  ECBackend::read_result_t &res = in.second;
++  dout(10) << __func__ << ": Read error " << hoid << " r="
++	   << res.r << " errors=" << res.errors << dendl;
++  dout(10) << __func__ << ": canceling recovery op for obj " << hoid
++	   << dendl;
++  assert(recovery_ops.count(hoid));
++  recovery_ops.erase(hoid);
++
++  list<pg_shard_t> fl;
++  for (auto&& i : res.errors) {
++    fl.push_back(i.first);
++  }
++  get_parent()->failed_push(fl, hoid);
++}
++
+ struct OnRecoveryReadComplete :
+   public GenContext<pair<RecoveryMessages*, ECBackend::read_result_t& > &> {
+   ECBackend *pg;
+@@ -196,9 +214,10 @@ struct OnRecoveryReadComplete :
+     : pg(pg), hoid(hoid) {}
+   void finish(pair<RecoveryMessages *, ECBackend::read_result_t &> &in) {
+     ECBackend::read_result_t &res = in.second;
+-    // FIXME???
+-    assert(res.r == 0);
+-    assert(res.errors.empty());
++    if (!(res.r == 0 && res.errors.empty())) {
++        pg->_failed_push(hoid, in);
++        return;
++    }
+     assert(res.returned.size() == 1);
+     pg->handle_recovery_read_complete(
+       hoid,
+@@ -1070,6 +1089,7 @@ void ECBackend::handle_sub_read_reply(
+   unsigned is_complete = 0;
+   // For redundant reads check for completion as each shard comes in,
+   // or in a non-recovery read check for completion once all the shards read.
++  // TODO: It would be nice if recovery could send more reads too
+   if (rop.do_redundant_reads || (!rop.for_recovery && rop.in_progress.empty())) {
+     for (map<hobject_t, read_result_t>::const_iterator iter =
+         rop.complete.begin();
+diff --git a/src/osd/ECBackend.h b/src/osd/ECBackend.h
+index 6ce0f11..63a3092 100644
+--- a/src/osd/ECBackend.h
++++ b/src/osd/ECBackend.h
+@@ -504,6 +504,8 @@ public:
+   uint64_t be_get_ondisk_size(uint64_t logical_size) {
+     return sinfo.logical_to_next_chunk_offset(logical_size);
+   }
++  void _failed_push(const hobject_t &hoid,
++    pair<RecoveryMessages *, ECBackend::read_result_t &> &in);
+ };
+ 
+ #endif
+diff --git a/src/osd/PGBackend.h b/src/osd/PGBackend.h
+index f88c1a0..204dd9b 100644
+--- a/src/osd/PGBackend.h
++++ b/src/osd/PGBackend.h
+@@ -94,7 +94,7 @@ struct shard_info_wrapper;
+        pg_shard_t peer,
+        const hobject_t oid) = 0;
+ 
+-     virtual void failed_push(pg_shard_t from, const hobject_t &soid) = 0;
++     virtual void failed_push(const list<pg_shard_t> &from, const hobject_t &soid) = 0;
+      
+      virtual void cancel_pull(const hobject_t &soid) = 0;
+ 
+diff --git a/src/osd/ReplicatedBackend.cc b/src/osd/ReplicatedBackend.cc
+index 32b9f17..ecd7c31 100644
+--- a/src/osd/ReplicatedBackend.cc
++++ b/src/osd/ReplicatedBackend.cc
+@@ -2355,7 +2355,8 @@ void ReplicatedBackend::sub_op_push(OpRequestRef op)
+ 
+ void ReplicatedBackend::_failed_push(pg_shard_t from, const hobject_t &soid)
+ {
+-  get_parent()->failed_push(from, soid);
++  list<pg_shard_t> fl = { from };
++  get_parent()->failed_push(fl, soid);
+   pull_from_peer[from].erase(soid);
+   if (pull_from_peer[from].empty())
+     pull_from_peer.erase(from);
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index 697d8ba..3f71019 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -9588,12 +9588,12 @@ void ReplicatedPG::recover_got(hobject_t oid, eversion_t v)
+   }
+ }
+ 
+-
+-void ReplicatedPG::failed_push(pg_shard_t from, const hobject_t &soid)
++void ReplicatedPG::failed_push(const list<pg_shard_t> &from, const hobject_t &soid)
+ {
+   assert(recovering.count(soid));
+   recovering.erase(soid);
+-  missing_loc.remove_location(soid, from);
++  for (auto&& i : from)
++    missing_loc.remove_location(soid, i);
+   dout(0) << __func__ << " " << soid << " from shard " << from
+ 	  << ", reps on " << missing_loc.get_locations(soid)
+ 	  << " unfound? " << missing_loc.is_unfound(soid) << dendl;
+diff --git a/src/osd/ReplicatedPG.h b/src/osd/ReplicatedPG.h
+index 149d709..484569e 100644
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -280,7 +280,7 @@ public:
+   void on_global_recover(
+     const hobject_t &oid,
+     const object_stat_sum_t &stat_diff);
+-  void failed_push(pg_shard_t from, const hobject_t &soid);
++  void failed_push(const list<pg_shard_t> &from, const hobject_t &soid) override;
+   void cancel_pull(const hobject_t &soid);
+ 
+   template <typename T>

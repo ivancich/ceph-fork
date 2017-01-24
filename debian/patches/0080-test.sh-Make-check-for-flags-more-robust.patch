@@ -1,0 +1,28 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Fri, 14 Oct 2016 16:17:55 -0700
+Subject: test.sh: Make check for flags more robust
+
+Low space broke test, saw "flags nearfull,pauserd,pausewr...."
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit b4c080b1b4378d659c1ca8a17811cd6f84595166)
+(cherry picked from commit 289696d533038c2248c1fe0c8ee03adad343cfa9)
+
+Resolves: rhbz#1414613
+---
+ qa/workunits/cephtool/test.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/qa/workunits/cephtool/test.sh b/qa/workunits/cephtool/test.sh
+index 1ad5f53..eceb64d 100755
+--- a/qa/workunits/cephtool/test.sh
++++ b/qa/workunits/cephtool/test.sh
+@@ -1217,7 +1217,7 @@ function test_mon_osd()
+   ceph osd pool delete data data --yes-i-really-really-mean-it
+ 
+   ceph osd pause
+-  ceph osd dump | grep 'flags pauserd,pausewr'
++  ceph osd dump | grep 'flags.*pauserd,pausewr'
+   ceph osd unpause
+ 
+   ceph osd tree

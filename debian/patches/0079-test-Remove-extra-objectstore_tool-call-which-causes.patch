@@ -1,0 +1,27 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Thu, 21 Jul 2016 17:36:34 -0700
+Subject: test: Remove extra objectstore_tool call which causes a recovery
+
+Caused by: 70e000a9a42c50eda48f5d3b9e432ffc3a70f75b
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit 6904529d1b53993304de2927500937ba0d493e9e)
+(cherry picked from commit d8a4b74216253e62f56bf4fff03b6ae6e8365206)
+
+Resolves: rhbz#1414613
+---
+ src/test/erasure-code/test-erasure-eio.sh | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/test/erasure-code/test-erasure-eio.sh b/src/test/erasure-code/test-erasure-eio.sh
+index 7db60cd..5690a11 100755
+--- a/src/test/erasure-code/test-erasure-eio.sh
++++ b/src/test/erasure-code/test-erasure-eio.sh
+@@ -205,7 +205,6 @@ function set_size() {
+     else
+       dd if=/dev/urandom bs=$bytes count=1 of=$dir/CORRUPT
+     fi
+-    objectstore_tool $dir $osd_id --op list $objname
+     objectstore_tool $dir $osd_id $objname set-bytes $dir/CORRUPT || return 1
+     rm -f $dir/CORRUPT
+ }

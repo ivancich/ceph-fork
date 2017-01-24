@@ -1,3 +1,24 @@
+ceph (10.2.5-5redhat1) stable; urgency=medium
+
+  * rgw_file: add timed namespace invalidation (rhbz#1359403)
+  * test/osd-scrub-repair.sh: Use test case specific object names to
+    help with diagnostics (rhbz#1414613)
+  * osd: CLEANUP: Remove unused pending_read member (rhbz#1414613)
+  * osd: Fix log messages (rhbz#1414613)
+  * osd: Handle recovery read errors (rhbz#1414613)
+  * osd: Fix hang on unfound object after mark_unfound_lost is done
+    (rhbz#1414613)
+  * test: Handle object removals in a non-racey way (rhbz#1414613)
+  * test: Remove extra objectstore_tool call which causes a recovery
+    (rhbz#1414613)
+  * test.sh: Make check for flags more robust (rhbz#1414613)
+  * ReplicatedPG::failed_push: release read lock on failure
+    (rhbz#1414613)
+  * rgw_file: interned RGWFileHandle objects need parent refs
+    (rhbz#1414324)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 24 Jan 2017 13:48:13 -0700
+
 ceph (10.2.5-4redhat1) stable; urgency=medium
 
   * rgw: cmake: remove useless civetweb include path side effect.

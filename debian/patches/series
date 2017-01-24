@@ -69,3 +69,14 @@
 0069-rgw-Document-that-radosgw-now-supports-SSL.patch
 0070-rgw-s3-secure_port-should-override-port-also-apply-s.patch
 0071-rgw-Handle-multiple-listening-addreses-w-optional-ss.patch
+0072-rgw_file-add-timed-namespace-invalidation.patch
+0073-test-osd-scrub-repair.sh-Use-test-case-specific-obje.patch
+0074-osd-CLEANUP-Remove-unused-pending_read-member.patch
+0075-osd-Fix-log-messages.patch
+0076-osd-Handle-recovery-read-errors.patch
+0077-osd-Fix-hang-on-unfound-object-after-mark_unfound_lo.patch
+0078-test-Handle-object-removals-in-a-non-racey-way.patch
+0079-test-Remove-extra-objectstore_tool-call-which-causes.patch
+0080-test.sh-Make-check-for-flags-more-robust.patch
+0081-ReplicatedPG-failed_push-release-read-lock-on-failur.patch
+0082-rgw_file-interned-RGWFileHandle-objects-need-parent-.patch

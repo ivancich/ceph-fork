@@ -1,0 +1,76 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Fri, 30 Dec 2016 23:30:16 -0500
+Subject: rgw_file:  interned RGWFileHandle objects need parent refs
+
+RGW NFS fhcache/RGWFileHandle operators assume existence of the
+full chain of parents from any object to the its fs_root--this is
+a consequence of the weakly-connected namespace design goal, and
+not a defect.
+
+This change ensures the invariant by taking a parent ref when
+objects are interned (when a parent ref is guaranteed).  Parent
+refs are returned when objects are destroyed--essentially by the
+invariant, such a ref must exist.
+
+The extra ref is omitted when parent->is_root(), as that node is
+not in the LRU cache.
+
+Fixes: http://tracker.ceph.com/issues/18650
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 0e5299f3f43e633a5d8a9360893b4b11f6217d81)
+
+Resolves (in part): rhbz#1414324
+---
+ src/rgw/rgw_file.cc | 13 +++++++++++++
+ src/rgw/rgw_file.h  |  6 +++++-
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index b87c388..0799854 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -701,6 +701,19 @@ namespace rgw {
+     } while (! (stop || shutdown));
+   } /* RGWLibFS::gc */
+ 
++  RGWFileHandle::~RGWFileHandle() {
++    if (parent && (! parent->is_root())) {
++      /* safe because if parent->unref causes its deletion,
++       * there are a) by refcnt, no other objects/paths pointing
++       * to it and b) by the semantics of valid iteration of
++       * fh_lru (observed, e.g., by cohort_lru<T,...>::drain())
++       * no unsafe iterators reaching it either--n.b., this constraint
++       * is binding oncode which may in future attempt to e.g.,
++       * cause the eviction of objects in LRU order */
++      (void) get_fs()->fh_lru.unref(parent, cohort::lru::FLAG_NONE);
++    }
++  }
++
+   void RGWFileHandle::encode_attrs(ceph::buffer::list& ux_key1,
+ 				   ceph::buffer::list& ux_attrs1)
+   {
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index 54c8615..0b340f2 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -634,7 +634,7 @@ namespace rgw {
+     typedef cohort::lru::TreeX<RGWFileHandle, FhTree, FhLT, FhEQ, fh_key,
+ 			       std::mutex> FHCache;
+ 
+-    virtual ~RGWFileHandle() {}
++    virtual ~RGWFileHandle();
+ 
+     class Factory : public cohort::lru::ObjectFactory
+     {
+@@ -946,6 +946,10 @@ namespace rgw {
+ 	  /* inserts, releasing latch */
+ 	  fh_cache.insert_latched(fh, lat, RGWFileHandle::FHCache::FLAG_UNLOCK);
+ 	  get<1>(fhr) |= RGWFileHandle::FLAG_CREATE;
++	  /* ref parent (non-initial ref cannot fail on valid object) */
++	  if (! parent->is_root()) {
++	    (void) fh_lru.ref(parent, cohort::lru::FLAG_NONE);
++	  }
+ 	  goto out; /* !LATCHED */
+ 	} else {
+ 	  lat.lock->unlock();
