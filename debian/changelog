@@ -1,3 +1,9 @@
+ceph (10.2.5-6redhat1) stable; urgency=medium
+
+  * mds: use projected path construction for access (rhbz#1415260)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 24 Jan 2017 19:27:19 -0700
+
 ceph (10.2.5-5redhat1) stable; urgency=medium
 
   * rgw_file: add timed namespace invalidation (rhbz#1359403)

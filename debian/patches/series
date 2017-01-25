@@ -80,3 +80,4 @@
 0080-test.sh-Make-check-for-flags-more-robust.patch
 0081-ReplicatedPG-failed_push-release-read-lock-on-failur.patch
 0082-rgw_file-interned-RGWFileHandle-objects-need-parent-.patch
+0083-mds-use-projected-path-construction-for-access.patch
