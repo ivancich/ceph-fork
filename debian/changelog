@@ -1,3 +1,19 @@
+ceph (10.2.5-7redhat1) stable; urgency=medium
+
+  * rgw: multipart uploads copy part support (rhbz#1416514)
+  * rgw: doc: add multipart uploads copy part feature as supported
+    (rhbz#1416514)
+  * rgw: multipart copy part, chunked read (rhbz#1416514)
+  * rgw: multipart copy, check for empty bucket, improve logging
+    (rhbz#1416514)
+  * rgw: multipart copy part minor parsing cleanup (rhbz#1416514)
+  * rgw: multipart copy-part handle versionId (rhbz#1416514)
+  * rgw: rgw_obj_key use adjustment in multipart copy part
+    (rhbz#1416514)
+  * rgw: minor optimization (rhbz#1416514)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 25 Jan 2017 15:33:48 -0700
+
 ceph (10.2.5-6redhat1) stable; urgency=medium
 
   * mds: use projected path construction for access (rhbz#1415260)

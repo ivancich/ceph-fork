@@ -1,0 +1,37 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Thu, 29 Sep 2016 14:24:13 -0700
+Subject: rgw: multipart copy part minor parsing cleanup
+
+no need for range.size()
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 6e9b824d5d4017239d58b4752ebc43bfad8f698d)
+(cherry picked from commit c9f8708441e6a8aafd394bc91146a146ada78ef9)
+
+Resolves: rhbz#1416514
+---
+ src/rgw/rgw_rest_s3.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index 8425177..45a9675 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -1104,7 +1104,7 @@ int RGWPutObj_ObjStore_S3::get_params()
+         ldout(s->cct, 5) << "x-amz-copy-source-range bad format" << dendl;
+         return ret;
+       }
+-      range = range.substr(pos + 1, range.size());
++      range = range.substr(pos + 1);
+       pos = range.find("-");
+       if (pos == std::string::npos) {
+         ret = -EINVAL;
+@@ -1112,7 +1112,7 @@ int RGWPutObj_ObjStore_S3::get_params()
+         return ret;
+       }
+       string first = range.substr(0, pos);
+-      string last = range.substr(pos + 1, range.size());
++      string last = range.substr(pos + 1);
+       copy_source_range_fst = strtoull(first.c_str(), NULL, 10);
+       copy_source_range_lst = strtoull(last.c_str(), NULL, 10);
+     }
