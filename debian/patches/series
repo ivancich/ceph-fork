@@ -81,11 +81,3 @@
 0081-ReplicatedPG-failed_push-release-read-lock-on-failur.patch
 0082-rgw_file-interned-RGWFileHandle-objects-need-parent-.patch
 0083-mds-use-projected-path-construction-for-access.patch
-0084-rgw-multipart-uploads-copy-part-support.patch
-0085-rgw-doc-add-multipart-uploads-copy-part-feature-as-s.patch
-0086-rgw-multipart-copy-part-chunked-read.patch
-0087-rgw-multipart-copy-check-for-empty-bucket-improve-lo.patch
-0088-rgw-multipart-copy-part-minor-parsing-cleanup.patch
-0089-rgw-multipart-copy-part-handle-versionId.patch
-0090-rgw-rgw_obj_key-use-adjustment-in-multipart-copy-par.patch
-0091-rgw-minor-optimization.patch
