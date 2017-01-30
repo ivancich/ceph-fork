@@ -1,3 +1,10 @@
+ceph (10.2.5-9redhat1) stable; urgency=medium
+
+  * osd: jewel fix OSD network address in OSD heartbeat_check log
+    message (rhbz#1333809)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 30 Jan 2017 15:23:15 -0700
+
 ceph (10.2.5-8redhat1) stable; urgency=medium
 
   * rgw: fix interface compliance of RGWCivetWeb::write_data()

@@ -1,0 +1,34 @@
+From: Vikhyat Umrao <vumrao@redhat.com>
+Date: Wed, 25 Jan 2017 21:54:27 +0530
+Subject: osd: jewel fix OSD network address in OSD heartbeat_check log message
+
+Fixes: http://tracker.ceph.com/issues/18657
+
+Signed-off-by: Vikhyat Umrao <vumrao@redhat.com>
+(cherry picked from commit 3fce77ab3662496368e25cbbf6d1b37d3c140db9)
+
+Resolves: rhbz#1333809
+---
+ src/osd/OSD.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index 6b503a5..44faa9c 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -4057,13 +4057,13 @@ void OSD::heartbeat_check()
+     if (p->second.is_unhealthy(cutoff)) {
+       if (p->second.last_rx_back == utime_t() ||
+ 	  p->second.last_rx_front == utime_t()) {
+-	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr()
++	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr_storage()
+ 	     << " osd." << p->first << " ever on either front or back, first ping sent "
+ 	     << p->second.first_tx << " (cutoff " << cutoff << ")" << dendl;
+ 	// fail
+ 	failure_queue[p->first] = p->second.last_tx;
+       } else {
+-	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr()
++	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr_storage()
+ 	     << " osd." << p->first << " since back " << p->second.last_rx_back
+ 	     << " front " << p->second.last_rx_front
+ 	     << " (cutoff " << cutoff << ")" << dendl;
