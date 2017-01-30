@@ -1,0 +1,45 @@
+From: Radoslaw Zarzynski <rzarzynski@mirantis.com>
+Date: Sat, 28 Jan 2017 14:17:10 -0500
+Subject: rgw: fix interface compliance of RGWCivetWeb::write_data()
+
+Backport of (portions of) civet web error handling bugfixes.
+
+Adapted from 3a9f50c55e0be6733893a7ae1a5b4f504a3b0f61.
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 016b059fcf2993f721e97212d50b5e6da8180a03)
+
+Resolves: rhbz#1417178
+---
+ src/rgw/rgw_civetweb.cc | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/src/rgw/rgw_civetweb.cc b/src/rgw/rgw_civetweb.cc
+index 6929c66..f28636c 100644
+--- a/src/rgw/rgw_civetweb.cc
++++ b/src/rgw/rgw_civetweb.cc
+@@ -19,9 +19,11 @@ int RGWMongoose::write_data(const char *buf, int len)
+     data.append(buf, len);
+     return len;
+   }
+-  int r = mg_write(conn, buf, len);
+-  if (r == 0) {
+-    /* didn't send anything, error out */
++  const int r = mg_write(conn, buf, len);
++  if (r <= 0) {
++    /* According to the documentation of mg_write() it always returns -1 on
++     * error. The details aren't available, so we will just throw EIO. Same
++     * goes to 0 that is associated with writing to a closed connection. */
+     return -EIO;
+   }
+   return r;
+@@ -47,7 +49,8 @@ RGWMongoose::RGWMongoose(mg_connection *_conn)
+ 
+ int RGWMongoose::read_data(char *buf, int len)
+ {
+-  return mg_read(conn, buf, len);
++  const int ret = mg_read(conn, buf, len);
++  return (ret >= 0) ? ret : -EIO;
+ }
+ 
+ void RGWMongoose::flush()

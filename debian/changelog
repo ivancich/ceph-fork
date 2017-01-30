@@ -1,3 +1,10 @@
+ceph (10.2.5-8redhat1) stable; urgency=medium
+
+  * rgw: fix interface compliance of RGWCivetWeb::write_data()
+    (rhbz#1417178)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 30 Jan 2017 14:29:33 -0700
+
 ceph (10.2.5-7redhat1) stable; urgency=medium
 
   * radosgw/swift: clean up flush / newline behavior. (rhbz#1385485)
