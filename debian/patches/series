@@ -81,3 +81,5 @@
 0081-ReplicatedPG-failed_push-release-read-lock-on-failur.patch
 0082-rgw_file-interned-RGWFileHandle-objects-need-parent-.patch
 0083-mds-use-projected-path-construction-for-access.patch
+0084-radosgw-swift-clean-up-flush-newline-behavior.patch
+0085-librbd-ensure-owner-lock-is-held-before-purging-cach.patch
