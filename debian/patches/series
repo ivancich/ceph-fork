@@ -93,3 +93,4 @@
 0093-rgw-json-encode-decode-index_type-allow-modification.patch
 0094-rgw-fix-for-deleting-objects-name-beginning-and-endi.patch
 0095-rgw-fix-for-versioned-delete_multi_object.patch
+0096-rgw_file-fix-spurious-mount-entries-w-Linux-NFS-clie.patch

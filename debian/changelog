@@ -1,3 +1,10 @@
+ceph (10.2.5-11redhat1) stable; urgency=medium
+
+  * rgw_file: fix spurious mount entries w/Linux NFS client
+    (rhbz#1360674)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 31 Jan 2017 09:49:56 -0700
+
 ceph (10.2.5-10redhat1) stable; urgency=medium
 
   * ceph-disk: systemd unit must run after local-fs.target
