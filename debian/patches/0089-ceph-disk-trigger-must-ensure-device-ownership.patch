@@ -1,0 +1,41 @@
+From: Loic Dachary <ldachary@redhat.com>
+Date: Tue, 22 Nov 2016 15:26:18 +0100
+Subject: ceph-disk: trigger must ensure device ownership
+
+The udev rules that set the owner/group of the OSD devices are racing
+with 50-udev-default.rules and depending on which udev event fires last,
+ownership may not be as expected.
+
+Since ceph-disk trigger --sync runs as root, always happens after
+dm/lvm/filesystem units are complete and before activation, it is a good
+time to set the ownership of the device.
+
+It does not eliminate all races: a script running after systemd
+local-fs.target and firing a udev event may create a situation where the
+permissions of the device are temporarily reverted while the activation
+is running.
+
+Fixes: http://tracker.ceph.com/issues/17813
+
+Signed-off-by: Loic Dachary <loic@dachary.org>
+(cherry picked from commit 72f0b2aa1eb4b7b2a2222c2847d26f99400a8374)
+(cherry picked from commit e16d756f7def5a3c31878f0f2a422a99e985f787)
+
+Resolves: rhbz#1391197
+---
+ src/ceph-disk/ceph_disk/main.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index 8937427..181247e 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -4302,6 +4302,8 @@ def main_trigger(args):
+         )
+         return
+ 
++    if get_ceph_user() == 'ceph':
++        command_check_call(['chown', 'ceph:ceph', args.dev])
+     parttype = get_partition_type(args.dev)
+     partid = get_partition_uuid(args.dev)
+ 

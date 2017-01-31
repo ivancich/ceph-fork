@@ -1,0 +1,33 @@
+From: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+Date: Mon, 31 Oct 2016 13:59:55 +0800
+Subject: rgw: fix osd crashes when execute "radosgw-admin bi list
+ --max-entries=1" command
+
+Fixes: http://tracker.ceph.com/issues/17745
+Signed-off-by: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+(cherry picked from commit 51a4405a1ef59671cbd51c530a84333359d3f3dd)
+
+Conflicts:
+	src/cls/rgw/cls_rgw.cc
+		trivial resolution
+
+(cherry picked from commit 8de67afed415875394ad0405046ead6206ffa636)
+
+Resolves: rhbz#1390716
+---
+ src/cls/rgw/cls_rgw.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/cls/rgw/cls_rgw.cc b/src/cls/rgw/cls_rgw.cc
+index abc7a73..58247b5 100644
+--- a/src/cls/rgw/cls_rgw.cc
++++ b/src/cls/rgw/cls_rgw.cc
+@@ -2515,7 +2515,7 @@ static int rgw_bi_list_op(cls_method_context_t hctx, bufferlist *in, bufferlist
+ 
+   string filter = op.name;
+ #define MAX_BI_LIST_ENTRIES 1000
+-  int32_t max = (op.max < MAX_BI_LIST_ENTRIES ? op.max : MAX_BI_LIST_ENTRIES);
++  int32_t max = (op.max < MAX_BI_LIST_ENTRIES ? op.max : MAX_BI_LIST_ENTRIES) + 1; /* one extra entry for identifying truncation */
+   string start_key = op.marker;
+   int ret = list_plain_entries(hctx, op.name, op.marker, max, &op_ret.entries) + 1; /* one extra entry for identifying truncation */
+   if (ret < 0) {

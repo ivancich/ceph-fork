@@ -1,3 +1,22 @@
+ceph (10.2.5-10redhat1) stable; urgency=medium
+
+  * ceph-disk: systemd unit must run after local-fs.target
+    (rhbz#1391197)
+  * ceph-disk: trigger must ensure device ownership (rhbz#1391197)
+  * build/ops: restart ceph-osd@.service after 20s instead of 100ms
+    (rhbz#1391197)
+  * ceph-disk: enable --runtime ceph-osd systemd units (rhbz#1391197)
+  * rgw: fix osd crashes when execute "radosgw-admin bi list --max-
+    entries=1" command (rhbz#1390716)
+  * rgw: json encode/decode index_type, allow modification
+    (rhbz#1390336)
+  * rgw:fix for deleting objects name beginning and ending with
+    underscores of one bucket using POST method of AWS's js sdk.
+    Fixes: http://tracker.ceph.com/issues/17888 (rhbz#1399624)
+  * rgw: fix for versioned delete_multi_object (rhbz#1399624)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 31 Jan 2017 08:49:45 -0700
+
 ceph (10.2.5-9redhat1) stable; urgency=medium
 
   * osd: jewel fix OSD network address in OSD heartbeat_check log

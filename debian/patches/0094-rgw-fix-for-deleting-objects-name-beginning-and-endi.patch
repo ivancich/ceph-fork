@@ -1,0 +1,29 @@
+From: root <root@korea-fg-ceph-57-117.120.120.117>
+Date: Mon, 14 Nov 2016 10:41:26 +0800
+Subject: rgw:fix for deleting objects name beginning and ending with
+ underscores of one bucket using POST method of AWS's js sdk. Fixes:
+ http://tracker.ceph.com/issues/17888
+
+Signed-off-by: zhouruisong 236131368@qq.com
+(cherry picked from commit 2dda81d1e7057353c64aecaeadeb48d956c77a87)
+(cherry picked from commit 514a31fdd9282bdb534a0ea907e89aa586a388c3)
+
+Resolves (with following): rhbz#1399624
+---
+ src/rgw/rgw_op.cc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 2da2129..79e244a 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -4449,7 +4449,8 @@ void RGWDeleteMultiObj::execute()
+   for (iter = multi_delete->objects.begin();
+         iter != multi_delete->objects.end() && num_processed < max_to_delete;
+         ++iter, num_processed++) {
+-    rgw_obj obj(bucket, *iter);
++    rgw_obj obj(bucket, (*iter).name);
++    obj.set_instance(s->object.instance);
+ 
+     obj_ctx->set_atomic(obj);
+ 

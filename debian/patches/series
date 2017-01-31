@@ -85,3 +85,11 @@
 0085-librbd-ensure-owner-lock-is-held-before-purging-cach.patch
 0086-rgw-fix-interface-compliance-of-RGWCivetWeb-write_da.patch
 0087-osd-jewel-fix-OSD-network-address-in-OSD-heartbeat_c.patch
+0088-ceph-disk-systemd-unit-must-run-after-local-fs.targe.patch
+0089-ceph-disk-trigger-must-ensure-device-ownership.patch
+0090-build-ops-restart-ceph-osd-.service-after-20s-instea.patch
+0091-ceph-disk-enable-runtime-ceph-osd-systemd-units.patch
+0092-rgw-fix-osd-crashes-when-execute-radosgw-admin-bi-li.patch
+0093-rgw-json-encode-decode-index_type-allow-modification.patch
+0094-rgw-fix-for-deleting-objects-name-beginning-and-endi.patch
+0095-rgw-fix-for-versioned-delete_multi_object.patch
