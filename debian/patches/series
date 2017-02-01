@@ -94,3 +94,12 @@
 0094-rgw-fix-for-deleting-objects-name-beginning-and-endi.patch
 0095-rgw-fix-for-versioned-delete_multi_object.patch
 0096-rgw_file-fix-spurious-mount-entries-w-Linux-NFS-clie.patch
+0097-rgw-multipart-uploads-copy-part-support.patch
+0098-rgw-doc-add-multipart-uploads-copy-part-feature-as-s.patch
+0099-rgw-multipart-copy-part-chunked-read.patch
+0100-rgw-multipart-copy-check-for-empty-bucket-improve-lo.patch
+0101-rgw-multipart-copy-part-minor-parsing-cleanup.patch
+0102-rgw-multipart-copy-part-handle-versionId.patch
+0103-rgw-rgw_obj_key-use-adjustment-in-multipart-copy-par.patch
+0104-rgw-minor-optimization.patch
+0105-rgw-multipart-part-copy-fix-regression.patch

@@ -1,0 +1,65 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Thu, 29 Sep 2016 14:11:43 -0700
+Subject: rgw: multipart copy, check for empty bucket, improve logging
+
+also reduce log level for non critical user errors.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 2bcb3d286b230ef917d5ba96c8276a942f544689)
+(cherry picked from commit 2ca1bcdacc37e74cb61c2ed9855150b4cc9537e9)
+
+Resolves (with following): rhbz#1416160
+---
+ src/rgw/rgw_rest_s3.cc | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index 5eaa63d..8425177 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -1067,7 +1067,7 @@ int RGWPutObj_ObjStore_S3::get_params()
+     pos = copy_source_bucket_name.find("/");
+     if (pos == std::string::npos) {
+       ret = -EINVAL;
+-      ldout(s->cct, 0) << "x-amz-copy-source bad format" << dendl;
++      ldout(s->cct, 5) << "x-amz-copy-source bad format" << dendl;
+       return ret;
+     }
+     copy_source_object_name = copy_source_bucket_name.substr(pos + 1, copy_source_bucket_name.size());
+@@ -1078,6 +1078,11 @@ int RGWPutObj_ObjStore_S3::get_params()
+     } else {
+        copy_source_tenant_name = copy_source_bucket_name.substr(0, pos);
+        copy_source_bucket_name = copy_source_bucket_name.substr(pos + 1, copy_source_bucket_name.size());
++       if (copy_source_bucket_name.empty()) {
++         ret = -EINVAL;
++         ldout(s->cct, 5) << "source bucket name is empty" << dendl;
++         return ret;
++       }
+     }
+     ret = store->get_bucket_info(obj_ctx,
+                                  copy_source_tenant_name,
+@@ -1085,6 +1090,7 @@ int RGWPutObj_ObjStore_S3::get_params()
+                                  copy_source_bucket_info,
+                                  NULL, &src_attrs);
+     if (ret < 0) {
++      ldout(s->cct, 5) << __func__ << "(): get_bucket_info() returned ret=" << ret << dendl;
+       return ret;
+     }
+ 
+@@ -1095,14 +1101,14 @@ int RGWPutObj_ObjStore_S3::get_params()
+       pos = range.find("=");
+       if (pos == std::string::npos) {
+         ret = -EINVAL;
+-        ldout(s->cct, 0) << "x-amz-copy-source-range bad format" << dendl;
++        ldout(s->cct, 5) << "x-amz-copy-source-range bad format" << dendl;
+         return ret;
+       }
+       range = range.substr(pos + 1, range.size());
+       pos = range.find("-");
+       if (pos == std::string::npos) {
+         ret = -EINVAL;
+-        ldout(s->cct, 0) << "x-amz-copy-source-range bad format" << dendl;
++        ldout(s->cct, 5) << "x-amz-copy-source-range bad format" << dendl;
+         return ret;
+       }
+       string first = range.substr(0, pos);

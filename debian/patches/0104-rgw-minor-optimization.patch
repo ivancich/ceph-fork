@@ -1,0 +1,26 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Thu, 29 Sep 2016 17:44:08 -0700
+Subject: rgw: minor optimization
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 4919dc9987c6376d3d4e143702c26417449524c5)
+(cherry picked from commit 514e2ba64f2babdf6f58c57a7e8e1263abbf187c)
+
+Resolves (with following): rhbz#1416160
+---
+ src/rgw/rgw_rest_s3.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index 7bad2eb..f9d228b 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -1311,7 +1311,7 @@ void RGWPutObj_ObjStore_S3::send_response()
+ 	s->cct->_conf->rgw_s3_success_create_obj_status);
+       set_req_state_err(s, op_ret);
+     }
+-    if (!s->info.env->get("HTTP_X_AMZ_COPY_SOURCE")) {
++    if (!copy_source) {
+       dump_etag(s, etag.c_str());
+       dump_content_length(s, 0);
+     } else {
