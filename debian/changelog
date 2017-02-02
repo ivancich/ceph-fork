@@ -1,3 +1,10 @@
+ceph (10.2.5-13redhat1) stable; urgency=medium
+
+  * rgw: Have a flavor of bucket deletion to bypass GC and to trigger
+    object deletions async. (rhbz#1418809)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 02 Feb 2017 13:35:28 -0700
+
 ceph (10.2.5-12redhat1) stable; urgency=medium
 
   * rgw: multipart uploads copy part support (rhbz#1416160)

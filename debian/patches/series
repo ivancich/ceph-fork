@@ -103,3 +103,4 @@
 0103-rgw-rgw_obj_key-use-adjustment-in-multipart-copy-par.patch
 0104-rgw-minor-optimization.patch
 0105-rgw-multipart-part-copy-fix-regression.patch
+0106-rgw-Have-a-flavor-of-bucket-deletion-to-bypass-GC-an.patch
