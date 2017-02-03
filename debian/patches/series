@@ -104,3 +104,4 @@
 0104-rgw-minor-optimization.patch
 0105-rgw-multipart-part-copy-fix-regression.patch
 0106-rgw-Have-a-flavor-of-bucket-deletion-to-bypass-GC-an.patch
+0107-rgw_file-fix-RGWLibFS-setattr-for-directory-objects.patch

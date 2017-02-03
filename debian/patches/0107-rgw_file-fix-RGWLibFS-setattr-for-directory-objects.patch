@@ -1,0 +1,29 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Fri, 3 Feb 2017 13:44:45 -0500
+Subject: rgw_file:  fix RGWLibFS::setattr for directory objects
+
+Fixes:  http://tracker.ceph.com/issues/18808
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 4ad5a9226852d6d564baf2e63278ed6c4c185ecb)
+
+Resolves (in part): rhbz#1418606
+---
+ src/rgw/rgw_file.cc | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 0799854..05cbaec 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -571,6 +571,10 @@ namespace rgw {
+     buffer::list ux_key, ux_attrs;
+     string obj_name{rgw_fh->relative_object_name()};
+ 
++    if (rgw_fh->is_dir()) {
++      obj_name += "/";
++    }
++
+     RGWSetAttrsRequest req(cct, get_user(), rgw_fh->bucket_name(), obj_name);
+ 
+     rgw_fh->create_stat(st, mask);
