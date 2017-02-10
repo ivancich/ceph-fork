@@ -1,3 +1,10 @@
+ceph (10.2.5-17redhat1) stable; urgency=medium
+
+  * librbd: account m_processing when failing request after refresh
+    (rhbz#1420530)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 10 Feb 2017 14:48:59 -0700
+
 ceph (10.2.5-16redhat1) stable; urgency=medium
 
   * rgw: fix use of marker in List::list_objects() (rhbz#1371212)

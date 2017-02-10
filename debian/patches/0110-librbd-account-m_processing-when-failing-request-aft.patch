@@ -1,0 +1,35 @@
+From: Venky Shankar <vshankar@redhat.com>
+Date: Wed, 23 Nov 2016 14:35:03 +0530
+Subject: librbd: account m_processing when failing request after refresh
+
+AioImageRequestWQ::_void_process() dequeues an item from the
+work queue by invoking ThreadPool::_void_process() which also
+performs accounting by incrementing ->m_processing which never
+gets decremented if an image refresh fails. This is exactly
+the flow when running test_lock_fence.sh which blacklists a
+client and expects failed I/O operation from the client.
+
+Without this fix, running test_lock_fence.sh in a loop fails
+with an assert in PointerWQ dtor within 100 odd runs.
+
+Fixes: http://tracker.ceph.com/issues/17973
+Signed-off-by: Venky Shankar <vshankar@redhat.com>
+(cherry picked from commit cc2f222a9b8b987510601260cc76d5e2fba3b4a8)
+
+Resolves: rhbz#1420530
+---
+ src/librbd/AioImageRequestWQ.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/librbd/AioImageRequestWQ.cc b/src/librbd/AioImageRequestWQ.cc
+index 8fe1b81..26e265e 100644
+--- a/src/librbd/AioImageRequestWQ.cc
++++ b/src/librbd/AioImageRequestWQ.cc
+@@ -473,6 +473,7 @@ void AioImageRequestWQ::handle_refreshed(int r, AioImageRequest<> *req) {
+   ldout(cct, 15) << "resuming IO after image refresh: r=" << r << ", "
+                  << "req=" << req << dendl;
+   if (r < 0) {
++    process_finish();
+     req->fail(r);
+     finish_queued_op(req);
+     delete req;
