@@ -1,0 +1,66 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Thu, 26 Jan 2017 16:26:42 -0800
+Subject: rgw: fix use of marker in List::list_objects()
+
+Fixes: http://tracker.ceph.com/issues/18331
+
+List marker is an index key, so treat it as such. This
+fixes infinite loop in orphans find command.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit a5d1fa0587184f43c69d8e03114b58d43f320781)
+(cherry picked from commit 5ed454dd8f470749ef661782a8f4e866ae8193e2)
+
+Resolves: rhbz#1371212
+---
+ src/rgw/rgw_rados.cc | 27 +++++++++++++--------------
+ 1 file changed, 13 insertions(+), 14 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 0cdc57a..3cdb321 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -4879,21 +4879,20 @@ int RGWRados::Bucket::List::list_objects(int max, vector<RGWObjEnt> *result,
+ 
+   result->clear();
+ 
+-  rgw_obj marker_obj, end_marker_obj, prefix_obj;
+-  marker_obj.set_instance(params.marker.instance);
+-  marker_obj.set_ns(params.ns);
+-  marker_obj.set_obj(params.marker.name);
+-  rgw_obj_key cur_marker;
+-  marker_obj.get_index_key(&cur_marker);
+-
+-  end_marker_obj.set_instance(params.end_marker.instance);
+-  end_marker_obj.set_ns(params.ns);
+-  end_marker_obj.set_obj(params.end_marker.name);
++  rgw_bucket b;
++  rgw_obj marker_obj(b, params.marker);
++  rgw_obj end_marker_obj(b, params.end_marker);
++  rgw_obj prefix_obj;
+   rgw_obj_key cur_end_marker;
+-  if (params.ns.empty()) { /* no support for end marker for namespaced objects */
++  if (!params.ns.empty()) {
++    marker_obj.set_ns(params.ns);
++    end_marker_obj.set_ns(params.ns);
+     end_marker_obj.get_index_key(&cur_end_marker);
+   }
+-  const bool cur_end_marker_valid = !cur_end_marker.empty();
++  rgw_obj_key cur_marker;
++  marker_obj.get_index_key(&cur_marker);
++
++  const bool cur_end_marker_valid = !params.end_marker.empty();
+ 
+   prefix_obj.set_ns(params.ns);
+   prefix_obj.set_obj(params.prefix);
+@@ -4972,8 +4971,8 @@ int RGWRados::Bucket::List::list_objects(int max, vector<RGWObjEnt> *result,
+       }
+ 
+       if (count < max) {
+-        params.marker = obj;
+-        next_marker = obj;
++        params.marker = key;
++        next_marker = key;
+       }
+ 
+       if (params.filter && !params.filter->filter(obj.name, key.name))

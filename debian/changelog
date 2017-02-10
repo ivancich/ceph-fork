@@ -1,3 +1,9 @@
+ceph (10.2.5-16redhat1) stable; urgency=medium
+
+  * rgw: fix use of marker in List::list_objects() (rhbz#1371212)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 10 Feb 2017 13:18:03 -0700
+
 ceph (10.2.5-15redhat1) stable; urgency=medium
 
   * rgw: complete backport of "bi list --max-entries=1" bugfix
