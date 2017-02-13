@@ -1,0 +1,123 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Sun, 12 Feb 2017 18:20:43 -0500
+Subject: rgw_file: refcnt bugfixes
+
+This change includes 3 related changes:
+
+1. add required lock flags for FHCache updates--this is a crash
+   bug under concurrent update/lookup
+
+2. omit to inc/dec refcnt on root filehandles in 2 places--the
+   root handle current is not on the lru list, so it's not
+   valid to do so
+
+3. based on observation of LRU behavior during creates/deletes,
+   update (cohort) LRU unref to move objects to LRU when their
+   refcount falls to SENTINEL_REFCNT--this cheaply primes the
+   current reclaim() mechanism, so very significanty improves
+   space use (e.g., after deletes) in the absence of scans
+   (which is common due to nfs-ganesha caching)
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit beaeff059375b44188160dbde8a81dd4f4f8c6eb)
+
+resolves (in part): rhbz#1420231, rhbz#1416041, rhbz#1415981
+---
+ src/common/cohort_lru.h | 18 ++++++++++++++++++
+ src/rgw/rgw_file.cc     |  8 ++++++--
+ src/rgw/rgw_file.h      | 10 +++++++---
+ 3 files changed, 31 insertions(+), 5 deletions(-)
+
+diff --git a/src/common/cohort_lru.h b/src/common/cohort_lru.h
+index e4cdb7d..2c997ff 100644
+--- a/src/common/cohort_lru.h
++++ b/src/common/cohort_lru.h
+@@ -143,6 +143,12 @@ namespace cohort {
+ 	    continue;
+ 	  // XXXX if object at LRU has refcnt==1, take it
+ 	  Object* o = &(lane.q.back());
++#if 0 /* XXX save for refactor */
++	  std::cout << __func__
++		    << " " << o
++		    << " refcnt: " << o->lru_refcnt
++		    << std::endl;
++#endif
+ 	  if (can_reclaim(o)) {
+ 	    ++(o->lru_refcnt);
+ 	    o->lru_flags |= FLAG_EVICTING;
+@@ -213,6 +219,18 @@ namespace cohort {
+ 	    delete o;
+ 	  }
+ 	  lane.lock.unlock();
++	} else if (unlikely(refcnt == SENTINEL_REFCNT)) {
++	  Lane& lane = lane_of(o);
++	  lane.lock.lock();
++	  refcnt = o->lru_refcnt.load();
++	  if (likely(refcnt == SENTINEL_REFCNT)) {
++	    /* move to LRU */
++	    Object::Queue::iterator it =
++	      Object::Queue::s_iterator_to(*o);
++	    lane.q.erase(it);
++	    lane.q.push_back(*o);
++	  }
++	  lane.lock.unlock();
+ 	}
+       } /* unref */
+ 
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 22c6ff9..5f55ef1 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -266,7 +266,8 @@ namespace rgw {
+     }
+ 
+     rgw_fh->flags |= RGWFileHandle::FLAG_DELETED;
+-    fh_cache.remove(rgw_fh->fh.fh_hk.object, rgw_fh, cohort::lru::FLAG_NONE);
++    fh_cache.remove(rgw_fh->fh.fh_hk.object, rgw_fh,
++		    RGWFileHandle::FHCache::FLAG_LOCK);
+ 
+ #if 1 /* XXX verify clear cache */
+     fh_key fhk(rgw_fh->fh.fh_hk);
+@@ -767,7 +768,10 @@ namespace rgw {
+     lsubdout(fs->get_context(), rgw, 17)
+       << __func__ << " " << *this
+       << dendl;
+-    fs->fh_cache.remove(fh.fh_hk.object, this, cohort::lru::FLAG_NONE);
++    /* if !deleted, then object still in fh_cache */
++    if (! deleted()) {
++      fs->fh_cache.remove(fh.fh_hk.object, this, FHCache::FLAG_LOCK);
++    }
+     return true;
+   } /* RGWFileHandle::reclaim */
+ 
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index 4d29e17..8eb42eb 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -808,7 +808,7 @@ namespace rgw {
+     void release_evict(RGWFileHandle* fh) {
+       /* remove from cache, releases sentinel ref */
+       fh_cache.remove(fh->fh.fh_hk.object, fh,
+-		      RGWFileHandle::FHCache::FLAG_NONE);
++		      RGWFileHandle::FHCache::FLAG_LOCK);
+       /* release call-path ref */
+       (void) fh_lru.unref(fh, cohort::lru::FLAG_NONE);
+     }
+@@ -979,11 +979,15 @@ namespace rgw {
+     } /*  lookup_fh(RGWFileHandle*, const char *, const uint32_t) */
+ 
+     inline void unref(RGWFileHandle* fh) {
+-      (void) fh_lru.unref(fh, cohort::lru::FLAG_NONE);
++      if (likely(! fh->is_root())) {
++	(void) fh_lru.unref(fh, cohort::lru::FLAG_NONE);
++      }
+     }
+ 
+     inline RGWFileHandle* ref(RGWFileHandle* fh) {
+-      fh_lru.ref(fh, cohort::lru::FLAG_NONE);
++      if (likely(! fh->is_root())) {
++	fh_lru.ref(fh, cohort::lru::FLAG_NONE);
++      }
+       return fh;
+     }
+ 

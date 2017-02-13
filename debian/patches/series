@@ -108,3 +108,9 @@
 0108-rgw-complete-backport-of-bi-list-max-entries-1-bugfi.patch
 0109-rgw-fix-use-of-marker-in-List-list_objects.patch
 0110-librbd-account-m_processing-when-failing-request-aft.patch
+0111-rgw-fix-swift-cannot-disable-object-versioning.patch
+0112-rgw_file-split-last-argv-on-ws-if-provided.patch
+0113-rgw_file-add-pretty-print-for-RGWFileHandle.patch
+0114-rgw_file-add-refcount-dout-traces-at-debuglevel-17.patch
+0115-rgw_file-refcnt-bugfixes.patch
+0116-rgw_file-fix-hiwat-behavior.patch

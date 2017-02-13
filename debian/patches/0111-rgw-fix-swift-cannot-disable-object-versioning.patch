@@ -1,0 +1,40 @@
+From: Jing Wenjun <jingwenjun@cmss.chinamobile.com>
+Date: Wed, 8 Feb 2017 15:07:43 +0800
+Subject: rgw: fix swift cannot disable object versioning
+
+we should be able to disable object verioning by removing its X-Versions-Location
+metadata header by sending an empty key value. this description can be found at
+No.8 in http://docs.openstack.org/user-guide/cli-swift-set-object-versions.html.
+
+Fixes: http://tracker.ceph.com/issues/18852
+Signed-off-by: Jing Wenjun <jingwenjun@cmss.chinamobile.com>
+(cherry picked from commit 17c5a0edd2227703cec867f0f588d4eae36dfe1c)
+
+Resolves: rhbz#1421099
+---
+ src/rgw/rgw_rest_swift.cc | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_rest_swift.cc b/src/rgw/rgw_rest_swift.cc
+index a6d3623..4eabe7f 100644
+--- a/src/rgw/rgw_rest_swift.cc
++++ b/src/rgw/rgw_rest_swift.cc
+@@ -520,8 +520,7 @@ static int get_swift_versioning_settings(
+     swift_ver_location = boost::in_place(std::string());
+   }
+ 
+-  std::string vloc = s->info.env->get("HTTP_X_VERSIONS_LOCATION", "");
+-  if (vloc.size()) {
++  if (s->info.env->exists("HTTP_X_VERSIONS_LOCATION")) {
+     /* If the Swift's versioning is globally disabled but someone wants to
+      * enable it for a given container, new version of Swift will generate
+      * the precondition failed error. */
+@@ -529,7 +528,7 @@ static int get_swift_versioning_settings(
+       return -ERR_PRECONDITION_FAILED;
+     }
+ 
+-    swift_ver_location = std::move(vloc);
++    swift_ver_location = s->info.env->get("HTTP_X_VERSIONS_LOCATION", "");
+   }
+ 
+   return 0;

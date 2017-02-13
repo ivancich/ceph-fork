@@ -1,3 +1,18 @@
+ceph (10.2.5-18redhat1) stable; urgency=medium
+
+  * rgw: fix swift cannot disable object versioning (rhbz#1421099)
+  * rgw_file: split last argv on ws, if provided (rhbz#1420231
+    rhbz#1416041 rhbz#1415981)
+  * rgw_file: add pretty-print for RGWFileHandle (rhbz#1420231
+    rhbz#1416041 rhbz#1415981)
+  * rgw_file: add refcount dout traces at debuglevel 17 (rhbz#1420231
+    rhbz#1416041 rhbz#1415981)
+  * rgw_file: refcnt bugfixes (rhbz#1420231 rhbz#1416041 rhbz#1415981)
+  * rgw_file: fix hiwat behavior (rhbz#1420231 rhbz#1416041
+    rhbz#1415981)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 13 Feb 2017 15:55:45 -0700
+
 ceph (10.2.5-17redhat1) stable; urgency=medium
 
   * librbd: account m_processing when failing request after refresh

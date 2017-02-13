@@ -1,0 +1,42 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 17 Jan 2017 11:23:45 -0500
+Subject: rgw_file:  split last argv on ws, if provided
+
+This is intended to allow an "extra" unparsed argument string
+containing various cmdline options to be passed as the last argument
+in the argv array of librgw_create(), which nfs-ganesha is
+expecting to happen.
+
+While at it, hook env_args() too.
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit fbc19e4effc736c98cc1cc283e5c7b131a0fa766)
+
+resolves (in part): rhbz#1420231, rhbz#1416041, rhbz#1415981
+---
+ src/rgw/librgw.cc | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/rgw/librgw.cc b/src/rgw/librgw.cc
+index 70fd69e..0e4075c 100644
+--- a/src/rgw/librgw.cc
++++ b/src/rgw/librgw.cc
+@@ -629,7 +629,18 @@ int librgw_create(librgw_t* rgw, int argc, char **argv)
+     std::lock_guard<std::mutex> lg(librgw_mtx);
+     if (! g_ceph_context) {
+       vector<const char*> args;
++      std::vector<std::string> spl_args;
++      // last non-0 argument will be split and consumed
++      if (argc > 1) {
++	const std::string spl_arg{argv[(--argc)]};
++	get_str_vec(spl_arg, " \t", spl_args);
++      }
+       argv_to_vec(argc, const_cast<const char**>(argv), args);
++      // append split args, if any
++      for (const auto& elt : spl_args) {
++	args.push_back(elt.c_str());
++      }
++      env_to_vec(args);
+       rc = rgwlib.init(args);
+     }
+   }

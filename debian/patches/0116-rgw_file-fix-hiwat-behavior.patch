@@ -1,0 +1,58 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Sun, 12 Feb 2017 20:18:26 -0500
+Subject: rgw_file: fix hiwat behavior
+
+Removed logic to skip reclaim processing conditionally on hiwat,
+this probably meant to be related to a lowat value, which does
+not exist.
+
+Having exercised the hiwat reclaim behavior, noticed that the
+path which moves unreachable objects to LRU, could and probably
+should remove them altogether when q.size exceeds hiwat.  Now
+the max unreachable float is lane hiwat, for all lanes.
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit b8791b2217e9ca87b2d17b51f283fa14bd68b581)
+
+resolves (in part): rhbz#1420231, rhbz#1416041, rhbz#1415981
+---
+ src/common/cohort_lru.h | 19 +++++++------------
+ 1 file changed, 7 insertions(+), 12 deletions(-)
+
+diff --git a/src/common/cohort_lru.h b/src/common/cohort_lru.h
+index 2c997ff..8a8b766 100644
+--- a/src/common/cohort_lru.h
++++ b/src/common/cohort_lru.h
+@@ -131,17 +131,7 @@ namespace cohort {
+ 	for (int ix = 0; ix < n_lanes; ++ix,
+ 	       lane_ix = next_evict_lane()) {
+ 	  Lane& lane = qlane[lane_ix];
+-	  /* hiwat check */
+-	  /* XXX try the hiwat check unlocked, then recheck locked */
+-	  if (lane.q.size() > lane_hiwat) {
+-	    lane.lock.lock();
+-	    if (lane.q.size() <= lane_hiwat) {
+-	      lane.lock.unlock();
+-	      continue;
+-	    }
+-	  } else
+-	    continue;
+-	  // XXXX if object at LRU has refcnt==1, take it
++	  /* if object at LRU has refcnt==1, it may be reclaimable */
+ 	  Object* o = &(lane.q.back());
+ #if 0 /* XXX save for refactor */
+ 	  std::cout << __func__
+@@ -228,7 +218,12 @@ namespace cohort {
+ 	    Object::Queue::iterator it =
+ 	      Object::Queue::s_iterator_to(*o);
+ 	    lane.q.erase(it);
+-	    lane.q.push_back(*o);
++	    /* hiwat check */
++	    if (lane.q.size() > lane_hiwat) {
++	      delete o;
++	    } else {
++	      lane.q.push_back(*o);
++	    }
+ 	  }
+ 	  lane.lock.unlock();
+ 	}
