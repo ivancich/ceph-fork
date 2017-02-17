@@ -114,3 +114,4 @@
 0114-rgw_file-add-refcount-dout-traces-at-debuglevel-17.patch
 0115-rgw_file-refcnt-bugfixes.patch
 0116-rgw_file-fix-hiwat-behavior.patch
+0117-rgw-make-sending-Content-Length-in-204-and-304-contr.patch

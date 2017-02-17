@@ -1,3 +1,10 @@
+ceph (10.2.5-19redhat1) stable; urgency=medium
+
+  * rgw: make sending Content-Length in 204 and 304 controllable
+    (rhbz#1252600)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Fri, 17 Feb 2017 17:29:22 -0500
+
 ceph (10.2.5-18redhat1) stable; urgency=medium
 
   * rgw: fix swift cannot disable object versioning (rhbz#1421099)
