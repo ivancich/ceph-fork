@@ -1,0 +1,203 @@
+From: Mykola Golub <mgolub@mirantis.com>
+Date: Tue, 29 Nov 2016 11:44:05 +0200
+Subject: rbd-mirror: make 'rbd mirror image resync' work after split-brain
+
+Fixes: http://tracker.ceph.com/issues/18051
+Signed-off-by: Mykola Golub <mgolub@mirantis.com>
+(cherry picked from commit 6cb1ed485f89f30fe6dda31e77e16e23f9b5b2ab)
+(cherry picked from commit 6d729d231401f9253aa1cbde06e57cd8bd066a90)
+
+Resolves: rhbz#1424687
+---
+ .../image_replayer/test_mock_BootstrapRequest.cc   |  4 +--
+ src/test/rbd_mirror/test_mock_ImageReplayer.cc     |  1 +
+ src/tools/rbd_mirror/ImageReplayer.cc              | 10 ++-----
+ src/tools/rbd_mirror/ImageReplayer.h               |  1 +
+ .../rbd_mirror/image_replayer/BootstrapRequest.cc  | 32 +++++++++++++++++++++-
+ .../rbd_mirror/image_replayer/BootstrapRequest.h   |  8 ++++--
+ 6 files changed, 42 insertions(+), 14 deletions(-)
+
+diff --git a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+index c681cbf..471166b 100644
+--- a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
++++ b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+@@ -402,14 +402,14 @@ public:
+                                     remote_mirror_uuid,
+                                     &mock_journaler,
+                                     &m_mirror_peer_client_meta,
+-                                    on_finish);
++                                    on_finish, &m_do_resync);
+   }
+ 
+   librbd::ImageCtx *m_remote_image_ctx;
+   librbd::ImageCtx *m_local_image_ctx = nullptr;
+   librbd::MockTestImageCtx *m_local_test_image_ctx = nullptr;
+   librbd::journal::MirrorPeerClientMeta m_mirror_peer_client_meta;
+-
++  bool m_do_resync;
+ };
+ 
+ TEST_F(TestMockImageReplayerBootstrapRequest, NonPrimaryRemoteSyncingState) {
+diff --git a/src/test/rbd_mirror/test_mock_ImageReplayer.cc b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
+index 2477e03..a276899 100644
+--- a/src/test/rbd_mirror/test_mock_ImageReplayer.cc
++++ b/src/test/rbd_mirror/test_mock_ImageReplayer.cc
+@@ -75,6 +75,7 @@ struct BootstrapRequest<librbd::MockTestImageCtx> {
+         ::journal::MockJournalerProxy *journaler,
+         librbd::journal::MirrorPeerClientMeta *client_meta,
+         Context *on_finish,
++        bool *do_resync,
+         rbd::mirror::ProgressContext *progress_ctx = nullptr) {
+     assert(s_instance != nullptr);
+     s_instance->on_finish = on_finish;
+diff --git a/src/tools/rbd_mirror/ImageReplayer.cc b/src/tools/rbd_mirror/ImageReplayer.cc
+index b1e1e6b..c995287 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.cc
++++ b/src/tools/rbd_mirror/ImageReplayer.cc
+@@ -397,7 +397,7 @@ void ImageReplayer<I>::bootstrap() {
+     &m_local_image_ctx, m_local_image_name, m_remote_image_id,
+     m_global_image_id, m_threads->work_queue, m_threads->timer,
+     &m_threads->timer_lock, m_local_mirror_uuid, m_remote_mirror_uuid,
+-    m_remote_journaler, &m_client_meta, ctx, &m_progress_cxt);
++    m_remote_journaler, &m_client_meta, ctx, &m_do_resync, &m_progress_cxt);
+ 
+   {
+     Mutex::Locker locker(m_lock);
+@@ -438,7 +438,6 @@ void ImageReplayer<I>::handle_bootstrap(int r) {
+     return;
+   }
+ 
+-
+   assert(m_local_journal == nullptr);
+   {
+     RWLock::RLocker snap_locker(m_local_image_ctx->snap_lock);
+@@ -455,13 +454,8 @@ void ImageReplayer<I>::handle_bootstrap(int r) {
+ 
+   {
+     Mutex::Locker locker(m_lock);
+-    bool do_resync = false;
+-    r = m_local_image_ctx->journal->is_resync_requested(&do_resync);
+-    if (r < 0) {
+-      derr << "failed to check if a resync was requested" << dendl;
+-    }
+ 
+-    if (do_resync) {
++    if (m_do_resync) {
+       Context *on_finish = m_on_start_finish;
+       m_stopping_for_resync = true;
+       FunctionContext *ctx = new FunctionContext([this, on_finish](int r) {
+diff --git a/src/tools/rbd_mirror/ImageReplayer.h b/src/tools/rbd_mirror/ImageReplayer.h
+index 222ef02..ee080f1 100644
+--- a/src/tools/rbd_mirror/ImageReplayer.h
++++ b/src/tools/rbd_mirror/ImageReplayer.h
+@@ -253,6 +253,7 @@ private:
+   int m_last_r = 0;
+   std::string m_state_desc;
+   BootstrapProgressContext m_progress_cxt;
++  bool m_do_resync;
+   image_replayer::EventPreprocessor<ImageCtxT> *m_event_preprocessor = nullptr;
+   image_replayer::ReplayStatusFormatter<ImageCtxT> *m_replay_status_formatter =
+     nullptr;
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+index 0000455..2a87d5a 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.cc
+@@ -51,6 +51,7 @@ BootstrapRequest<I>::BootstrapRequest(
+         Journaler *journaler,
+         MirrorPeerClientMeta *client_meta,
+         Context *on_finish,
++        bool *do_resync,
+         rbd::mirror::ProgressContext *progress_ctx)
+   : BaseRequest("rbd::mirror::image_replayer::BootstrapRequest",
+ 		reinterpret_cast<CephContext*>(local_io_ctx.cct()), on_finish),
+@@ -62,6 +63,7 @@ BootstrapRequest<I>::BootstrapRequest(
+     m_local_mirror_uuid(local_mirror_uuid),
+     m_remote_mirror_uuid(remote_mirror_uuid), m_journaler(journaler),
+     m_client_meta(client_meta), m_progress_ctx(progress_ctx),
++    m_do_resync(do_resync),
+     m_lock(unique_lock_name("BootstrapRequest::m_lock", this)) {
+ }
+ 
+@@ -72,6 +74,8 @@ BootstrapRequest<I>::~BootstrapRequest() {
+ 
+ template <typename I>
+ void BootstrapRequest<I>::send() {
++  *m_do_resync = false;
++
+   get_local_image_id();
+ }
+ 
+@@ -369,7 +373,33 @@ void BootstrapRequest<I>::handle_open_local_image(int r) {
+     m_ret_val = r;
+     close_remote_image();
+     return;
+-  } if (m_client.state == cls::journal::CLIENT_STATE_DISCONNECTED) {
++  }
++
++  I *local_image_ctx = (*m_local_image_ctx);
++  {
++    RWLock::RLocker snap_locker(local_image_ctx->snap_lock);
++    if (local_image_ctx->journal == nullptr) {
++      derr << ": local image does not support journaling" << dendl;
++      m_ret_val = -EINVAL;
++      close_local_image();
++      return;
++    }
++
++    r = (*m_local_image_ctx)->journal->is_resync_requested(m_do_resync);
++    if (r < 0) {
++      derr << ": failed to check if a resync was requested" << dendl;
++      m_ret_val = r;
++      close_local_image();
++      return;
++    }
++  }
++
++  if (*m_do_resync) {
++    close_remote_image();
++    return;
++  }
++
++  if (m_client.state == cls::journal::CLIENT_STATE_DISCONNECTED) {
+     dout(10) << ": client flagged disconnected -- skipping bootstrap" << dendl;
+     // The caller is expected to detect disconnect initializing remote journal.
+     m_ret_val = 0;
+diff --git a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h
+index 8926adf..51d394e 100644
+--- a/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h
++++ b/src/tools/rbd_mirror/image_replayer/BootstrapRequest.h
+@@ -52,14 +52,15 @@ public:
+         Journaler *journaler,
+         MirrorPeerClientMeta *client_meta,
+         Context *on_finish,
++        bool *do_resync,
+         ProgressContext *progress_ctx = nullptr) {
+     return new BootstrapRequest(local_io_ctx, remote_io_ctx,
+                                 image_sync_throttler, local_image_ctx,
+                                 local_image_name, remote_image_id,
+                                 global_image_id, work_queue, timer, timer_lock,
+                                 local_mirror_uuid, remote_mirror_uuid,
+-                                journaler, client_meta, on_finish,
+-				progress_ctx);
++                                journaler, client_meta, on_finish, do_resync,
++                                progress_ctx);
+   }
+ 
+   BootstrapRequest(librados::IoCtx &local_io_ctx,
+@@ -73,7 +74,7 @@ public:
+                    const std::string &local_mirror_uuid,
+                    const std::string &remote_mirror_uuid, Journaler *journaler,
+                    MirrorPeerClientMeta *client_meta, Context *on_finish,
+-		   ProgressContext *progress_ctx = nullptr);
++                   bool *do_resync, ProgressContext *progress_ctx = nullptr);
+   ~BootstrapRequest();
+ 
+   void send();
+@@ -158,6 +159,7 @@ private:
+   Journaler *m_journaler;
+   MirrorPeerClientMeta *m_client_meta;
+   ProgressContext *m_progress_ctx;
++  bool *m_do_resync;
+   Mutex m_lock;
+   bool m_canceled = false;
+ 

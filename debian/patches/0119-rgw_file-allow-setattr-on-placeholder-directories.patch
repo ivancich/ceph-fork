@@ -1,0 +1,51 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Sun, 19 Feb 2017 18:21:06 -0500
+Subject: rgw_file: allow setattr on placeholder directories
+
+When a POSIX path <bucket>/foo/ is known only as an implicit path
+segment from other objects (e.g., <bucket>/foo/bar.txt), a case
+that would usually arise from S3 upload of such an object, an
+RGWFileHandle object representing "<bucket>/foo/" will be constructed
+as needed, with no backing in RGW.
+
+This is by design, but subsequently, if a setattr is performed on
+such a handle, we must be ready to create the object inline with
+storing the attributes.
+
+Fixes: http://tracker.ceph.com/issues/18989
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 55eec1c0a0e136736961423b7b6244d0f3693c1a)
+
+Resolves (in part): rhbz#1422059, rhbz#1422822, rhbz#1422875
+---
+ src/rgw/rgw_file.cc | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 64b7a99..5d3abe8 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -588,6 +588,22 @@ namespace rgw {
+     rc = rgwlib.get_fe()->execute_req(&req);
+     rc2 = req.get_ret();
+ 
++    if (rc == -ENOENT) {
++      /* special case:  materialize placeholder dir */
++      buffer::list bl;
++      RGWPutObjRequest req(get_context(), get_user(), rgw_fh->bucket_name(),
++			   obj_name, bl);
++
++      rgw_fh->encode_attrs(ux_key, ux_attrs); /* because std::moved */
++
++      /* save attrs */
++      req.emplace_attr(RGW_ATTR_UNIX_KEY1, std::move(ux_key));
++      req.emplace_attr(RGW_ATTR_UNIX1, std::move(ux_attrs));
++
++      rc = rgwlib.get_fe()->execute_req(&req);
++      rc2 = req.get_ret();
++    }
++
+     return (((rc == 0) && (rc2 == 0)) ? 0 : -EIO);
+   } /* RGWLibFS::setattr */
+ 

@@ -115,3 +115,9 @@
 0115-rgw_file-refcnt-bugfixes.patch
 0116-rgw_file-fix-hiwat-behavior.patch
 0117-rgw-make-sending-Content-Length-in-204-and-304-contr.patch
+0118-rgw_file-invalid-use-of-RGWFileHandle-FLAG_EXACT_MAT.patch
+0119-rgw_file-allow-setattr-on-placeholder-directories.patch
+0120-rgw_file-rgw_readdir-can-t-list-multi-segment-dirs.patch
+0121-rbd-mirror-split-brain-issues-should-be-clearly-visi.patch
+0122-rbd-mirror-make-rbd-mirror-image-resync-work-after-s.patch
+0123-rbd-mirror-fix-gmock-warnings-in-bootstrap-request-u.patch

@@ -1,3 +1,20 @@
+ceph (10.2.5-20redhat1) stable; urgency=medium
+
+  * rgw_file: invalid use of RGWFileHandle::FLAG_EXACT_MATCH
+    (rhbz#1422059 rhbz#1422822 rhbz#1422875)
+  * rgw_file: allow setattr on placeholder directories (rhbz#1422059
+    rhbz#1422822 rhbz#1422875)
+  * rgw_file: rgw_readdir can't list multi-segment dirs (rhbz#1422059
+    rhbz#1422822 rhbz#1422875)
+  * rbd-mirror: split-brain issues should be clearly visible in mirror
+    status (rhbz#1424687)
+  * rbd-mirror: make 'rbd mirror image resync' work after split-brain
+    (rhbz#1424687)
+  * rbd-mirror: fix gmock warnings in bootstrap request unit tests
+    (rhbz#1424687)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 20 Feb 2017 09:19:56 -0700
+
 ceph (10.2.5-19redhat1) stable; urgency=medium
 
   * rgw: make sending Content-Length in 204 and 304 controllable

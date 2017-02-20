@@ -1,0 +1,64 @@
+From: Mykola Golub <mgolub@mirantis.com>
+Date: Tue, 6 Dec 2016 23:19:54 +0200
+Subject: rbd-mirror: fix gmock warnings in bootstrap request unit tests
+
+Fixes: http://tracker.ceph.com/issues/18156
+Signed-off-by: Mykola Golub <mgolub@mirantis.com>
+(cherry picked from commit 376026d7b24c77a59ef95d0f66686494caf0e9d0)
+(cherry picked from commit 077290b873e2cd991a995de14a116d85d83ba66e)
+
+Resolves: rhbz#1424687
+---
+ .../rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc   | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+index 471166b..56bb21f 100644
+--- a/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
++++ b/src/test/rbd_mirror/image_replayer/test_mock_BootstrapRequest.cc
+@@ -375,6 +375,13 @@ public:
+     EXPECT_CALL(mock_journal, get_tag_data()).WillOnce(Return(tag_data));
+   }
+ 
++  void expect_is_resync_requested(librbd::MockJournal &mock_journal,
++                                  bool do_resync, int r) {
++    EXPECT_CALL(mock_journal, is_resync_requested(_))
++      .WillOnce(DoAll(SetArgPointee<0>(do_resync),
++                      Return(r)));
++  }
++
+   bufferlist encode_tag_data(const librbd::journal::TagData &tag_data) {
+     bufferlist bl;
+     ::encode(tag_data, bl);
+@@ -512,6 +519,7 @@ TEST_F(TestMockImageReplayerBootstrapRequest, RemoteDemotePromote) {
+   MockOpenLocalImageRequest mock_open_local_image_request;
+   expect_open_local_image(mock_open_local_image_request, m_local_io_ctx,
+                           mock_local_image_ctx.id, mock_local_image_ctx, 0);
++  expect_is_resync_requested(mock_journal, false, 0);
+ 
+   // remote demotion / promotion event
+   Tags tags = {
+@@ -589,6 +597,7 @@ TEST_F(TestMockImageReplayerBootstrapRequest, MultipleRemoteDemotePromotes) {
+   MockOpenLocalImageRequest mock_open_local_image_request;
+   expect_open_local_image(mock_open_local_image_request, m_local_io_ctx,
+                           mock_local_image_ctx.id, mock_local_image_ctx, 0);
++  expect_is_resync_requested(mock_journal, false, 0);
+ 
+   // remote demotion / promotion event
+   Tags tags = {
+@@ -676,6 +685,7 @@ TEST_F(TestMockImageReplayerBootstrapRequest, LocalDemoteRemotePromote) {
+   MockOpenLocalImageRequest mock_open_local_image_request;
+   expect_open_local_image(mock_open_local_image_request, m_local_io_ctx,
+                           mock_local_image_ctx.id, mock_local_image_ctx, 0);
++  expect_is_resync_requested(mock_journal, false, 0);
+ 
+   // remote demotion / promotion event
+   Tags tags = {
+@@ -751,6 +761,7 @@ TEST_F(TestMockImageReplayerBootstrapRequest, SplitBrainForcePromote) {
+   MockOpenLocalImageRequest mock_open_local_image_request;
+   expect_open_local_image(mock_open_local_image_request, m_local_io_ctx,
+                           mock_local_image_ctx.id, mock_local_image_ctx, 0);
++  expect_is_resync_requested(mock_journal, false, 0);
+ 
+   // remote demotion / promotion event
+   Tags tags = {

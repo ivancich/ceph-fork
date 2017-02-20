@@ -1,0 +1,55 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Sun, 19 Feb 2017 20:34:31 -0500
+Subject: rgw_file: rgw_readdir can't list multi-segment dirs
+
+This issue has one root cause in librgw, namely that the marker
+argument to these requests was incorrectly formatted (though the
+marker cache was working as intended).
+
+Secondarily, for nfs-ganesha users, there is a compounding issue
+that the RGW fsal was required by "temporary" convention to
+populate the entire dirent cache for a directory on a single
+readdir() invocation--the cache_inode/mdcache implementations
+invariantly pass (before future 2.5 changesets, currently in
+progress) a null pointer for the start cookie offset, intended
+to convey this.
+
+Fixes: http://tracker.ceph.com/issues/18991
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 2cd60ee9712291b906123aca1704288b18a9742b)
+
+Resolves (in part): rhbz#1422059, rhbz#1422822, rhbz#1422875
+---
+ src/rgw/rgw_file.h | 11 ++---------
+ 1 file changed, 2 insertions(+), 9 deletions(-)
+
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index 8eb42eb..634e7ca 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -1116,11 +1116,7 @@ public:
+       cb_arg(_cb_arg), rcb(_rcb), ix(0) {
+     const std::string& sm = rgw_fh->find_marker(*offset);
+     if (sm.size() > 0) {
+-      RGWListBuckets::marker =
+-	rgw_fh->relative_object_name();
+-      if (marker.back() != '/')
+-	marker += "/";
+-      marker += sm;
++      marker = sm;
+     }
+     op = this;
+   }
+@@ -1221,10 +1217,7 @@ public:
+       cb_arg(_cb_arg), rcb(_rcb), ix(0) {
+     const std::string& sm{rgw_fh->find_marker(*offset)};
+     if (sm.size() > 0) {
+-      RGWListBucket::marker = {rgw_fh->relative_object_name(), ""};
+-      if (marker.name.back() != '/')
+-	marker.name += "/";
+-      marker.name += sm;
++      marker = sm;
+     }
+     default_max = 1000; // XXX was being omitted
+     op = this;

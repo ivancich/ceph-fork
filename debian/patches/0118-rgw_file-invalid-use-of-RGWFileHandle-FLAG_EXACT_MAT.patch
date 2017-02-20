@@ -1,0 +1,36 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Sun, 19 Feb 2017 17:43:17 -0500
+Subject: rgw_file: invalid use of RGWFileHandle::FLAG_EXACT_MATCH
+
+The change which introduced this flag also caused it to be
+given as the flags argument to RGWLibFS::stat_leaf() when called
+from rgw_lookup().
+
+This was incorrect:  in particular, when a directory is known only
+as a common prefix of other objects, the AWS namespace mapping
+convention requires lookup("foo") to match a non-materialized
+instance of "foo/" (case 2 in RGWLibFS::stat_leaf's stat loop).
+
+Fixes: http://tracker.ceph.com/issues/18992
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit e31e9eb980f958640150e8d7f17de1b9e5478b1e)
+
+Resolves (in part): rhbz#1422059, rhbz#1422822, rhbz#1422875
+---
+ src/rgw/rgw_file.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 5f55ef1..64b7a99 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -1348,7 +1348,7 @@ int rgw_lookup(struct rgw_fs *rgw_fs,
+ 	return -ENOENT;
+     }
+   } else {
+-    fhr = fs->stat_leaf(parent, path, RGWFileHandle::FLAG_EXACT_MATCH);
++    fhr = fs->stat_leaf(parent, path, RGWFileHandle::FLAG_NONE);
+     if (! get<0>(fhr)) {
+       if (! (flags & RGW_LOOKUP_FLAG_CREATE))
+ 	return -ENOENT;
