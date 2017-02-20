@@ -1,3 +1,10 @@
+ceph (10.2.5-21redhat1) stable; urgency=medium
+
+  * rgw_file: fix marker computation (rhbz#1422059 rhbz#1422822
+    rhbz#1422875)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Mon, 20 Feb 2017 16:19:35 -0500
+
 ceph (10.2.5-20redhat1) stable; urgency=medium
 
   * rgw_file: invalid use of RGWFileHandle::FLAG_EXACT_MATCH
