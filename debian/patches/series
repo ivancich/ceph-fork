@@ -122,3 +122,4 @@
 0122-rbd-mirror-make-rbd-mirror-image-resync-work-after-s.patch
 0123-rbd-mirror-fix-gmock-warnings-in-bootstrap-request-u.patch
 0124-rgw_file-fix-marker-computation.patch
+0125-rgw_file-avoid-stranding-invalid-name-bucket-handles.patch

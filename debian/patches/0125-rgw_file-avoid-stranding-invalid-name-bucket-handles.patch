@@ -1,0 +1,37 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Wed, 22 Feb 2017 10:24:29 -0500
+Subject: rgw_file: avoid stranding invalid-name bucket handles in fhcache
+
+To avoid a string copy in the common mkdir path, handles for
+proposed buckets currently are staged in the handle table, before
+being rejected.  They need to be destaged, not just marked deleted
+(because deleted objects are now assumed not to be linked, as of
+beaeff059375b44188160dbde8a81dd4f4f8c6eb).
+
+This triggered an unhandled Boost assert when deleting staged
+handles, as current safe_link mode requires first removing from
+the FHCache.
+
+Fixes: http://tracker.ceph.com/issues/19036
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 6cde812c92e5bba9f85fbf8486ebe69b55952370)
+
+Resolves: rhbz#1425771
+---
+ src/rgw/rgw_file.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 5d3abe8..af542d5 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -435,6 +435,8 @@ namespace rgw {
+       rc = valid_s3_bucket_name(bname, false /* relaxed */);
+       if (rc != 0) {
+ 	rgw_fh->flags |= RGWFileHandle::FLAG_DELETED;
++	fh_cache.remove(rgw_fh->fh.fh_hk.object, rgw_fh,
++			RGWFileHandle::FHCache::FLAG_LOCK);
+ 	rgw_fh->mtx.unlock();
+ 	unref(rgw_fh);
+ 	get<0>(mkr) = nullptr;
