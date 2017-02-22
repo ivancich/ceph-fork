@@ -1,0 +1,214 @@
+From: Radoslaw Zarzynski <rzarzynski@mirantis.com>
+Date: Thu, 23 Jun 2016 15:43:49 +0200
+Subject: rgw: fix the handling of rgw_swift_url_prefix.
+
+This patch fixes to the support for placing the Swift API in the root
+of URL hierarchy. Unfortunately, the whole concept exhibits a severe side
+effect: inability to deploy RadosGW in multi-site configuration.
+
+The sole reason behind this fix is the fact we claimed in documentation
+that the feature is available.
+
+Fixes: http://tracker.ceph.com/issues/16673
+Signed-off-by: Radoslaw Zarzynski <rzarzynski@mirantis.com>
+(cherry picked from commit dbf5b5b73dc5ceb20959a4a55dd695cd5f95d034)
+
+Conflicts:
+	src/rgw/rgw_main.cc
+          Jewel needs to take care of swift_init and swift_finalize
+          functions that have been removed in master.
+
+(cherry picked from commit 6d88b894ec726d9097aad21132603af8da295fd8)
+
+Resolves (in part): rhbz#1250713
+---
+ doc/radosgw/config-ref.rst |  3 +++
+ src/rgw/rgw_main.cc        | 30 +++++++++++++++++++++++++-----
+ src/rgw/rgw_rest.cc        |  5 +++--
+ src/rgw/rgw_rest.h         |  7 +++++++
+ src/rgw/rgw_rest_swift.cc  | 39 ++++++++++++++++++++++++---------------
+ src/rgw/rgw_rest_swift.h   |  6 ++++++
+ 6 files changed, 68 insertions(+), 22 deletions(-)
+
+diff --git a/doc/radosgw/config-ref.rst b/doc/radosgw/config-ref.rst
+index 701ea50..abcc268 100644
+--- a/doc/radosgw/config-ref.rst
++++ b/doc/radosgw/config-ref.rst
+@@ -796,6 +796,9 @@ Swift Settings
+               on the same host. For compatibility, setting this configuration
+               variable to empty causes the default "/swift" to be used.
+               Use explicit prefix "/" to start StorageURL at the root.
++              WARNING: setting this option to "/" will NOT work if S3 API is
++              enabled. From the other side disabling S3 will make impossible
++              to deploy RadosGW in the multi-site configuration!
+ :Default: ``swift``
+ :Example: "/swift-testing"
+ 
+diff --git a/src/rgw/rgw_main.cc b/src/rgw/rgw_main.cc
+index 45be895..1180c53 100644
+--- a/src/rgw/rgw_main.cc
++++ b/src/rgw/rgw_main.cc
+@@ -339,15 +339,35 @@ int main(int argc, const char **argv)
+   }
+ 
+   // S3 website mode is a specialization of S3
+-  bool s3website_enabled = apis_map.count("s3website") > 0;
+-  if (apis_map.count("s3") > 0 || s3website_enabled)
+-    rest.register_default_mgr(set_logging(new RGWRESTMgr_S3(s3website_enabled)));
++  const bool s3website_enabled = apis_map.count("s3website") > 0;
++  // Swift API entrypoint could placed in the root instead of S3
++  const bool swift_at_root = g_conf->rgw_swift_url_prefix == "/";
++  if (apis_map.count("s3") > 0 || s3website_enabled) {
++    if (! swift_at_root) {
++      rest.register_default_mgr(set_logging(new RGWRESTMgr_S3(s3website_enabled)));
++    } else {
++      derr << "Cannot have the S3 or S3 Website enabled together with "
++           << "Swift API placed in the root of hierarchy" << dendl;
++      return EINVAL;
++    }
++  }
+ 
+   if (apis_map.count("swift") > 0) {
+     do_swift = true;
+     swift_init(g_ceph_context);
+-    rest.register_resource(g_conf->rgw_swift_url_prefix,
+-			   set_logging(new RGWRESTMgr_SWIFT));
++
++    if (! swift_at_root) {
++      rest.register_resource(g_conf->rgw_swift_url_prefix,
++                             set_logging(new RGWRESTMgr_SWIFT));
++    } else {
++      if (store->get_zonegroup().zones.size() > 1) {
++        derr << "Placing Swift API in the root of URL hierarchy while running"
++             << " multi-site configuration requires another instance of RadosGW"
++             << " with S3 API enabled!" << dendl;
++      }
++
++      rest.register_default_mgr(set_logging(new RGWRESTMgr_SWIFT));
++    }
+   }
+ 
+   if (apis_map.count("swift_auth") > 0)
+diff --git a/src/rgw/rgw_rest.cc b/src/rgw/rgw_rest.cc
+index 41bf657..29469d8 100644
+--- a/src/rgw/rgw_rest.cc
++++ b/src/rgw/rgw_rest.cc
+@@ -1630,8 +1630,9 @@ RGWRESTMgr *RGWRESTMgr::get_resource_mgr(struct req_state *s, const string& uri,
+     }
+   }
+ 
+-  if (default_mgr)
+-    return default_mgr;
++  if (default_mgr) {
++    return default_mgr->get_resource_mgr_as_default(s, uri, out_uri);
++  }
+ 
+   return this;
+ }
+diff --git a/src/rgw/rgw_rest.h b/src/rgw/rgw_rest.h
+index 4bb4c28..14f36f2 100644
+--- a/src/rgw/rgw_rest.h
++++ b/src/rgw/rgw_rest.h
+@@ -428,6 +428,13 @@ public:
+ 
+   virtual RGWRESTMgr *get_resource_mgr(struct req_state *s, const string& uri,
+ 				       string *out_uri);
++
++  virtual RGWRESTMgr* get_resource_mgr_as_default(struct req_state* s,
++                                                  const std::string& uri,
++                                                  std::string* our_uri) {
++    return this;
++  }
++
+   virtual RGWHandler_REST *get_handler(struct req_state *s) { return NULL; }
+   virtual void put_handler(RGWHandler_REST *handler) { delete handler; }
+ 
+diff --git a/src/rgw/rgw_rest_swift.cc b/src/rgw/rgw_rest_swift.cc
+index 4eabe7f..1634a2ad 100644
+--- a/src/rgw/rgw_rest_swift.cc
++++ b/src/rgw/rgw_rest_swift.cc
+@@ -1527,43 +1527,52 @@ int RGWHandler_REST_SWIFT::init_from_header(struct req_state *s)
+   s->info.args.set(p);
+   s->info.args.parse();
+ 
+-  if (*req_name != '/')
++  /* Skip the leading slash of URL hierarchy. */
++  if (req_name[0] != '/') {
+     return 0;
++  } else {
++    req_name++;
++  }
+ 
+-  req_name++;
+-
+-  if (!*req_name)
+-    return 0;
++  if ('\0' == req_name[0]) {
++    return g_conf->rgw_swift_url_prefix == "/" ? -ERR_BAD_URL : 0;
++  }
+ 
+   req = req_name;
+ 
+-  int pos = req.find('/');
+-  if (pos >= 0) {
++  size_t pos = req.find('/');
++  if (std::string::npos != pos && g_conf->rgw_swift_url_prefix != "/") {
+     bool cut_url = g_conf->rgw_swift_url_prefix.length();
+     first = req.substr(0, pos);
++
+     if (first.compare(g_conf->rgw_swift_url_prefix) == 0) {
+       if (cut_url) {
++        /* Rewind to the "v1/..." part. */
+         next_tok(req, first, '/');
+       }
+     }
++  } else if (req.compare(g_conf->rgw_swift_url_prefix) == 0) {
++    s->formatter = new RGWFormatter_Plain;
++    return -ERR_BAD_URL;
+   } else {
+-    if (req.compare(g_conf->rgw_swift_url_prefix) == 0) {
+-      s->formatter = new RGWFormatter_Plain;
+-      return -ERR_BAD_URL;
+-    }
+     first = req;
+   }
+ 
+-  string tenant_path;
+-  if (!g_conf->rgw_swift_tenant_name.empty()) {
++  std::string tenant_path;
++  if (! g_conf->rgw_swift_tenant_name.empty()) {
+     tenant_path = "/AUTH_";
+     tenant_path.append(g_conf->rgw_swift_tenant_name);
+   }
+ 
+   /* verify that the request_uri conforms with what's expected */
+   char buf[g_conf->rgw_swift_url_prefix.length() + 16 + tenant_path.length()];
+-  int blen = sprintf(buf, "/%s/v1%s",
+-		    g_conf->rgw_swift_url_prefix.c_str(), tenant_path.c_str());
++  int blen;
++  if (g_conf->rgw_swift_url_prefix == "/") {
++    blen = sprintf(buf, "/v1%s", tenant_path.c_str());
++  } else {
++    blen = sprintf(buf, "/%s/v1%s",
++                   g_conf->rgw_swift_url_prefix.c_str(), tenant_path.c_str());
++  }
+   if (s->decoded_uri[0] != '/' ||
+     s->decoded_uri.compare(0, blen, buf) !=  0) {
+     return -ENOENT;
+diff --git a/src/rgw/rgw_rest_swift.h b/src/rgw/rgw_rest_swift.h
+index 0c4b1e2..249ddfe 100644
+--- a/src/rgw/rgw_rest_swift.h
++++ b/src/rgw/rgw_rest_swift.h
+@@ -262,6 +262,12 @@ public:
+   virtual ~RGWRESTMgr_SWIFT() {}
+ 
+   virtual RGWHandler_REST *get_handler(struct req_state *s);
++
++  RGWRESTMgr* get_resource_mgr_as_default(struct req_state* s,
++                                          const std::string& uri,
++                                          std::string* out_uri) override {
++    return this->get_resource_mgr(s, uri, out_uri);
++  }
+ };
+ 
+ #endif

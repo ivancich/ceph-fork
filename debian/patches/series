@@ -123,3 +123,10 @@
 0123-rbd-mirror-fix-gmock-warnings-in-bootstrap-request-u.patch
 0124-rgw_file-fix-marker-computation.patch
 0125-rgw_file-avoid-stranding-invalid-name-bucket-handles.patch
+0126-rgw-Allow-to-serve-Swift-off-the-URL-root.patch
+0127-rgw_http_errors-add-http-error-code-for-503.patch
+0128-rgw-fix-the-handling-of-rgw_swift_url_prefix.patch
+0129-rgw-add-support-for-the-crossdomain.xml-resource-of-.patch
+0130-rgw-add-support-for-the-healthcheck-feature-of-Swift.patch
+0131-swift-info-implementation.patch
+0132-rgw-settle-info-implementation-across-other-swift-at.patch

@@ -1,3 +1,18 @@
+ceph (10.2.5-23redhat1) stable; urgency=medium
+
+  * rgw: Allow to serve Swift off the URL root (rhbz#1250713)
+  * rgw_http_errors: add http error code for 503 (rhbz#1250713)
+  * rgw: fix the handling of rgw_swift_url_prefix. (rhbz#1250713)
+  * rgw: add support for the crossdomain.xml resource of Swift API.
+    (rhbz#1250713)
+  * rgw: add support for the healthcheck feature of Swift API.
+    (rhbz#1250713)
+  * swift /info implementation. (rhbz#1250713)
+  * rgw: settle /info implementation across other swift-at-root
+    features. (rhbz#1250713)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Wed, 22 Feb 2017 18:09:14 -0500
+
 ceph (10.2.5-22redhat1) stable; urgency=medium
 
   * rgw_file: avoid stranding invalid-name bucket handles in fhcache

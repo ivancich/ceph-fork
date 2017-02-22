@@ -1,0 +1,246 @@
+From: Radoslaw Zarzynski <rzarzynski@mirantis.com>
+Date: Thu, 30 Jun 2016 17:39:35 +0200
+Subject: rgw: add support for the crossdomain.xml resource of Swift API.
+
+Signed-off-by: Radoslaw Zarzynski <rzarzynski@mirantis.com>
+(cherry picked from commit d34b1eed3c2287f1bc82f5a7d58ae0aeb5d549b0)
+
+Conflicts:
+	src/rgw/rgw_main.cc
+          * Jewel needs to take care of swift_init and swift_finalize
+            functions that have been removed in master.
+          * Trivial indentation issues.
+
+(cherry picked from commit ca7e5831a6891d4dad887f7cbb68488873c2c47d)
+
+Resolves (in part): rhbz#1250713
+---
+ src/common/config_opts.h  |  1 +
+ src/rgw/rgw_common.h      |  1 +
+ src/rgw/rgw_main.cc       | 14 ++++++++---
+ src/rgw/rgw_op.h          | 27 ++++++++++++++++++++
+ src/rgw/rgw_rest.h        |  6 +++++
+ src/rgw/rgw_rest_swift.cc | 19 ++++++++++++++
+ src/rgw/rgw_rest_swift.h  | 63 +++++++++++++++++++++++++++++++++++++++++++++++
+ 7 files changed, 128 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 443f342..a18241c 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1285,6 +1285,7 @@ OPTION(rgw_keystone_token_cache_size, OPT_INT, 10000)  // max number of entries
+ OPTION(rgw_keystone_revocation_interval, OPT_INT, 15 * 60)  // seconds between tokens revocation check
+ OPTION(rgw_keystone_verify_ssl, OPT_BOOL, true) // should we try to verify keystone's ssl
+ OPTION(rgw_keystone_implicit_tenants, OPT_BOOL, false)  // create new users in their own tenants of the same name
++OPTION(rgw_cross_domain_policy, OPT_STR, "<allow-access-from domain=\"*\" secure=\"false\" />")
+ OPTION(rgw_s3_auth_use_rados, OPT_BOOL, true)  // should we try to use the internal credentials for s3?
+ OPTION(rgw_s3_auth_use_keystone, OPT_BOOL, false)  // should we try to use keystone for s3?
+ 
+diff --git a/src/rgw/rgw_common.h b/src/rgw/rgw_common.h
+index bd44cac..372d409 100644
+--- a/src/rgw/rgw_common.h
++++ b/src/rgw/rgw_common.h
+@@ -423,6 +423,7 @@ enum RGWOpType {
+   RGW_OP_DELETE_MULTI_OBJ,
+   RGW_OP_BULK_DELETE,
+   RGW_OP_SET_ATTRS,
++  RGW_OP_GET_CROSS_DOMAIN_POLICY,
+ 
+   /* rgw specific */
+   RGW_OP_ADMIN_SET_METADATA
+diff --git a/src/rgw/rgw_main.cc b/src/rgw/rgw_main.cc
+index 1180c53..97bcb2b 100644
+--- a/src/rgw/rgw_main.cc
++++ b/src/rgw/rgw_main.cc
+@@ -356,9 +356,16 @@ int main(int argc, const char **argv)
+     do_swift = true;
+     swift_init(g_ceph_context);
+ 
++    RGWRESTMgr_SWIFT* const swift_resource = new RGWRESTMgr_SWIFT;
++
++    if (! g_conf->rgw_cross_domain_policy.empty()) {
++      swift_resource->register_resource("crossdomain.xml",
++                          set_logging(new RGWRESTMgr_SWIFT_CrossDomain));
++    }
++
+     if (! swift_at_root) {
+       rest.register_resource(g_conf->rgw_swift_url_prefix,
+-                             set_logging(new RGWRESTMgr_SWIFT));
++                          set_logging(swift_resource));
+     } else {
+       if (store->get_zonegroup().zones.size() > 1) {
+         derr << "Placing Swift API in the root of URL hierarchy while running"
+@@ -366,13 +373,14 @@ int main(int argc, const char **argv)
+              << " with S3 API enabled!" << dendl;
+       }
+ 
+-      rest.register_default_mgr(set_logging(new RGWRESTMgr_SWIFT));
++      rest.register_default_mgr(set_logging(swift_resource));
+     }
+   }
+ 
+-  if (apis_map.count("swift_auth") > 0)
++  if (apis_map.count("swift_auth") > 0) {
+     rest.register_resource(g_conf->rgw_swift_auth_entry,
+ 			   set_logging(new RGWRESTMgr_SWIFT_Auth));
++  }
+ 
+   if (apis_map.count("admin") > 0) {
+     RGWRESTMgr_Admin *admin_resource = new RGWRESTMgr_Admin;
+diff --git a/src/rgw/rgw_op.h b/src/rgw/rgw_op.h
+index 15ea723..f05e6c4 100644
+--- a/src/rgw/rgw_op.h
++++ b/src/rgw/rgw_op.h
+@@ -1319,6 +1319,33 @@ public:
+ };
+ 
+ 
++class RGWGetCrossDomainPolicy : public RGWOp {
++public:
++  RGWGetCrossDomainPolicy() = default;
++  ~RGWGetCrossDomainPolicy() = default;
++
++  int verify_permission() override {
++    return 0;
++  }
++
++  void execute() override {
++    op_ret = 0;
++  }
++
++  const string name() override {
++    return "get_crossdomain_policy";
++  }
++
++  RGWOpType get_type() override {
++    return RGW_OP_GET_CROSS_DOMAIN_POLICY;
++  }
++
++  uint32_t op_mask() override {
++    return RGW_OP_TYPE_READ;
++  }
++};
++
++
+ class RGWDeleteMultiObj : public RGWOp {
+ protected:
+   int max_to_delete;
+diff --git a/src/rgw/rgw_rest.h b/src/rgw/rgw_rest.h
+index 14f36f2..502034e 100644
+--- a/src/rgw/rgw_rest.h
++++ b/src/rgw/rgw_rest.h
+@@ -258,6 +258,12 @@ public:
+   ~RGWDeleteObj_ObjStore() {}
+ };
+ 
++class  RGWGetCrossDomainPolicy_ObjStore : public RGWGetCrossDomainPolicy {
++public:
++  RGWGetCrossDomainPolicy_ObjStore() = default;
++  ~RGWGetCrossDomainPolicy_ObjStore() = default;
++};
++
+ class RGWCopyObj_ObjStore : public RGWCopyObj {
+ public:
+   RGWCopyObj_ObjStore() {}
+diff --git a/src/rgw/rgw_rest_swift.cc b/src/rgw/rgw_rest_swift.cc
+index 1634a2ad..0b6ae43 100644
+--- a/src/rgw/rgw_rest_swift.cc
++++ b/src/rgw/rgw_rest_swift.cc
+@@ -1248,6 +1248,25 @@ void RGWBulkDelete_ObjStore_SWIFT::send_response()
+   rgw_flush_formatter_and_reset(s, s->formatter);
+ }
+ 
++
++void RGWGetCrossDomainPolicy_ObjStore_SWIFT::send_response()
++{
++  set_req_state_err(s, op_ret);
++  dump_errno(s);
++  end_header(s, this, "application/xml");
++
++  std::stringstream ss;
++
++  ss << R"(<?xml version="1.0"?>)" << "\n"
++     << R"(<!DOCTYPE cross-domain-policy SYSTEM )"
++     << R"("http://www.adobe.com/xml/dtds/cross-domain-policy.dtd" >)" << "\n"
++     << R"(<cross-domain-policy>)" << "\n"
++     << g_conf->rgw_cross_domain_policy << "\n"
++     << R"(</cross-domain-policy>)";
++
++  STREAM_IO(s)->write(ss.str().c_str(), ss.str().length());
++}
++
+ RGWOp *RGWHandler_REST_Service_SWIFT::op_get()
+ {
+   return new RGWListBuckets_ObjStore_SWIFT;
+diff --git a/src/rgw/rgw_rest_swift.h b/src/rgw/rgw_rest_swift.h
+index 249ddfe..51215ea 100644
+--- a/src/rgw/rgw_rest_swift.h
++++ b/src/rgw/rgw_rest_swift.h
+@@ -270,4 +270,67 @@ public:
+   }
+ };
+ 
++
++class  RGWGetCrossDomainPolicy_ObjStore_SWIFT
++  : public RGWGetCrossDomainPolicy_ObjStore {
++public:
++  RGWGetCrossDomainPolicy_ObjStore_SWIFT() = default;
++  ~RGWGetCrossDomainPolicy_ObjStore_SWIFT() = default;
++
++  void send_response() override;
++};
++
++class RGWHandler_SWIFT_CrossDomain : public RGWHandler_REST {
++public:
++  RGWHandler_SWIFT_CrossDomain() = default;
++  ~RGWHandler_SWIFT_CrossDomain() = default;
++
++  RGWOp *op_get() override {
++    return new RGWGetCrossDomainPolicy_ObjStore_SWIFT();
++  }
++
++  int init(RGWRados* const store,
++           struct req_state* const state,
++           RGWClientIO* const cio) override {
++    state->dialect = "swift";
++    state->formatter = new JSONFormatter;
++    state->format = RGW_FORMAT_JSON;
++
++    return RGWHandler::init(store, state, cio);
++  }
++
++  int authorize() override {
++    return 0;
++  }
++
++  int postauth_init() override {
++    return 0;
++  }
++
++  int read_permissions(RGWOp *) override {
++    return 0;
++  }
++
++  virtual RGWAccessControlPolicy *alloc_policy() { return nullptr; }
++  virtual void free_policy(RGWAccessControlPolicy *policy) {}
++};
++
++class RGWRESTMgr_SWIFT_CrossDomain : public RGWRESTMgr {
++public:
++  RGWRESTMgr_SWIFT_CrossDomain() = default;
++  ~RGWRESTMgr_SWIFT_CrossDomain() = default;
++
++  RGWRESTMgr *get_resource_mgr(struct req_state* const s,
++                               const std::string& uri,
++                               std::string* const out_uri) override {
++    return this;
++  }
++
++  RGWHandler_REST* get_handler(struct req_state* const s) override {
++    s->prot_flags |= RGW_REST_SWIFT;
++    return new RGWHandler_SWIFT_CrossDomain;
++  }
++};
++
++
+ #endif

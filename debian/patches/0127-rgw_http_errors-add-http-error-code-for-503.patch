@@ -1,0 +1,41 @@
+From: Abhishek Lekshmanan <abhishek@suse.com>
+Date: Thu, 14 Apr 2016 18:20:51 +0200
+Subject: rgw_http_errors: add http error code for 503
+
+Useful for multisite where we need to return when master zone is down
+for metadata ops
+Signed-off-by: Abhishek Lekshmanan <abhishek@suse.com>
+(cherry picked from commit a1653d1290434db7729e51a9ad13a1a0852615b3)
+
+(cherry picked from commit 3ec00fc0fb4d6b91d8f5f37609772258871aafb0)
+
+Resolves (in part): rhbz#1250713
+---
+ src/rgw/rgw_common.h      | 1 +
+ src/rgw/rgw_http_errors.h | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/src/rgw/rgw_common.h b/src/rgw/rgw_common.h
+index c392bc8..bd44cac 100644
+--- a/src/rgw/rgw_common.h
++++ b/src/rgw/rgw_common.h
+@@ -184,6 +184,7 @@ using ceph::crypto::MD5;
+ #define ERR_USER_SUSPENDED       2100
+ #define ERR_INTERNAL_ERROR       2200
+ #define ERR_NOT_IMPLEMENTED      2201
++#define ERR_SERVICE_UNAVAILABLE  2202
+ 
+ #ifndef UINT32_MAX
+ #define UINT32_MAX (0xffffffffu)
+diff --git a/src/rgw/rgw_http_errors.h b/src/rgw/rgw_http_errors.h
+index aebf801..2d998d2 100644
+--- a/src/rgw/rgw_http_errors.h
++++ b/src/rgw/rgw_http_errors.h
+@@ -67,6 +67,7 @@ const static struct rgw_http_errors RGW_HTTP_ERRORS[] = {
+     { ERR_LOCKED, 423, "Locked" },
+     { ERR_INTERNAL_ERROR, 500, "InternalError" },
+     { ERR_NOT_IMPLEMENTED, 501, "NotImplemented" },
++    { ERR_SERVICE_UNAVAILABLE, 503, "ServiceUnavailable"}
+ };
+ 
+ const static struct rgw_http_errors RGW_HTTP_SWIFT_ERRORS[] = {
