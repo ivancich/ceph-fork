@@ -1,3 +1,14 @@
+ceph (10.2.5-24redhat1) stable; urgency=medium
+
+  * rgw: set dumpable flag after setuid post ff0e521 (rhbz#1423417)
+  * rbd-mirror: replace complex object op tuple with struct
+    (rhbz#1424881)
+  * rbd-mirror: object copy should always reference valid snapshots
+    (rhbz#1424881)
+  * rbd-mirror: retry object copy after -ENOENT error (rhbz#1424881)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Thu, 23 Feb 2017 12:25:51 -0500
+
 ceph (10.2.5-23redhat1) stable; urgency=medium
 
   * rgw: Allow to serve Swift off the URL root (rhbz#1250713)

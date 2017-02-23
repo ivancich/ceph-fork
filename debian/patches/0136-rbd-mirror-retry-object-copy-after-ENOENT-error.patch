@@ -1,0 +1,462 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 21 Feb 2017 15:33:01 -0500
+Subject: rbd-mirror: retry object copy after -ENOENT error
+
+Fixes: http://tracker.ceph.com/issues/18990
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit b4f36d5dc3f4f3cbb23f61cbb945b222248a50df)
+
+Conflicts:
+	src/test/librados_test_stub/MockTestMemIoCtxImpl.h: sparse reads not supported
+	src/test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc: sparse reads not supported
+
+(cherry picked from commit db928d6b3f983b3a1ccc07440fcd3680700a1188)
+
+Resolves: rhbz#1424881
+---
+ src/test/librados_test_stub/MockTestMemIoCtxImpl.h |   6 +
+ .../image_sync/test_mock_ObjectCopyRequest.cc      | 151 +++++++++++++++++++--
+ .../rbd_mirror/image_sync/ObjectCopyRequest.cc     |  53 +++++++-
+ .../rbd_mirror/image_sync/ObjectCopyRequest.h      |  11 +-
+ 4 files changed, 204 insertions(+), 17 deletions(-)
+
+diff --git a/src/test/librados_test_stub/MockTestMemIoCtxImpl.h b/src/test/librados_test_stub/MockTestMemIoCtxImpl.h
+index b15b241..adfe6f8 100644
+--- a/src/test/librados_test_stub/MockTestMemIoCtxImpl.h
++++ b/src/test/librados_test_stub/MockTestMemIoCtxImpl.h
+@@ -79,6 +79,11 @@ public:
+     return TestMemIoCtxImpl::notify(o, bl, timeout_ms, pbl);
+   }
+ 
++  MOCK_METHOD1(set_snap_read, void(snap_t));
++  void do_set_snap_read(snap_t snap_id) {
++    return TestMemIoCtxImpl::set_snap_read(snap_id);
++  }
++
+   MOCK_METHOD4(read, int(const std::string& oid,
+                          size_t len,
+                          uint64_t off,
+@@ -142,6 +147,7 @@ public:
+     ON_CALL(*this, list_watchers(_, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_list_watchers));
+     ON_CALL(*this, notify(_, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_notify));
+     ON_CALL(*this, read(_, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_read));
++    ON_CALL(*this, set_snap_read(_)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_set_snap_read));
+     ON_CALL(*this, remove(_, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_remove));
+     ON_CALL(*this, selfmanaged_snap_create(_)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_selfmanaged_snap_create));
+     ON_CALL(*this, selfmanaged_snap_remove(_)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_selfmanaged_snap_remove));
+diff --git a/src/test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc b/src/test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc
+index b018f16..0407c3a 100644
+--- a/src/test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc
++++ b/src/test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc
+@@ -30,11 +30,16 @@ struct MockTestImageCtx : public librbd::MockImageCtx {
+ #include "tools/rbd_mirror/image_sync/ObjectCopyRequest.cc"
+ template class rbd::mirror::image_sync::ObjectCopyRequest<librbd::MockTestImageCtx>;
+ 
++bool operator==(const SnapContext& rhs, const SnapContext& lhs) {
++  return (rhs.seq == lhs.seq && rhs.snaps == lhs.snaps);
++}
++
+ namespace rbd {
+ namespace mirror {
+ namespace image_sync {
+ 
+ using ::testing::_;
++using ::testing::DoAll;
+ using ::testing::DoDefault;
+ using ::testing::InSequence;
+ using ::testing::Invoke;
+@@ -82,7 +87,20 @@ public:
+   }
+ 
+   void expect_list_snaps(librbd::MockTestImageCtx &mock_image_ctx,
++                         librados::MockTestMemIoCtxImpl &mock_io_ctx,
++                         const librados::snap_set_t &snap_set) {
++    expect_set_snap_read(mock_io_ctx, CEPH_SNAPDIR);
++    EXPECT_CALL(mock_io_ctx,
++                list_snaps(mock_image_ctx.image_ctx->get_object_name(0), _))
++      .WillOnce(DoAll(WithArg<1>(Invoke([&snap_set](librados::snap_set_t *out_snap_set) {
++                          *out_snap_set = snap_set;
++                        })),
++                      Return(0)));
++  }
++
++  void expect_list_snaps(librbd::MockTestImageCtx &mock_image_ctx,
+                          librados::MockTestMemIoCtxImpl &mock_io_ctx, int r) {
++    expect_set_snap_read(mock_io_ctx, CEPH_SNAPDIR);
+     auto &expect = EXPECT_CALL(mock_io_ctx,
+                                list_snaps(mock_image_ctx.image_ctx->get_object_name(0),
+                                           _));
+@@ -108,6 +126,11 @@ public:
+                                      0, on_finish);
+   }
+ 
++  void expect_set_snap_read(librados::MockTestMemIoCtxImpl &mock_io_ctx,
++                            uint64_t snap_id) {
++    EXPECT_CALL(mock_io_ctx, set_snap_read(snap_id));
++  }
++
+   void expect_read(librados::MockTestMemIoCtxImpl &mock_io_ctx, uint64_t offset,
+                    uint64_t length, int r) {
+     auto &expect = EXPECT_CALL(mock_io_ctx, read(_, length, offset, _));
+@@ -129,8 +152,9 @@ public:
+   }
+ 
+   void expect_write(librados::MockTestMemIoCtxImpl &mock_io_ctx,
+-                    uint64_t offset, uint64_t length, int r) {
+-    auto &expect = EXPECT_CALL(mock_io_ctx, write(_, _, length, offset, _));
++                    uint64_t offset, uint64_t length,
++                    const SnapContext &snapc, int r) {
++    auto &expect = EXPECT_CALL(mock_io_ctx, write(_, _, length, offset, snapc));
+     if (r < 0) {
+       expect.WillOnce(Return(r));
+     } else {
+@@ -139,9 +163,10 @@ public:
+   }
+ 
+   void expect_write(librados::MockTestMemIoCtxImpl &mock_io_ctx,
+-                    const interval_set<uint64_t> &extents, int r) {
++                    const interval_set<uint64_t> &extents,
++                    const SnapContext &snapc, int r) {
+     for (auto extent : extents) {
+-      expect_write(mock_io_ctx, extent.first, extent.second, r);
++      expect_write(mock_io_ctx, extent.first, extent.second, snapc, r);
+       if (r < 0) {
+         break;
+       }
+@@ -211,6 +236,7 @@ public:
+                             m_snap_map.rbegin()->second.end());
+     }
+     m_snap_map[remote_snap_id] = local_snap_ids;
++    m_remote_snap_ids.push_back(remote_snap_id);
+     m_local_snap_ids.push_back(local_snap_id);
+     return 0;
+   }
+@@ -296,6 +322,7 @@ public:
+   librbd::ImageCtx *m_local_image_ctx;
+ 
+   MockObjectCopyRequest::SnapMap m_snap_map;
++  std::vector<librados::snap_t> m_remote_snap_ids;
+   std::vector<librados::snap_t> m_local_snap_ids;
+ };
+ 
+@@ -348,8 +375,9 @@ TEST_F(TestMockImageSyncObjectCopyRequest, Write) {
+ 
+   InSequence seq;
+   expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[0]);
+   expect_read(mock_remote_io_ctx, 0, one.range_end(), 0);
+-  expect_write(mock_local_io_ctx, 0, one.range_end(), 0);
++  expect_write(mock_local_io_ctx, 0, one.range_end(), {0, {}}, 0);
+   expect_update_object_map(mock_local_image_ctx, mock_object_map,
+                            m_local_snap_ids[0], OBJECT_EXISTS, 0);
+ 
+@@ -358,6 +386,99 @@ TEST_F(TestMockImageSyncObjectCopyRequest, Write) {
+   ASSERT_EQ(0, compare_objects());
+ }
+ 
++TEST_F(TestMockImageSyncObjectCopyRequest, ReadMissingStaleSnapSet) {
++  ASSERT_EQ(0, create_snap("one"));
++  ASSERT_EQ(0, create_snap("two"));
++
++  // scribble some data
++  interval_set<uint64_t> one;
++  scribble(m_remote_image_ctx, 10, 102400, &one);
++  ASSERT_EQ(0, create_snap("three"));
++
++  ASSERT_EQ(0, create_snap("sync"));
++  librbd::MockTestImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
++  librbd::MockTestImageCtx mock_local_image_ctx(*m_local_image_ctx);
++
++  librbd::MockObjectMap mock_object_map;
++  mock_local_image_ctx.object_map = &mock_object_map;
++
++  expect_test_features(mock_local_image_ctx);
++
++  C_SaferCond ctx;
++  MockObjectCopyRequest *request = create_request(mock_remote_image_ctx,
++                                                  mock_local_image_ctx, &ctx);
++
++  librados::MockTestMemIoCtxImpl &mock_remote_io_ctx(get_mock_io_ctx(
++    request->get_remote_io_ctx()));
++  librados::MockTestMemIoCtxImpl &mock_local_io_ctx(get_mock_io_ctx(
++    request->get_local_io_ctx()));
++
++  librados::clone_info_t dummy_clone_info;
++  dummy_clone_info.cloneid = librados::SNAP_HEAD;
++  dummy_clone_info.size = 123;
++
++  librados::snap_set_t dummy_snap_set1;
++  dummy_snap_set1.clones.push_back(dummy_clone_info);
++
++  dummy_clone_info.size = 234;
++  librados::snap_set_t dummy_snap_set2;
++  dummy_snap_set2.clones.push_back(dummy_clone_info);
++
++  InSequence seq;
++  expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, dummy_snap_set1);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[3]);
++  expect_read(mock_remote_io_ctx, 0, 123, -ENOENT);
++  expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, dummy_snap_set2);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[3]);
++  expect_read(mock_remote_io_ctx, 0, 234, -ENOENT);
++  expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[3]);
++  expect_read(mock_remote_io_ctx, 0, one.range_end(), 0);
++  expect_write(mock_local_io_ctx, 0, one.range_end(),
++               {m_local_snap_ids[1], {m_local_snap_ids[1],
++                                      m_local_snap_ids[0]}},
++                0);
++  expect_update_object_map(mock_local_image_ctx, mock_object_map,
++                           m_local_snap_ids[2], OBJECT_EXISTS, 0);
++  expect_update_object_map(mock_local_image_ctx, mock_object_map,
++                           m_local_snap_ids[3], OBJECT_EXISTS_CLEAN, 0);
++
++  request->send();
++  ASSERT_EQ(0, ctx.wait());
++  ASSERT_EQ(0, compare_objects());
++}
++
++TEST_F(TestMockImageSyncObjectCopyRequest, ReadMissingUpToDateSnapMap) {
++  // scribble some data
++  interval_set<uint64_t> one;
++  scribble(m_remote_image_ctx, 10, 102400, &one);
++
++  ASSERT_EQ(0, create_snap("sync"));
++  librbd::MockTestImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
++  librbd::MockTestImageCtx mock_local_image_ctx(*m_local_image_ctx);
++
++  librbd::MockObjectMap mock_object_map;
++  mock_local_image_ctx.object_map = &mock_object_map;
++
++  expect_test_features(mock_local_image_ctx);
++
++  C_SaferCond ctx;
++  MockObjectCopyRequest *request = create_request(mock_remote_image_ctx,
++                                                  mock_local_image_ctx, &ctx);
++
++  librados::MockTestMemIoCtxImpl &mock_remote_io_ctx(get_mock_io_ctx(
++    request->get_remote_io_ctx()));
++
++  InSequence seq;
++  expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[0]);
++  expect_read(mock_remote_io_ctx, 0, one.range_end(), -ENOENT);
++  expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++
++  request->send();
++  ASSERT_EQ(-ENOENT, ctx.wait());
++}
++
+ TEST_F(TestMockImageSyncObjectCopyRequest, ReadError) {
+   // scribble some data
+   interval_set<uint64_t> one;
+@@ -381,6 +502,7 @@ TEST_F(TestMockImageSyncObjectCopyRequest, ReadError) {
+ 
+   InSequence seq;
+   expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[0]);
+   expect_read(mock_remote_io_ctx, 0, one.range_end(), -EINVAL);
+ 
+   request->send();
+@@ -412,8 +534,9 @@ TEST_F(TestMockImageSyncObjectCopyRequest, WriteError) {
+ 
+   InSequence seq;
+   expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[0]);
+   expect_read(mock_remote_io_ctx, 0, one.range_end(), 0);
+-  expect_write(mock_local_io_ctx, 0, one.range_end(), -EINVAL);
++  expect_write(mock_local_io_ctx, 0, one.range_end(), {0, {}}, -EINVAL);
+ 
+   request->send();
+   ASSERT_EQ(-EINVAL, ctx.wait());
+@@ -455,10 +578,13 @@ TEST_F(TestMockImageSyncObjectCopyRequest, WriteSnaps) {
+ 
+   InSequence seq;
+   expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[0]);
+   expect_read(mock_remote_io_ctx, 0, one.range_end(), 0);
+-  expect_write(mock_local_io_ctx, 0, one.range_end(), 0);
++  expect_write(mock_local_io_ctx, 0, one.range_end(), {0, {}}, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[2]);
+   expect_read(mock_remote_io_ctx, two, 0);
+-  expect_write(mock_local_io_ctx, two, 0);
++  expect_write(mock_local_io_ctx, two,
++               {m_local_snap_ids[0], {m_local_snap_ids[0]}}, 0);
+   expect_update_object_map(mock_local_image_ctx, mock_object_map,
+                            m_local_snap_ids[0], OBJECT_EXISTS, 0);
+   expect_update_object_map(mock_local_image_ctx, mock_object_map,
+@@ -504,8 +630,9 @@ TEST_F(TestMockImageSyncObjectCopyRequest, Trim) {
+ 
+   InSequence seq;
+   expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[0]);
+   expect_read(mock_remote_io_ctx, 0, one.range_end(), 0);
+-  expect_write(mock_local_io_ctx, 0, one.range_end(), 0);
++  expect_write(mock_local_io_ctx, 0, one.range_end(), {0, {}}, 0);
+   expect_truncate(mock_local_io_ctx, trim_offset, 0);
+   expect_update_object_map(mock_local_image_ctx, mock_object_map,
+                            m_local_snap_ids[0], OBJECT_EXISTS, 0);
+@@ -522,6 +649,7 @@ TEST_F(TestMockImageSyncObjectCopyRequest, Remove) {
+   interval_set<uint64_t> one;
+   scribble(m_remote_image_ctx, 10, 102400, &one);
+   ASSERT_EQ(0, create_snap("one"));
++  ASSERT_EQ(0, create_snap("two"));
+ 
+   // remove the object
+   uint64_t object_size = 1 << m_remote_image_ctx->order;
+@@ -546,11 +674,14 @@ TEST_F(TestMockImageSyncObjectCopyRequest, Remove) {
+ 
+   InSequence seq;
+   expect_list_snaps(mock_remote_image_ctx, mock_remote_io_ctx, 0);
++  expect_set_snap_read(mock_remote_io_ctx, m_remote_snap_ids[1]);
+   expect_read(mock_remote_io_ctx, 0, one.range_end(), 0);
+-  expect_write(mock_local_io_ctx, 0, one.range_end(), 0);
++  expect_write(mock_local_io_ctx, 0, one.range_end(), {0, {}}, 0);
+   expect_remove(mock_local_io_ctx, 0);
+   expect_update_object_map(mock_local_image_ctx, mock_object_map,
+                            m_local_snap_ids[0], OBJECT_EXISTS, 0);
++  expect_update_object_map(mock_local_image_ctx, mock_object_map,
++                           m_local_snap_ids[1], OBJECT_EXISTS_CLEAN, 0);
+ 
+   request->send();
+   ASSERT_EQ(0, ctx.wait());
+diff --git a/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.cc b/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.cc
+index daafabf..adfc215 100644
+--- a/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.cc
++++ b/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.cc
+@@ -12,6 +12,22 @@
+ #define dout_prefix *_dout << "rbd::mirror::image_sync::ObjectCopyRequest: " \
+                            << this << " " << __func__
+ 
++namespace librados {
++
++bool operator==(const clone_info_t& rhs, const clone_info_t& lhs) {
++  return (rhs.cloneid == lhs.cloneid &&
++          rhs.snaps == lhs.snaps &&
++          rhs.overlap == lhs.overlap &&
++          rhs.size == lhs.size);
++}
++
++bool operator==(const snap_set_t& rhs, const snap_set_t& lhs) {
++  return (rhs.clones == lhs.clones &&
++          rhs.seq == lhs.seq);
++}
++
++} // namespace librados
++
+ namespace rbd {
+ namespace mirror {
+ namespace image_sync {
+@@ -54,6 +70,8 @@ void ObjectCopyRequest<I>::send_list_snaps() {
+     ObjectCopyRequest<I>, &ObjectCopyRequest<I>::handle_list_snaps>(this);
+ 
+   librados::ObjectReadOperation op;
++  m_snap_set = {};
++  m_snap_ret = 0;
+   op.list_snaps(&m_snap_set, &m_snap_ret);
+ 
+   m_remote_io_ctx.snap_set_read(CEPH_SNAPDIR);
+@@ -75,12 +93,26 @@ void ObjectCopyRequest<I>::handle_list_snaps(int r) {
+     finish(0);
+     return;
+   }
++
+   if (r < 0) {
+     derr << ": failed to list snaps: " << cpp_strerror(r) << dendl;
+     finish(r);
+     return;
+   }
+ 
++  if (m_retry_missing_read) {
++    if (m_snap_set == m_retry_snap_set) {
++      derr << ": read encountered missing object using up-to-date snap set"
++           << dendl;
++      finish(-ENOENT);
++      return;
++    }
++
++    dout(20) << ": retrying using updated snap set" << dendl;
++    m_retry_missing_read = false;
++    m_retry_snap_set = {};
++  }
++
+   compute_diffs();
+   send_read_object();
+ }
+@@ -97,16 +129,17 @@ void ObjectCopyRequest<I>::send_read_object() {
+   auto &sync_ops = m_snap_sync_ops.begin()->second;
+   assert(!sync_ops.empty());
+ 
+-  // map the sync op start snap id back to the necessary read snap id
+-  librados::snap_t remote_snap_seq = m_snap_sync_ops.begin()->first.second;
+-  m_remote_io_ctx.snap_set_read(remote_snap_seq);
+-
+   bool read_required = false;
+   librados::ObjectReadOperation op;
+   for (auto &sync_op : sync_ops) {
+     switch (sync_op.type) {
+     case SYNC_OP_TYPE_WRITE:
+       if (!read_required) {
++        // map the sync op start snap id back to the necessary read snap id
++        librados::snap_t remote_snap_seq =
++          m_snap_sync_ops.begin()->first.second;
++        m_remote_io_ctx.snap_set_read(remote_snap_seq);
++
+         dout(20) << ": remote_snap_seq=" << remote_snap_seq << dendl;
+         read_required = true;
+       }
+@@ -137,6 +170,15 @@ template <typename I>
+ void ObjectCopyRequest<I>::handle_read_object(int r) {
+   dout(20) << ": r=" << r << dendl;
+ 
++  if (r == -ENOENT) {
++    m_retry_snap_set = m_snap_set;
++    m_retry_missing_read = true;
++
++    dout(5) << ": object missing potentially due to removed snapshot" << dendl;
++    send_list_snaps();
++    return;
++  }
++
+   if (r < 0) {
+     derr << ": failed to read from remote object: " << cpp_strerror(r)
+          << dendl;
+@@ -281,6 +323,9 @@ template <typename I>
+ void ObjectCopyRequest<I>::compute_diffs() {
+   CephContext *cct = m_local_image_ctx->cct;
+ 
++  m_snap_sync_ops = {};
++  m_snap_object_states = {};
++
+   librados::snap_t remote_sync_pont_snap_id = m_snap_map->rbegin()->first;
+   uint64_t prev_end_size = 0;
+   bool prev_exists = false;
+diff --git a/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.h b/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.h
+index 140a050..fb98043 100644
+--- a/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.h
++++ b/src/tools/rbd_mirror/image_sync/ObjectCopyRequest.h
+@@ -54,9 +54,11 @@ private:
+    * <start>
+    *    |
+    *    v
+-   * LIST_SNAPS
+-   *    |
+-   *    v
++   * LIST_SNAPS < * * *
++   *    |             * (-ENOENT and snap set stale)
++   *    |   * * * * * *
++   *    |   *
++   *    v   *
+    * READ_OBJECT <--------\
+    *    |                 | (repeat for each snapshot)
+    *    v                 |
+@@ -111,6 +113,9 @@ private:
+   librados::snap_set_t m_snap_set;
+   int m_snap_ret;
+ 
++  bool m_retry_missing_read = false;
++  librados::snap_set_t m_retry_snap_set;
++
+   SnapSyncOps m_snap_sync_ops;
+   SnapObjectStates m_snap_object_states;
+ 

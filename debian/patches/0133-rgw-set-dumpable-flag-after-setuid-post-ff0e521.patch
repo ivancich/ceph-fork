@@ -1,0 +1,43 @@
+From: Brad Hubbard <bhubbard@redhat.com>
+Date: Thu, 23 Feb 2017 10:55:36 +1000
+Subject: rgw: set dumpable flag after setuid post ff0e521
+
+ff0e521 resolved the issue for the other daemons but not for rgw since
+it calls setuid (via civetweb) after the new code sets PR_SET_DUMPABLE.
+Add another prctl call before wait_shutdown.
+
+Signed-off-by: Brad Hubbard <bhubbard@redhat.com>
+
+Resolves: rhbz#1423417
+---
+ src/rgw/rgw_main.cc | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/rgw/rgw_main.cc b/src/rgw/rgw_main.cc
+index 095884f..ed9ab67 100644
+--- a/src/rgw/rgw_main.cc
++++ b/src/rgw/rgw_main.cc
+@@ -62,6 +62,10 @@
+ #include "include/types.h"
+ #include "common/BackTrace.h"
+ 
++#ifdef HAVE_SYS_PRCTL_H
++#include <sys/prctl.h>
++#endif
++
+ #define dout_subsys ceph_subsys_rgw
+ 
+ using namespace std;
+@@ -477,6 +481,12 @@ int main(int argc, const char **argv)
+   realm_watcher.add_watcher(RGWRealmNotify::Reload, reloader);
+   realm_watcher.add_watcher(RGWRealmNotify::ZonesNeedPeriod, pusher);
+ 
++#if defined(HAVE_SYS_PRCTL_H)
++  if (prctl(PR_SET_DUMPABLE, 1) == -1) {
++    cerr << "warning: unable to set dumpable flag: " << cpp_strerror(errno) << std::endl;
++  }
++#endif
++
+   wait_shutdown();
+ 
+   derr << "shutting down" << dendl;

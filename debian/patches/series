@@ -130,3 +130,7 @@
 0130-rgw-add-support-for-the-healthcheck-feature-of-Swift.patch
 0131-swift-info-implementation.patch
 0132-rgw-settle-info-implementation-across-other-swift-at.patch
+0133-rgw-set-dumpable-flag-after-setuid-post-ff0e521.patch
+0134-rbd-mirror-replace-complex-object-op-tuple-with-stru.patch
+0135-rbd-mirror-object-copy-should-always-reference-valid.patch
+0136-rbd-mirror-retry-object-copy-after-ENOENT-error.patch
