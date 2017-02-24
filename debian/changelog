@@ -1,3 +1,12 @@
+ceph (10.2.5-25redhat1) stable; urgency=medium
+
+  * rgw_file: rgw_lookup: don't ref for "/" or ".." (rhbz#1425763)
+  * rgw_file: return of RGWFileHandle::FLAG_EXACT_MATCH (rhbz#1425763)
+  * rgw_file: ensure valid_s3_object_name for directories, too
+    (rhbz#1416041 rhbz#1422822)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Fri, 24 Feb 2017 11:49:16 -0500
+
 ceph (10.2.5-24redhat1) stable; urgency=medium
 
   * rgw: set dumpable flag after setuid post ff0e521 (rhbz#1423417)

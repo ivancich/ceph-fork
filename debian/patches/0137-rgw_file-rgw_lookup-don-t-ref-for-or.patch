@@ -1,0 +1,36 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Wed, 22 Feb 2017 14:57:59 -0500
+Subject: rgw_file: rgw_lookup: don't ref for "/" or ".."
+
+These refs won't be returned by nfs-ganesha, and are sufficiently
+magical that other consumers should be persuaded to understand
+their specialness.
+
+Fixes: http://tracker.ceph.com/issues/19060
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit dea8d1ee373399a21851690a9753388b659b8ede)
+
+Resolves (in part): rhbz#1425763
+---
+ src/rgw/rgw_file.cc | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index af542d5..813ae95 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -1356,9 +1356,10 @@ int rgw_lookup(struct rgw_fs *rgw_fs,
+   LookupFHResult fhr;
+ 
+   if (parent->is_root()) {
+-    /* special: lookup on root itself */
+-    if (strcmp(path, "/") == 0) {
+-      rgw_fh = fs->ref(parent);
++    /* special: parent lookup--note lack of ref()! */
++    if (unlikely((strcmp(path, "..") == 0) ||
++		 (strcmp(path, "/") == 0))) {
++      rgw_fh = parent;
+     } else {
+       fhr = fs->stat_bucket(parent, path, RGWFileHandle::FLAG_NONE);
+       rgw_fh = get<0>(fhr);

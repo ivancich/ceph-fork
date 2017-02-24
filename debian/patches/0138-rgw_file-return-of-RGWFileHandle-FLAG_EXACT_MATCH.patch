@@ -1,0 +1,62 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Thu, 23 Feb 2017 10:21:38 -0500
+Subject: rgw_file:  return of RGWFileHandle::FLAG_EXACT_MATCH
+
+Allow callers of rgw_lookup() on objects attested in an
+rgw_readdir() callback the ability to bypass exact match in
+RGWLibFS::stat_leaf() case 2, but restore exact match enforcement
+for general lookups.
+
+This preserves required common_prefix namespace behavior, but
+prevents clients from eerily permitting things like "cd sara0" via
+partial name match on "sara01."
+
+Fixes: http://tracker.ceph.com/issues/19059
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 70ef7d45e0abf2661bd4e23161d4e70cf5178079)
+
+Resolves (in part): rhbz#1425763
+---
+ src/include/rados/rgw_file.h | 3 ++-
+ src/rgw/rgw_file.cc          | 6 +++++-
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/include/rados/rgw_file.h b/src/include/rados/rgw_file.h
+index 9eab48f..27c336a 100644
+--- a/src/include/rados/rgw_file.h
++++ b/src/include/rados/rgw_file.h
+@@ -26,7 +26,7 @@ extern "C" {
+ 
+ #define LIBRGW_FILE_VER_MAJOR 1
+ #define LIBRGW_FILE_VER_MINOR 1
+-#define LIBRGW_FILE_VER_EXTRA 1
++#define LIBRGW_FILE_VER_EXTRA 2
+ 
+ #define LIBRGW_FILE_VERSION(maj, min, extra) ((maj << 16) + (min << 8) + extra)
+ #define LIBRGW_FILE_VERSION_CODE LIBRGW_FILE_VERSION(LIBRGW_FILE_VER_MAJOR, LIBRGW_FILE_VER_MINOR, LIBRGW_FILE_VER_EXTRA)
+@@ -87,6 +87,7 @@ struct rgw_statvfs {
+ */
+ #define RGW_LOOKUP_FLAG_NONE    0x0000
+ #define RGW_LOOKUP_FLAG_CREATE  0x0001
++#define RGW_LOOKUP_FLAG_RCB     0x0002 /* readdir callback hint */
+ 
+ int rgw_lookup(struct rgw_fs *rgw_fs,
+ 	      struct rgw_file_handle *parent_fh, const char *path,
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 813ae95..5ed082d 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -1367,7 +1367,11 @@ int rgw_lookup(struct rgw_fs *rgw_fs,
+ 	return -ENOENT;
+     }
+   } else {
+-    fhr = fs->stat_leaf(parent, path, RGWFileHandle::FLAG_NONE);
++    /* lookup in a readdir callback */
++    uint32_t sl_flags = (flags & RGW_LOOKUP_FLAG_RCB)
++      ? RGWFileHandle::FLAG_NONE
++      : RGWFileHandle::FLAG_EXACT_MATCH;
++    fhr = fs->stat_leaf(parent, path, sl_flags);
+     if (! get<0>(fhr)) {
+       if (! (flags & RGW_LOOKUP_FLAG_CREATE))
+ 	return -ENOENT;

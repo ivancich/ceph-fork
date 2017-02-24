@@ -1,0 +1,52 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Thu, 23 Feb 2017 16:02:07 -0500
+Subject: rgw_file: ensure valid_s3_object_name for directories, too
+
+The logic in RGWLibFS::mkdir() validated bucket names, but not
+object names (though RGWLibFS::create() did so).
+
+The negative side effect of this was not creating illegal objects
+(we won't), but in a) failing with -EIO and b) more importantly,
+not removing up the proposed object from FHCache, which produced a
+boost assert when recycled.
+
+Fixes: http://tracker.ceph.com/issues/19066
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit eb1cd3b30c0504385f05bf2d2dd5e2251b7efed7)
+
+Resolves (with prior): rhbz#1416041 rhbz#1422822
+---
+ src/rgw/rgw_file.cc | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 5ed082d..7283176 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -457,6 +457,7 @@ namespace rgw {
+       buffer::list bl;
+       string dir_name = /* XXX get rid of this some day soon, too */
+ 	parent->relative_object_name();
++
+       /* creating objects w/leading '/' makes a mess */
+       if ((dir_name.size() > 0) &&
+ 	  (dir_name.back() != '/'))
+@@ -464,6 +465,17 @@ namespace rgw {
+       dir_name += name;
+       dir_name += "/";
+ 
++      /* need valid S3 name (characters, length <= 1024, etc) */
++      if (! valid_s3_object_name(dir_name)) {
++	rgw_fh->flags |= RGWFileHandle::FLAG_DELETED;
++	fh_cache.remove(rgw_fh->fh.fh_hk.object, rgw_fh,
++			RGWFileHandle::FHCache::FLAG_LOCK);
++	rgw_fh->mtx.unlock();
++	unref(rgw_fh);
++	get<0>(mkr) = nullptr;
++	return mkr;
++      }
++
+       RGWPutObjRequest req(get_context(), get_user(), parent->bucket_name(),
+ 			  dir_name, bl);
+ 
