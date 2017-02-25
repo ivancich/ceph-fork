@@ -1,3 +1,10 @@
+ceph (10.2.5-26redhat1) stable; urgency=medium
+
+  * rgw/openssl fix: xenial autoconf logic problem: gcc/ld got too
+    smart... (rhbz#1425710)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Sat, 25 Feb 2017 16:04:14 -0500
+
 ceph (10.2.5-25redhat1) stable; urgency=medium
 
   * rgw_file: rgw_lookup: don't ref for "/" or ".." (rhbz#1425763)

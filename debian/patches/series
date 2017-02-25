@@ -137,3 +137,4 @@
 0137-rgw_file-rgw_lookup-don-t-ref-for-or.patch
 0138-rgw_file-return-of-RGWFileHandle-FLAG_EXACT_MATCH.patch
 0139-rgw_file-ensure-valid_s3_object_name-for-directories.patch
+0140-rgw-openssl-fix-xenial-autoconf-logic-problem-gcc-ld.patch

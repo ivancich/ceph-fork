@@ -1,0 +1,39 @@
+From: Marcus Watts <mdw@linuxbox.com>
+Date: Thu, 23 Feb 2017 02:30:52 -0500
+Subject: rgw/openssl fix: xenial autoconf logic problem: gcc/ld got too
+ smart...
+
+On xenial, cc -o foo -lssl -lcrypto doesn't always
+record libssl.so libcrypto.so as runtime library dependencies.
+It is necessary to actually *use* a function from the library before
+it gets recorded.  The ld(1) options "--as-needed" and "no-as-needed"
+control this.  Evidently the default has changed in xenial.
+That caused my smart "soname" detecting logic for openssl to
+stop working.  To make it work, the test program has to
+actually reference routines or variables inside the library.
+
+This is a quick fix for xenial / autoconf.  There needs to be
+a better fix for cmake and master.
+
+Signed-off-by: Marcus Watts <mwatts@redhat.com>
+(cherry picked from commit 78c8be7a0df3d1c669f8a2a8fd7a5676d0823209)
+
+Resolves: rhbz#1425710
+---
+ configure.ac | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/configure.ac b/configure.ac
+index 1c6e697..5aa11a2 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -538,7 +538,8 @@ AC_MSG_NOTICE([radosgw: openssl INCLUDES $OPENSSL_INCLUDES LIBS $OPENSSL_LIBS])
+ AC_MSG_CHECKING(for radosgw/civetweb: sonames for openssl libraries)
+   saved_LIBS="${LIBS}"
+   LIBS="$OPENSSL_LIBS"
+-  AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[]])],
++  AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <openssl/ssl.h>
++#include <openssl/evp.h>], [SSL *s = 0;printf ("%p %d\n", (void*)EVP_md5(), SSL_get_fd(s))])],
+       [AC_MSG_RESULT([linked])
+ eval `$OBJDUMP -p ./conftest$ac_exeext | sed -n 's/^  NEEDED  *libssl/LIBSSL_SONAME=libssl/p;
+ s/^  NEEDED  *libcrypto/LIBCRYPTO_SONAME=libcrypto/p'`],
