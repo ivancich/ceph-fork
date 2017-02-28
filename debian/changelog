@@ -1,3 +1,12 @@
+ceph (10.2.5-27redhat1) stable; urgency=medium
+
+  * rgw: RGWMetaSyncShardControlCR retries with backoff on all error
+    codes (rhbz#1424725)
+  * rgw_file: use fh_hook::is_linked() to check residence
+    (rhbz#1416041)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 28 Feb 2017 14:46:32 -0700
+
 ceph (10.2.5-26redhat1) stable; urgency=medium
 
   * rgw/openssl fix: xenial autoconf logic problem: gcc/ld got too

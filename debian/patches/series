@@ -138,3 +138,5 @@
 0138-rgw_file-return-of-RGWFileHandle-FLAG_EXACT_MATCH.patch
 0139-rgw_file-ensure-valid_s3_object_name-for-directories.patch
 0140-rgw-openssl-fix-xenial-autoconf-logic-problem-gcc-ld.patch
+0141-rgw-RGWMetaSyncShardControlCR-retries-with-backoff-o.patch
+0142-rgw_file-use-fh_hook-is_linked-to-check-residence.patch
