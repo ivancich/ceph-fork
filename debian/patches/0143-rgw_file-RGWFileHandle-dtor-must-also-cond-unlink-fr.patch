@@ -1,0 +1,36 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 28 Feb 2017 20:24:12 -0500
+Subject: rgw_file: RGWFileHandle dtor must also cond-unlink from FHCache
+
+Formerly masked in part by the reclaim() action, direct-delete now
+substitutes for reclaim() iff its LRU lane is over its high-water
+mark, and in particular, like reclaim() the destructor is certain
+to see handles still interned on the FHcache when nfs-ganesha is
+recycling objects from its own LRU.
+
+Fixes: http://tracker.ceph.com/issues/19112
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 081085e040dca6dfe8267e0514f0631dc6a9a85b)
+
+Resolves (with prior): rhbz#1416041
+---
+ src/rgw/rgw_file.cc | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index d2efcdf..93d9139 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -762,6 +762,11 @@ namespace rgw {
+   }
+ 
+   RGWFileHandle::~RGWFileHandle() {
++    /* in the non-delete case, handle may still be in handle table */
++    if (fh_hook.is_linked()) {
++      fs->fh_cache.remove(fh.fh_hk.object, this, FHCache::FLAG_LOCK);
++    }
++    /* cond-unref parent */
+     if (parent && (! parent->is_root())) {
+       /* safe because if parent->unref causes its deletion,
+        * there are a) by refcnt, no other objects/paths pointing

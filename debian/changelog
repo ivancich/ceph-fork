@@ -1,3 +1,10 @@
+ceph (10.2.5-28redhat1) stable; urgency=medium
+
+  * rgw_file: RGWFileHandle dtor must also cond-unlink from FHCache
+    (rhbz#1416041)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 28 Feb 2017 20:58:56 -0500
+
 ceph (10.2.5-27redhat1) stable; urgency=medium
 
   * rgw: RGWMetaSyncShardControlCR retries with backoff on all error

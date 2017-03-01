@@ -140,3 +140,4 @@
 0140-rgw-openssl-fix-xenial-autoconf-logic-problem-gcc-ld.patch
 0141-rgw-RGWMetaSyncShardControlCR-retries-with-backoff-o.patch
 0142-rgw_file-use-fh_hook-is_linked-to-check-residence.patch
+0143-rgw_file-RGWFileHandle-dtor-must-also-cond-unlink-fr.patch
