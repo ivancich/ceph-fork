@@ -8593,7 +8593,7 @@ void ReplicatedPG::submit_log_entries(
   ObcLockManager &&manager,
   boost::optional<std::function<void(void)> > &&on_complete)
 {
-  dout(10) << __func__ << entries << dendl;
+  dout(10) << __func__ << " " << entries << dendl;
   assert(is_primary());
 
   ObjectStore::Transaction t;
@@ -8943,7 +8943,14 @@ ObjectContextRef ReplicatedPG::get_object_context(const hobject_t& soid,
       }
     }
 
-    object_info_t oi(bv);
+    object_info_t oi;
+    try {
+      bufferlist::iterator bliter = bv.begin();
+      ::decode(oi, bliter);
+    } catch (...) {
+      dout(0) << __func__ << ": obc corrupt: " << soid << dendl;
+      return ObjectContextRef();   // -ENOENT!
+    }
 
     assert(oi.soid.pool == (int64_t)info.pgid.pool());
 
@@ -9588,13 +9595,20 @@ void ReplicatedPG::recover_got(hobject_t oid, eversion_t v)
   }
 }
 
-
-void ReplicatedPG::failed_push(pg_shard_t from, const hobject_t &soid)
+void ReplicatedPG::failed_push(const list<pg_shard_t> &from, const hobject_t &soid)
 {
+  dout(20) << __func__ << ": " << soid << dendl;
   assert(recovering.count(soid));
+  auto obc = recovering[soid];
+  if (obc) {
+    list<OpRequestRef> blocked_ops;
+    obc->drop_recovery_read(&blocked_ops);
+    requeue_ops(blocked_ops);
+  }
   recovering.erase(soid);
-  missing_loc.remove_location(soid, from);
-  dout(0) << "_failed_push " << soid << " from shard " << from
+  for (auto&& i : from)
+    missing_loc.remove_location(soid, i);
+  dout(0) << __func__ << " " << soid << " from shard " << from
 	  << ", reps on " << missing_loc.get_locations(soid)
 	  << " unfound? " << missing_loc.is_unfound(soid) << dendl;
   finish_recovery_op(soid);  // close out this attempt,
@@ -9685,13 +9699,13 @@ void ReplicatedPG::do_update_log_missing(OpRequestRef &op)
   assert(m->get_type() == MSG_OSD_PG_UPDATE_LOG_MISSING);
   ObjectStore::Transaction t;
   append_log_entries_update_missing(m->entries, t);
-  // TODO FIX
 
   Context *complete = new FunctionContext(
-      [=](int) {
-	MOSDPGUpdateLogMissing *msg =
-	  static_cast<MOSDPGUpdateLogMissing*>(
-	    op->get_req());
+    [=](int) {
+      MOSDPGUpdateLogMissing *msg = static_cast<MOSDPGUpdateLogMissing*>(
+	op->get_req());
+      lock();
+      if (!pg_has_reset_since(msg->get_epoch())) {
 	MOSDPGUpdateLogMissingReply *reply =
 	  new MOSDPGUpdateLogMissingReply(
 	    spg_t(info.pgid.pgid, primary_shard().shard),
@@ -9700,7 +9714,9 @@ void ReplicatedPG::do_update_log_missing(OpRequestRef &op)
 	    msg->get_tid());
 	reply->set_priority(CEPH_MSG_PRIO_HIGH);
 	msg->get_connection()->send_message(reply);
-      });
+      }
+      unlock();
+    });
 
   /* Hack to work around the fact that ReplicatedBackend sends
    * ack+commit if commit happens first */
@@ -9861,6 +9877,7 @@ void ReplicatedPG::mark_all_unfound_lost(
       [=]() {
 	requeue_ops(waiting_for_all_missing);
 	waiting_for_all_missing.clear();
+	requeue_object_waiters(waiting_for_unreadable_object);
 	osd->queue_for_recovery(this);
 
 	stringstream ss;
@@ -10239,7 +10256,7 @@ void ReplicatedPG::_clear_recovery_state()
 
 void ReplicatedPG::cancel_pull(const hobject_t &soid)
 {
-  dout(20) << __func__ << ": soid" << dendl;
+  dout(20) << __func__ << ": " << soid << dendl;
   assert(recovering.count(soid));
   ObjectContextRef obc = recovering[soid];
   if (obc) {

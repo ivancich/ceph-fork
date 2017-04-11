@@ -1,5 +1,6 @@
 if ENABLE_CLIENT
-
+if WITH_RADOS
+if WITH_RADOSGW
 # inject rgw stuff in the decoder testcase
 DENCODER_SOURCES += \
 	rgw/rgw_dencoder.cc \
@@ -17,9 +18,6 @@ DENCODER_DEPS += -lcurl -lexpat \
 	libcls_user_client.la \
 	libcls_timeindex_client.la \
 	libcls_statelog_client.la
-
-if WITH_RADOS
-if WITH_RADOSGW
 
 librgw_la_SOURCES = \
 	rgw/rgw_acl.cc \
@@ -116,6 +114,11 @@ LIBRGW_DEPS += \
 	-lfcgi \
 	-ldl
 
+if WITH_OPENLDAP
+LIBRGW_DEPS += \
+        -lldap
+endif
+
 librgw_la_LIBADD = $(LIBRGW_DEPS) \
 	$(PTHREAD_LIBS) $(RESOLV_LIBS) libglobal.la \
 	$(EXTRALIBS)
@@ -133,8 +136,7 @@ libcivetweb_la_SOURCES =  \
 
 libcivetweb_la_CXXFLAGS = ${CIVETWEB_INCLUDE} -fPIC -Woverloaded-virtual \
 	${AM_CXXFLAGS}
-libcivetweb_la_CFLAGS = -I$(srcdir)/civetweb/include ${CIVETWEB_INCLUDE} -fPIC -DNO_SSL_DL
-LIBCIVETWEB_DEPS += -lssl -lcrypto
+libcivetweb_la_CFLAGS = -I$(srcdir)/civetweb/include ${CIVETWEB_INCLUDE} -fPIC $(SONAME_DEFINES)
 
 noinst_LTLIBRARIES += libcivetweb.la
 
@@ -147,7 +149,7 @@ radosgw_SOURCES = \
 	civetweb/src/civetweb.c \
 	rgw/rgw_main.cc
 
-radosgw_CFLAGS = -I$(srcdir)/civetweb/include -fPIC -I$(srcdir)/xxHash ${CIVETWEB_INCLUDE}
+radosgw_CFLAGS = -I$(srcdir)/civetweb/include -fPIC -I$(srcdir)/xxHash ${CIVETWEB_INCLUDE} $(SONAME_DEFINES)
 radosgw_LDADD = $(LIBRGW) $(LIBCIVETWEB) $(LIBCIVETWEB_DEPS) $(LIBRGW_DEPS) $(RESOLV_LIBS) \
 	$(CEPH_GLOBAL)
 bin_PROGRAMS += radosgw

@@ -1493,17 +1493,20 @@ int RGWRemoteDataLog::run_sync(int num_shards, rgw_data_sync_status& sync_status
   
   lock.get_write();
   data_sync_cr = new RGWDataSyncControlCR(&sync_env, num_shards);
+  data_sync_cr->get(); // run() will drop a ref, so take another
   lock.unlock();
+
   r = run(data_sync_cr);
+
+  lock.get_write();
+  data_sync_cr->put();
+  data_sync_cr = NULL;
+  lock.unlock();
+
   if (r < 0) {
     ldout(store->ctx(), 0) << "ERROR: failed to run sync" << dendl;
     return r;
   }
-
-  lock.get_write();
-  data_sync_cr = NULL;
-  lock.unlock();
-
   return 0;
 }
 
@@ -1642,13 +1645,14 @@ class RGWInitBucketShardSyncStatusCoroutine : public RGWCoroutine {
 
   string lock_name;
   string cookie;
-  rgw_bucket_shard_sync_info status;
+  rgw_bucket_shard_sync_info& status;
 
   bucket_index_marker_info info;
 public:
   RGWInitBucketShardSyncStatusCoroutine(RGWDataSyncEnv *_sync_env,
-                                        const rgw_bucket_shard& bs)
-    : RGWCoroutine(_sync_env->cct), sync_env(_sync_env), bs(bs) {
+                                        const rgw_bucket_shard& bs,
+                                        rgw_bucket_shard_sync_info& _status)
+    : RGWCoroutine(_sync_env->cct), sync_env(_sync_env), bs(bs), status(_status) {
     store = sync_env->store;
     lock_name = "sync_lock";
 
@@ -1709,7 +1713,7 @@ public:
 
 RGWCoroutine *RGWRemoteBucketLog::init_sync_status_cr()
 {
-  return new RGWInitBucketShardSyncStatusCoroutine(&sync_env, bs);
+  return new RGWInitBucketShardSyncStatusCoroutine(&sync_env, bs, init_status);
 }
 
 template <class T>
@@ -2640,8 +2644,7 @@ int RGWRunBucketSyncCoroutine::operate()
 
     yield {
       if ((rgw_bucket_shard_sync_info::SyncState)sync_status.state == rgw_bucket_shard_sync_info::StateInit) {
-        call(new RGWInitBucketShardSyncStatusCoroutine(sync_env, bs));
-        sync_status.state = rgw_bucket_shard_sync_info::StateFullSync;
+        call(new RGWInitBucketShardSyncStatusCoroutine(sync_env, bs, sync_status));
       }
     }
 
@@ -2694,9 +2697,6 @@ int RGWBucketSyncStatusManager::init()
     return -EINVAL;
   }
 
-  async_rados = new RGWAsyncRadosProcessor(store, store->ctx()->_conf->rgw_num_async_rados_threads);
-  async_rados->start();
-
   int ret = http_manager.set_threaded();
   if (ret < 0) {
     ldout(store->ctx(), 0) << "failed in http_manager.set_threaded() ret=" << ret << dendl;
@@ -2724,6 +2724,8 @@ int RGWBucketSyncStatusManager::init()
   error_logger = new RGWSyncErrorLogger(store, RGW_SYNC_ERROR_LOG_SHARD_PREFIX, ERROR_LOGGER_SHARDS);
 
   int effective_num_shards = (num_shards ? num_shards : 1);
+
+  auto async_rados = store->get_async_rados();
 
   for (int i = 0; i < effective_num_shards; i++) {
     RGWRemoteBucketLog *l = new RGWRemoteBucketLog(store, this, async_rados, &http_manager);

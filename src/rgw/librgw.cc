@@ -13,6 +13,7 @@
  */
 #include <sys/types.h>
 #include <string.h>
+#include <chrono>
 
 #include "include/types.h"
 #include "include/rados/librgw.h"
@@ -79,6 +80,8 @@ namespace rgw {
     m_tp.drain(&req_wq);
   }
 
+#define MIN_EXPIRE_S 120
+
   void RGWLibProcess::run()
   {
     /* write completion interval */
@@ -91,6 +94,14 @@ namespace rgw {
     /* gc loop */
     while (! shutdown) {
       lsubdout(cct, rgw, 5) << "RGWLibProcess GC" << dendl;
+
+      /* dirent invalidate timeout--basically, the upper-bound on
+       * inconsistency with the S3 namespace */
+      auto expire_s = cct->_conf->rgw_nfs_namespace_expire_secs;
+
+      /* delay between gc cycles */
+      auto delay_s = std::max(1, std::min(MIN_EXPIRE_S, expire_s/2));
+
       unique_lock uniq(mtx);
     restart:
       int cur_gen = gen;
@@ -105,7 +116,7 @@ namespace rgw {
 	  goto restart; /* invalidated */
       }
       uniq.unlock();
-      std::this_thread::sleep_for(std::chrono::seconds(120));
+      std::this_thread::sleep_for(std::chrono::seconds(delay_s));
     }
   }
 
@@ -286,7 +297,8 @@ namespace rgw {
       dout(0) << "ERROR: io->complete_request() returned " << r << dendl;
     }
     if (should_log) {
-      rgw_log_op(store, s, (op ? op->name() : "unknown"), olog);
+      rgw_log_op(store, nullptr /* !rest */, s,
+		 (op ? op->name() : "unknown"), olog);
     }
 
     int http_ret = s->err.http_ret;
@@ -617,7 +629,18 @@ int librgw_create(librgw_t* rgw, int argc, char **argv)
     std::lock_guard<std::mutex> lg(librgw_mtx);
     if (! g_ceph_context) {
       vector<const char*> args;
+      std::vector<std::string> spl_args;
+      // last non-0 argument will be split and consumed
+      if (argc > 1) {
+	const std::string spl_arg{argv[(--argc)]};
+	get_str_vec(spl_arg, " \t", spl_args);
+      }
       argv_to_vec(argc, const_cast<const char**>(argv), args);
+      // append split args, if any
+      for (const auto& elt : spl_args) {
+	args.push_back(elt.c_str());
+      }
+      env_to_vec(args);
       rc = rgwlib.init(args);
     }
   }

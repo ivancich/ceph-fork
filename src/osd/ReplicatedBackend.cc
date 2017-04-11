@@ -1429,7 +1429,7 @@ void ReplicatedBackend::prepare_pull(
 
   dout(7) << "pull " << soid
 	  << " v " << v
-	  << " on osds " << *p
+	  << " on osds " << q->second
 	  << " from osd." << fromshard
 	  << dendl;
 
@@ -1985,7 +1985,9 @@ int ReplicatedBackend::build_push_op(const ObjectRecoveryInfo &recovery_info,
 	 iter->valid();
 	 iter->next(false)) {
       if (!out_op->omap_entries.empty() &&
-	  available <= (iter->key().size() + iter->value().length()))
+	  ((cct->_conf->osd_recovery_max_omap_entries_per_chunk > 0 &&
+	    out_op->omap_entries.size() >= cct->_conf->osd_recovery_max_omap_entries_per_chunk) ||
+	   available <= iter->key().size() + iter->value().length()))
 	break;
       out_op->omap_entries.insert(make_pair(iter->key(), iter->value()));
 
@@ -2355,7 +2357,8 @@ void ReplicatedBackend::sub_op_push(OpRequestRef op)
 
 void ReplicatedBackend::_failed_push(pg_shard_t from, const hobject_t &soid)
 {
-  get_parent()->failed_push(from, soid);
+  list<pg_shard_t> fl = { from };
+  get_parent()->failed_push(fl, soid);
   pull_from_peer[from].erase(soid);
   if (pull_from_peer[from].empty())
     pull_from_peer.erase(from);
