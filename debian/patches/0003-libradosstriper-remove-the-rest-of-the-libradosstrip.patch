@@ -53,10 +53,10 @@ contain these files:
  delete mode 100644 src/test/libradosstriper/striping.cc
 
 diff --git a/ceph.spec.in b/ceph.spec.in
-index 9ddd75f..d1e3311 100644
+index fd8ab92..008505f 100644
 --- a/ceph.spec.in
 +++ b/ceph.spec.in
-@@ -411,27 +411,6 @@ Obsoletes:	python-ceph < %{epoch}:%{version}-%{release}
+@@ -407,27 +407,6 @@ Obsoletes:	python-ceph < %{epoch}:%{version}-%{release}
  This package contains Python libraries for interacting with Cephs RADOS
  object store.
  
@@ -84,7 +84,7 @@ index 9ddd75f..d1e3311 100644
  %package -n librbd1
  Summary:	RADOS block device client library
  Group:		System Environment/Libraries
-@@ -592,7 +571,6 @@ Group:		Development/Libraries
+@@ -588,7 +567,6 @@ Group:		Development/Libraries
  License:	LGPL-2.0
  Obsoletes:	ceph-devel
  Requires:	librados2-devel = %{epoch}:%{version}-%{release}
@@ -92,7 +92,7 @@ index 9ddd75f..d1e3311 100644
  Requires:	librbd1-devel = %{epoch}:%{version}-%{release}
  Requires:	libcephfs1-devel = %{epoch}:%{version}-%{release}
  %if 0%{with cephfs_java}
-@@ -603,7 +581,7 @@ Provides:	ceph-devel
+@@ -599,7 +577,7 @@ Provides:	ceph-devel
  This is a compatibility package to accommodate ceph-devel split into
  librados2-devel, librbd1-devel and libcephfs1-devel. Packages still depending
  on ceph-devel should be fixed to depend on librados2-devel, librbd1-devel,
@@ -101,7 +101,7 @@ index 9ddd75f..d1e3311 100644
  
  %package -n python-ceph-compat
  Summary:	Compatibility package for Cephs python libraries
-@@ -1268,25 +1246,6 @@ fi
+@@ -1264,25 +1242,6 @@ fi
  %{python_sitearch}/rados-*.egg-info
  
  #################################################################################
@@ -3366,10 +3366,10 @@ index 352fe39..0000000
 -  impl->aio_flush();
 -}
 diff --git a/src/test/Makefile-client.am b/src/test/Makefile-client.am
-index 6eade23..f7ae18a 100644
+index 1346e00..38081c9 100644
 --- a/src/test/Makefile-client.am
 +++ b/src/test/Makefile-client.am
-@@ -543,33 +543,6 @@ endif
+@@ -550,33 +550,6 @@ endif
  endif # WITH_RBD
  
  
@@ -3404,7 +3404,7 @@ index 6eade23..f7ae18a 100644
  
  if WITH_BUILD_TESTS
 diff --git a/src/test/Makefile.am b/src/test/Makefile.am
-index 2b566d3..bf2b9ba 100644
+index 1ca6c91..cea497d 100644
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
 @@ -523,7 +523,6 @@ noinst_HEADERS += \

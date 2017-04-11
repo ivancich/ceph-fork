@@ -1,3 +1,11 @@
+ceph (10.2.7-2redhat1) stable; urgency=medium
+
+  * Rebase to version 10.2.7 (rhbz#1378294 rhbz#1428326 rhbz#1430650
+    rhbz#1330023 rhbz#1425115 rhbz#1352638 rhbz#1381463 rhbz#1428308
+    rhbz#1428324 rhbz#1396956)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 10 Apr 2017 20:22:21 -0600
+
 ceph (10.2.5-28redhat1) stable; urgency=medium
 
   * rgw_file: RGWFileHandle dtor must also cond-unlink from FHCache

@@ -21,7 +21,7 @@ Signed-off-by: Samuel Just <sjust@redhat.com>
  delete mode 100755 src/test/libradosstriper/rados-striper.sh
 
 diff --git a/doc/man/8/rados.rst b/doc/man/8/rados.rst
-index 2243a5e..b40236f 100644
+index 05fc2be..2926531 100644
 --- a/doc/man/8/rados.rst
 +++ b/doc/man/8/rados.rst
 @@ -57,11 +57,6 @@ Options
@@ -37,7 +37,7 @@ index 2243a5e..b40236f 100644
  Global commands
  ===============
 diff --git a/src/test/Makefile.am b/src/test/Makefile.am
-index ce6fc20..2b566d3 100644
+index 480b7df..1ca6c91 100644
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
 @@ -128,7 +128,6 @@ check_SCRIPTS += \
@@ -150,7 +150,7 @@ index a2de948..0000000
 -
 -main rados-striper "$@"
 diff --git a/src/tools/Makefile-client.am b/src/tools/Makefile-client.am
-index e0488fc..7f7b6a2 100644
+index 937d12a..231c7fa 100644
 --- a/src/tools/Makefile-client.am
 +++ b/src/tools/Makefile-client.am
 @@ -18,7 +18,7 @@ rados_SOURCES = \
@@ -163,7 +163,7 @@ index e0488fc..7f7b6a2 100644
  
  if WITH_RBD
 diff --git a/src/tools/rados/rados.cc b/src/tools/rados/rados.cc
-index 09f95dd..a26631d 100644
+index 28a7e7a..3323325 100644
 --- a/src/tools/rados/rados.cc
 +++ b/src/tools/rados/rados.cc
 @@ -16,8 +16,6 @@
@@ -175,7 +175,7 @@ index 09f95dd..a26631d 100644
  
  #include "common/config.h"
  #include "common/ceph_argparse.h"
-@@ -188,10 +186,6 @@ void usage(ostream& out)
+@@ -189,10 +187,6 @@ void usage(ostream& out)
  "        Use with cp to specify the locator of the new object\n"
  "   --target-nspace\n"
  "        Use with cp to specify the namespace of the new object\n"
@@ -186,7 +186,7 @@ index 09f95dd..a26631d 100644
  "\n"
  "BENCH OPTIONS:\n"
  "   -t N\n"
-@@ -268,9 +262,7 @@ static int dump_data(std::string const &filename, bufferlist const &data)
+@@ -272,9 +266,7 @@ static int dump_data(std::string const &filename, bufferlist const &data)
  }
  
  
@@ -197,7 +197,7 @@ index 09f95dd..a26631d 100644
  {
    string oid(objname);
  
-@@ -290,11 +282,7 @@ static int do_get(IoCtx& io_ctx, RadosStriper& striper,
+@@ -294,11 +286,7 @@ static int do_get(IoCtx& io_ctx, RadosStriper& striper,
    int ret;
    while (true) {
      bufferlist outdata;
@@ -210,7 +210,7 @@ index 09f95dd..a26631d 100644
      if (ret <= 0) {
        goto out;
      }
-@@ -388,9 +376,7 @@ static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_p
+@@ -392,9 +380,7 @@ static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_p
    return 0;
  }
  
@@ -221,7 +221,7 @@ index 09f95dd..a26631d 100644
  {
    string oid(objname);
    bufferlist indata;
-@@ -418,11 +404,7 @@ static int do_put(IoCtx& io_ctx, RadosStriper& striper,
+@@ -422,11 +408,7 @@ static int do_put(IoCtx& io_ctx, RadosStriper& striper,
      }
      if (count == 0) {
        if (!offset) { // in case we have to create an empty object
@@ -234,7 +234,7 @@ index 09f95dd..a26631d 100644
  	if (ret < 0) {
  	  goto out;
  	}
-@@ -430,17 +412,10 @@ static int do_put(IoCtx& io_ctx, RadosStriper& striper,
+@@ -434,17 +416,10 @@ static int do_put(IoCtx& io_ctx, RadosStriper& striper,
        continue;
      }
      indata.append(buffer::ptr(buffer::create_static(count, buf)));
@@ -256,15 +256,15 @@ index 09f95dd..a26631d 100644
      indata.clear();
  
      if (ret < 0) {
-@@ -1510,7 +1485,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -1580,7 +1555,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
    int bench_write_dest = 0;
    bool cleanup = true;
    bool no_verify = false;
 -  bool use_striper = false;
+   bool with_clones = false;
    const char *snapname = NULL;
    snap_t snapid = CEPH_NOSNAP;
-   std::map<std::string, std::string>::const_iterator i;
-@@ -1538,7 +1512,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -1612,7 +1586,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
  
    Rados rados;
    IoCtx io_ctx;
@@ -272,7 +272,7 @@ index 09f95dd..a26631d 100644
  
    i = opts.find("create");
    if (i != opts.end()) {
-@@ -1783,17 +1756,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -1879,17 +1852,6 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
            cerr << "INFO: op_size has been rounded to " << op_size << std::endl;
        }
      }
@@ -290,7 +290,7 @@ index 09f95dd..a26631d 100644
    }
  
    // snapname?
-@@ -1959,34 +1921,18 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2055,34 +2017,18 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
  	librados::NObjectIterator i = io_ctx.nobjects_begin();
  	librados::NObjectIterator i_end = io_ctx.nobjects_end();
  	for (; i != i_end; ++i) {
@@ -327,7 +327,7 @@ index 09f95dd..a26631d 100644
  	    if (i->get_locator().size())
  	      formatter->dump_string("locator", i->get_locator());
  	    formatter->close_section(); //object
-@@ -2048,11 +1994,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2144,11 +2090,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
      string oid(nargs[1]);
      uint64_t size;
      time_t mtime;
@@ -340,7 +340,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << " error stat-ing " << pool_name << "/" << oid << ": "
             << cpp_strerror(ret) << std::endl;
-@@ -2066,7 +2008,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2162,7 +2104,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
    else if (strcmp(nargs[0], "get") == 0) {
      if (!pool_name || nargs.size() < 3)
        usage_exit();
@@ -349,7 +349,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << "error getting " << pool_name << "/" << nargs[1] << ": " << cpp_strerror(ret) << std::endl;
        goto out;
-@@ -2075,7 +2017,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2171,7 +2113,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
    else if (strcmp(nargs[0], "put") == 0) {
      if (!pool_name || nargs.size() < 3)
        usage_exit();
@@ -358,7 +358,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << "error putting " << pool_name << "/" << nargs[1] << ": " << cpp_strerror(ret) << std::endl;
        goto out;
-@@ -2097,11 +2039,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2193,11 +2135,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
        cerr << "error, cannot truncate to negative value" << std::endl;
        usage_exit();
      }
@@ -371,7 +371,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << "error truncating oid "
  	   << oid << " to " << size << ": "
-@@ -2128,11 +2066,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2224,11 +2162,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
        } while (ret > 0);
      }
  
@@ -384,7 +384,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << "error setting xattr " << pool_name << "/" << oid << "/" << attr_name << ": " << cpp_strerror(ret) << std::endl;
        goto out;
-@@ -2148,11 +2082,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2244,11 +2178,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
      string attr_name(nargs[2]);
  
      bufferlist bl;
@@ -397,7 +397,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << "error getting xattr " << pool_name << "/" << oid << "/" << attr_name << ": " << cpp_strerror(ret) << std::endl;
        goto out;
-@@ -2168,11 +2098,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2264,11 +2194,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
      string oid(nargs[1]);
      string attr_name(nargs[2]);
  
@@ -410,7 +410,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << "error removing xattr " << pool_name << "/" << oid << "/" << attr_name << ": " << cpp_strerror(ret) << std::endl;
        goto out;
-@@ -2184,11 +2110,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2280,11 +2206,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
      string oid(nargs[1]);
      map<std::string, bufferlist> attrset;
      bufferlist bl;
@@ -423,7 +423,7 @@ index 09f95dd..a26631d 100644
      if (ret < 0) {
        cerr << "error getting xattr set " << pool_name << "/" << oid << ": " << cpp_strerror(ret) << std::endl;
        goto out;
-@@ -2467,18 +2389,10 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
+@@ -2579,18 +2501,10 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
      ++iter;
      for (; iter != nargs.end(); ++iter) {
        const string & oid = *iter;
@@ -445,7 +445,7 @@ index 09f95dd..a26631d 100644
        }
        if (ret < 0) {
          string name = (nspace.size() ? nspace + "/" : "" ) + oid;
-@@ -3307,8 +3221,6 @@ int main(int argc, const char **argv)
+@@ -3488,8 +3402,6 @@ int main(int argc, const char **argv)
        opts["target_locator"] = val;
      } else if (ceph_argparse_witharg(args, i, &val, "--target-nspace" , (char *)NULL)) {
        opts["target_nspace"] = val;
