@@ -305,6 +305,10 @@ CIVETWEB_API int mg_modify_passwords_file(const char *passwords_file_name,
 CIVETWEB_API struct mg_request_info *mg_get_request_info(struct mg_connection *);
 
 
+/* Return the local address (server side) of the socket for a connection */
+CIVETWEB_API struct sockaddr *
+mg_get_local_addr(struct mg_connection *);
+
 /* Send data to the client.
    Return:
     0   when the connection has been closed

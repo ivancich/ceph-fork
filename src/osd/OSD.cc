@@ -1422,11 +1422,14 @@ void OSDService::handle_misdirected_op(PG *pg, OpRequestRef op)
 
   dout(7) << *pg << " misdirected op in " << m->get_map_epoch() << dendl;
   clog->warn() << m->get_source_inst() << " misdirected " << m->get_reqid()
-	      << " pg " << m->get_pg()
-	      << " to osd." << whoami
-	      << " not " << pg->acting
-	      << " in e" << m->get_map_epoch() << "/" << osdmap->get_epoch() << "\n";
-  reply_op_error(op, -ENXIO);
+	       << " pg " << m->get_pg()
+	       << " to osd." << whoami
+	       << " not " << pg->acting
+	       << " in e" << m->get_map_epoch() << "/" << osdmap->get_epoch()
+	       << "\n";
+  if (g_conf->osd_enxio_on_misdirected_op) {
+    reply_op_error(op, -ENXIO);
+  }
 }
 
 
@@ -2389,6 +2392,13 @@ void OSD::final_init()
     test_ops_hook,
      "Delay osd recovery by specified seconds");
   assert(r == 0);
+  r = admin_socket->register_command(
+   "trigger_scrub",
+   "trigger_scrub " \
+   "name=pgid,type=CephString ",
+   test_ops_hook,
+   "Trigger a scheduled scrub ");
+  assert(r == 0);
 }
 
 void OSD::create_logger()
@@ -2939,7 +2949,6 @@ void OSD::add_newly_split_pg(PG *pg, PG::RecoveryCtx *rctx)
   pg->get_osdmap()->pg_to_up_acting_osds(pg->info.pgid.pgid, up, acting);
   int role = OSDMap::calc_pg_role(service.whoami, acting);
   pg->set_role(role);
-  pg->reg_next_scrub();
   pg->handle_loaded(rctx);
   pg->write_if_dirty(*(rctx->transaction));
   pg->queue_null(e, e);
@@ -4057,13 +4066,13 @@ void OSD::heartbeat_check()
     if (p->second.is_unhealthy(cutoff)) {
       if (p->second.last_rx_back == utime_t() ||
 	  p->second.last_rx_front == utime_t()) {
-	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr()
+	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr_storage()
 	     << " osd." << p->first << " ever on either front or back, first ping sent "
 	     << p->second.first_tx << " (cutoff " << cutoff << ")" << dendl;
 	// fail
 	failure_queue[p->first] = p->second.last_tx;
       } else {
-	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr()
+	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr_storage()
 	     << " osd." << p->first << " since back " << p->second.last_rx_back
 	     << " front " << p->second.last_rx_front
 	     << " (cutoff " << cutoff << ")" << dendl;
@@ -4479,6 +4488,44 @@ void TestOpsSocketHook::test_ops(OSDService *service, ObjectStore *store,
     service->cct->_conf->apply_changes(NULL);
     ss << "set_recovery_delay: set osd_recovery_delay_start "
        << "to " << service->cct->_conf->osd_recovery_delay_start;
+    return;
+  }
+  if (command ==  "trigger_scrub") {
+    spg_t pgid;
+    OSDMapRef curmap = service->get_osdmap();
+
+    string pgidstr;
+
+    cmd_getval(service->cct, cmdmap, "pgid", pgidstr);
+    if (!pgid.parse(pgidstr.c_str())) {
+      ss << "Invalid pgid specified";
+      return;
+    }
+
+    PG *pg = service->osd->_lookup_lock_pg(pgid);
+    if (pg == nullptr) {
+      ss << "Can't find pg " << pgid;
+      return;
+    }
+
+    if (pg->is_primary()) {
+      pg->unreg_next_scrub();
+      const pg_pool_t *p = curmap->get_pg_pool(pgid.pool());
+      double pool_scrub_max_interval = 0;
+      p->opts.get(pool_opts_t::SCRUB_MAX_INTERVAL, &pool_scrub_max_interval);
+      double scrub_max_interval = pool_scrub_max_interval > 0 ?
+        pool_scrub_max_interval : g_conf->osd_scrub_max_interval;
+      // Instead of marking must_scrub force a schedule scrub
+      utime_t stamp = ceph_clock_now(service->cct);
+      stamp -= scrub_max_interval;
+      stamp -=  100.0;  // push back last scrub more for good measure
+      pg->info.history.last_scrub_stamp = stamp;
+      pg->reg_next_scrub();
+      ss << "ok";
+    } else {
+      ss << "Not primary";
+    }
+    pg->unlock();
     return;
   }
   ss << "Internal error - command=" << command;
@@ -6434,6 +6481,11 @@ void OSD::sched_scrub()
 	dout(10) << "sched_scrub " << scrub.pgid << " scheduled at " << scrub.sched_time
 		 << " > " << now << dendl;
 	break;
+      }
+
+      if (!cct->_conf->osd_scrub_during_recovery && is_recovery_active()) {
+        dout(10) << __func__ << "not scheduling scrub of " << scrub.pgid << " due to active recovery ops" << dendl;
+        break;
       }
 
       PG *pg = _lookup_lock_pg(scrub.pgid);
@@ -8397,6 +8449,14 @@ void OSD::finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue)
   recovery_wq.unlock();
 }
 
+bool OSD::is_recovery_active()
+{
+  if (recovery_ops_active > 0)
+    return true;
+
+  return false;
+}
+
 // =========================================================
 // OPS
 
@@ -8539,14 +8599,16 @@ void OSD::handle_op(OpRequestRef& op, OSDMapRef& osdmap)
   if (!send_map->osd_is_valid_op_target(pgid.pgid, whoami)) {
     dout(7) << "we are invalid target" << dendl;
     clog->warn() << m->get_source_inst() << " misdirected " << m->get_reqid()
-		      << " pg " << m->get_pg()
-		      << " to osd." << whoami
-		      << " in e" << osdmap->get_epoch()
-		      << ", client e" << m->get_map_epoch()
-		      << " pg " << pgid
-		      << " features " << m->get_connection()->get_features()
-		      << "\n";
-    service.reply_op_error(op, -ENXIO);
+		 << " pg " << m->get_pg()
+		 << " to osd." << whoami
+		 << " in e" << osdmap->get_epoch()
+		 << ", client e" << m->get_map_epoch()
+		 << " pg " << pgid
+		 << " features " << m->get_connection()->get_features()
+		 << "\n";
+    if (g_conf->osd_enxio_on_misdirected_op) {
+      service.reply_op_error(op, -ENXIO);
+    }
     return;
   }
 

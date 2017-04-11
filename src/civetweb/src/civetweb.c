@@ -1169,6 +1169,11 @@ struct mg_request_info *mg_get_request_info(struct mg_connection *conn)
     return &conn->request_info;
 }
 
+struct sockaddr *mg_get_local_addr(struct mg_connection *conn)
+{
+    return &conn->client.lsa.sa;
+}
+
 /* Skip the characters until one of the delimiters characters found.
    0-terminate resulting word. Skip the delimiter and following whitespaces.
    Advance pointer to buffer to the next word. Return found 0-terminated word.
@@ -3493,8 +3498,10 @@ static SOCKET conn2(struct mg_context *ctx  /* may be null */, const char *host,
 
     if (host == NULL) {
         snprintf(ebuf, ebuf_len, "%s", "NULL host");
+#ifndef NO_SSL_DL
     } else if (use_ssl && SSLv23_client_method == NULL) {
         snprintf(ebuf, ebuf_len, "%s", "SSL is not initialized");
+#endif
         /* TODO(lsm): use something threadsafe instead of gethostbyname() */
     } else if ((he = gethostbyname(host)) == NULL) {
         snprintf(ebuf, ebuf_len, "gethostbyname(%s): %s", host, strerror(ERRNO));
@@ -3994,6 +4001,7 @@ static void parse_http_headers(char **buf, struct mg_request_info *ri)
     }
 }
 
+#ifndef RGW
 static int is_valid_http_method(const char *method)
 {
     return !strcmp(method, "GET") || !strcmp(method, "POST") ||
@@ -4003,6 +4011,7 @@ static int is_valid_http_method(const char *method)
            || !strcmp(method, "MKCOL")
            ;
 }
+#endif
 
 /* Parse HTTP request, fill in mg_request_info structure.
    This function modifies the buffer by NUL-terminating

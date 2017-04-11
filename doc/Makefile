@@ -99,6 +99,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ax_c_pretty_func.m4 \
 	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
+	$(top_srcdir)/m4/ax_check_openssl.m4 \
 	$(top_srcdir)/m4/ax_cxx_compile_stdcxx_11.m4 \
 	$(top_srcdir)/m4/ax_cxx_static_cast.m4 \
 	$(top_srcdir)/m4/ax_intel.m4 $(top_srcdir)/m4/libtool.m4 \
@@ -234,15 +235,18 @@ NSS_CFLAGS = -I/usr/include/nss -I/usr/include/nspr
 NSS_LIBS = -lnss3 -lnssutil3 -lsmime3 -lssl3 -lplds4 -lplc4 -lnspr4
 OBJDUMP = objdump
 OBJEXT = o
+OPENSSL_INCLUDES = 
+OPENSSL_LDFLAGS = 
+OPENSSL_LIBS = -lssl -lcrypto
 OTOOL = 
 OTOOL64 = 
 PACKAGE = ceph
 PACKAGE_BUGREPORT = ceph-devel@vger.kernel.org
 PACKAGE_NAME = ceph
-PACKAGE_STRING = ceph 10.2.5
+PACKAGE_STRING = ceph 10.2.7
 PACKAGE_TARNAME = ceph
 PACKAGE_URL = 
-PACKAGE_VERSION = 10.2.5
+PACKAGE_VERSION = 10.2.7
 PATH_SEPARATOR = :
 PKG_CONFIG = /usr/bin/pkg-config
 PKG_CONFIG_LIBDIR = 
@@ -265,9 +269,10 @@ RPM_RELEASE = 0
 SED = /bin/sed
 SET_MAKE = 
 SHELL = /bin/bash
+SONAME_DEFINES =  -DSSL_LIB=\"libssl.so.1.0.0\" -DCRYPTO_LIB=\"libcrypto.so.1.0.0\"
 SPHINX_BUILD = sphinx-build
 STRIP = strip
-VERSION = 10.2.5
+VERSION = 10.2.7
 WARN_ERROR_FORMAT_SECURITY = -Werror=format-security
 WARN_IGNORED_QUALIFIERS = -Wignored-qualifiers
 WARN_TYPE_LIMITS = -Wtype-limits
@@ -285,7 +290,7 @@ acx_pthread_config =
 am__include = include
 am__leading_dot = .
 am__quote = 
-am__tar = tar --format=ustar -chf - "$$tardir"
+am__tar = tar --format=posix -chf - "$$tardir"
 am__untar = tar -xf -
 bindir = ${exec_prefix}/bin
 build = x86_64-pc-linux-gnu
