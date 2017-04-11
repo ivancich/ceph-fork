@@ -1,0 +1,27 @@
+From: Gui Hecheng <guihecheng@cmss.chinamobile.com>
+Date: Fri, 31 Mar 2017 10:42:40 +0800
+Subject: rgw_file: fix missing unlock in unlink
+
+Fixes: http://tracker.ceph.com/issues/19435
+
+Signed-off-by: Gui Hecheng <guihecheng@cmss.chinamobile.com>
+(cherry picked from commit cb6808a6366a70f54d0cc16437d16aa1b7819c84)
+
+Resolves (with prior): rhbz#1439880
+---
+ src/rgw/rgw_file.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index dbeee11..63c46dd 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -260,6 +260,8 @@ namespace rgw {
+ 	/* for the duration of our cache timer, trust positive
+ 	 * child cache */
+ 	if (rgw_fh->has_children()) {
++	  rgw_fh->mtx.unlock();
++	  unref(rgw_fh);
+ 	  return(-ENOTEMPTY);
+ 	}
+ 	oname += "/";

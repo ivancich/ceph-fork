@@ -1,3 +1,5 @@
 0001-Revert-Merge-pull-request-7820-from-yuyuyu101-remove.patch
 0002-Revert-rados-Added-striper-option-to-the-command-lin.patch
 0003-libradosstriper-remove-the-rest-of-the-libradosstrip.patch
+0004-rgw_file-implement-reliable-has-children-check-unlin.patch
+0005-rgw_file-fix-missing-unlock-in-unlink.patch

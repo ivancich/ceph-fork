@@ -1,3 +1,11 @@
+ceph (10.2.7-3redhat1) stable; urgency=medium
+
+  * rgw_file: implement reliable has-children check (unlink dir)
+    (rhbz#1439880)
+  * rgw_file: fix missing unlock in unlink (rhbz#1439880)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 11 Apr 2017 06:50:05 -0600
+
 ceph (10.2.7-2redhat1) stable; urgency=medium
 
   * Rebase to version 10.2.7 (rhbz#1378294 rhbz#1428326 rhbz#1430650
