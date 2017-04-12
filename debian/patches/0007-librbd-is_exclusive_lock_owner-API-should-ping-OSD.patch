@@ -1,0 +1,115 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 16 Mar 2017 12:28:41 -0400
+Subject: librbd: is_exclusive_lock_owner API should ping OSD
+
+This is required to detect if a peer has been silently blacklisted
+and is therefore no longer the lock owner.
+
+Fixes: http://tracker.ceph.com/issues/19287
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit e15db05960a284bdf3701256722299d553cfd5aa)
+
+Conflicts:
+	src/librbd/ManagedLock.[h|cc]: logic moved to ExclusiveLock
+
+(cherry picked from commit 6737dd99be82aab6d50bc4e5872c3673e5add9a9)
+(cherry picked from commit 534804ebecfba9efae1b599661ee8b6af89f75a2)
+
+Conflicts:
+	src/librbd/ExclusiveLock.cc: trivial resolution
+
+Resolves: rhbz#1439355
+---
+ src/librbd/ExclusiveLock.cc | 34 ++++++++++++++++++++++++++++++++++
+ src/librbd/ExclusiveLock.h  |  2 ++
+ src/librbd/internal.cc      | 19 ++++++++++++++++---
+ 3 files changed, 52 insertions(+), 3 deletions(-)
+
+diff --git a/src/librbd/ExclusiveLock.cc b/src/librbd/ExclusiveLock.cc
+index 12fe117..8f0882c 100644
+--- a/src/librbd/ExclusiveLock.cc
++++ b/src/librbd/ExclusiveLock.cc
+@@ -251,6 +251,40 @@ void ExclusiveLock<I>::handle_peer_notification(int r) {
+ }
+ 
+ template <typename I>
++int ExclusiveLock<I>::assert_header_locked() {
++  CephContext *cct = m_image_ctx.cct;
++  ldout(cct, 10) << dendl;
++
++  librados::ObjectReadOperation op;
++  {
++    Mutex::Locker locker(m_lock);
++    rados::cls::lock::assert_locked(&op, RBD_LOCK_NAME, LOCK_EXCLUSIVE,
++                                    m_cookie, WATCHER_LOCK_TAG);
++  }
++
++  int r = m_image_ctx.md_ctx.operate(m_image_ctx.header_oid, &op, nullptr);
++  if (r < 0) {
++    if (r == -EBLACKLISTED) {
++      ldout(cct, 5) << "client is not lock owner -- client blacklisted"
++                    << dendl;
++    } else if (r == -ENOENT) {
++      ldout(cct, 5) << "client is not lock owner -- no lock detected"
++                    << dendl;
++    } else if (r == -EBUSY) {
++      ldout(cct, 5) << "client is not lock owner -- owned by different client"
++                    << dendl;
++    } else {
++      lderr(cct) << "failed to verify lock ownership: " << cpp_strerror(r)
++                 << dendl;
++    }
++
++    return r;
++  }
++
++  return 0;
++}
++
++template <typename I>
+ void ExclusiveLock<I>::assert_header_locked(librados::ObjectWriteOperation *op) {
+   Mutex::Locker locker(m_lock);
+   rados::cls::lock::assert_locked(op, RBD_LOCK_NAME, LOCK_EXCLUSIVE,
+diff --git a/src/librbd/ExclusiveLock.h b/src/librbd/ExclusiveLock.h
+index 531567a..948b677 100644
+--- a/src/librbd/ExclusiveLock.h
++++ b/src/librbd/ExclusiveLock.h
+@@ -43,6 +43,8 @@ public:
+ 
+   void reacquire_lock(Context *on_reacquired = nullptr);
+ 
++  int assert_header_locked();
++
+   void handle_peer_notification(int r);
+ 
+   void assert_header_locked(librados::ObjectWriteOperation *op);
+diff --git a/src/librbd/internal.cc b/src/librbd/internal.cc
+index d5875d8..85f23e4 100644
+--- a/src/librbd/internal.cc
++++ b/src/librbd/internal.cc
+@@ -2099,9 +2099,22 @@ int mirror_image_disable_internal(ImageCtx *ictx, bool force,
+ 
+   int is_exclusive_lock_owner(ImageCtx *ictx, bool *is_owner)
+   {
+-    RWLock::RLocker l(ictx->owner_lock);
+-    *is_owner = (ictx->exclusive_lock != nullptr &&
+-		 ictx->exclusive_lock->is_lock_owner());
++    *is_owner = false;
++
++    RWLock::RLocker owner_locker(ictx->owner_lock);
++    if (ictx->exclusive_lock == nullptr ||
++        !ictx->exclusive_lock->is_lock_owner()) {
++      return 0;
++    }
++
++    // might have been blacklisted by peer -- ensure we still own
++    // the lock by pinging the OSD
++    int r = ictx->exclusive_lock->assert_header_locked();
++    if (r < 0) {
++      return r;
++    }
++
++    *is_owner = true;
+     return 0;
+   }
+ 

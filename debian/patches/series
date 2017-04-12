@@ -3,3 +3,5 @@
 0003-libradosstriper-remove-the-rest-of-the-libradosstrip.patch
 0004-rgw_file-implement-reliable-has-children-check-unlin.patch
 0005-rgw_file-fix-missing-unlock-in-unlink.patch
+0006-pybind-fix-incorrect-exception-format-strings.patch
+0007-librbd-is_exclusive_lock_owner-API-should-ping-OSD.patch

@@ -1,3 +1,10 @@
+ceph (10.2.7-4redhat1) stable; urgency=medium
+
+  * pybind: fix incorrect exception format strings (rhbz#1439355)
+  * librbd: is_exclusive_lock_owner API should ping OSD (rhbz#1439355)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 12 Apr 2017 10:26:38 -0600
+
 ceph (10.2.7-3redhat1) stable; urgency=medium
 
   * rgw_file: implement reliable has-children check (unlink dir)
