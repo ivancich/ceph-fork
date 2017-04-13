@@ -1,3 +1,12 @@
+ceph (10.2.7-5redhat1) stable; urgency=medium
+
+  * ceph-disk: Add fix subcommand (rhbz#1416575)
+  * ceph-disk: Add unit test for fix command (rhbz#1416575)
+  * ceph-disk: Add more fix targets (rhbz#1416575)
+  * ceph-disk: Add --system option for fix command (rhbz#1416575)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 13 Apr 2017 16:40:40 -0600
+
 ceph (10.2.7-4redhat1) stable; urgency=medium
 
   * pybind: fix incorrect exception format strings (rhbz#1439355)

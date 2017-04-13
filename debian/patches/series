@@ -5,3 +5,7 @@
 0005-rgw_file-fix-missing-unlock-in-unlink.patch
 0006-pybind-fix-incorrect-exception-format-strings.patch
 0007-librbd-is_exclusive_lock_owner-API-should-ping-OSD.patch
+0008-ceph-disk-Add-fix-subcommand.patch
+0009-ceph-disk-Add-unit-test-for-fix-command.patch
+0010-ceph-disk-Add-more-fix-targets.patch
+0011-ceph-disk-Add-system-option-for-fix-command.patch

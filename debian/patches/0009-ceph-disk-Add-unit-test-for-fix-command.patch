@@ -1,0 +1,48 @@
+From: Boris Ranto <branto@redhat.com>
+Date: Thu, 9 Feb 2017 19:17:12 +0100
+Subject: ceph-disk: Add unit test for fix command
+
+This will simulate the command* functions to not actually run anything
+thus excercising the python code directly. It also checks that the
+proper (sub-strings) are in the output.
+
+Signed-off-by: Boris Ranto <branto@redhat.com>
+(cherry picked from commit cc9e5561c8110ad19485c8422404ec27e7330c9f)
+
+Resolves: rhbz#1416575
+---
+ src/ceph-disk/tests/test_main.py | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/ceph-disk/tests/test_main.py b/src/ceph-disk/tests/test_main.py
+index d76a5d8..3f0e714 100644
+--- a/src/ceph-disk/tests/test_main.py
++++ b/src/ceph-disk/tests/test_main.py
+@@ -1292,6 +1292,27 @@ class TestCephDiskDeactivateAndDestroy(unittest.TestCase):
+             self.assertRaises(Exception, main._deallocate_osd_id,
+                               cluster, osd_id)
+ 
++    def test_main_fix(self):
++        args = main.parse_args(['fix', '--all', '--selinux', '--permissions'])
++        commands = []
++
++        def _command(x):
++            commands.append(" ".join(x))
++            return ("", "", None)
++
++        with patch.multiple(
++            main,
++            command=_command,
++            command_init=lambda x: commands.append(x),
++            command_wait=lambda x: None,
++        ):
++            main.main_fix(args)
++            commands = " ".join(commands)
++            assert '/var/lib/ceph' in commands
++            assert 'restorecon' in commands
++            assert 'chown' in commands
++            assert 'find' in commands
++
+ 
+ def raise_command_error(*args):
+     e = subprocess.CalledProcessError('aaa', 'bbb', 'ccc')

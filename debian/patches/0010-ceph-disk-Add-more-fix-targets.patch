@@ -1,0 +1,30 @@
+From: Boris Ranto <branto@redhat.com>
+Date: Thu, 16 Feb 2017 11:34:27 +0100
+Subject: ceph-disk: Add more fix targets
+
+It turns out I forgot several more directories that needs to be fixed by
+this script. We need to fix /var/log/ceph, /var/run/ceph and /etc/ceph
+as well.
+
+Signed-off-by: Boris Ranto <branto@redhat.com>
+(cherry picked from commit 518319523e485df30485ab9ceaaacb9e41d91650)
+
+Resolves: rhbz#1416575
+---
+ src/ceph-disk/ceph_disk/main.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index 5eceb27..12e1daf 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -4476,6 +4476,9 @@ def main_trigger(args):
+ def main_fix(args):
+     # A hash table containing 'path': ('uid', 'gid', blocking, recursive)
+     fix_table = [
++        ('/etc/ceph', 'ceph', 'ceph', True, True),
++        ('/var/run/ceph', 'ceph', 'ceph', True, True),
++        ('/var/log/ceph', 'ceph', 'ceph', True, True),
+         ('/var/lib/ceph', 'ceph', 'ceph', True, False),
+     ]
+ 
