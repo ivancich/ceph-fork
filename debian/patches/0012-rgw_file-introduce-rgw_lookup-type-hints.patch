@@ -1,0 +1,273 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 4 Apr 2017 20:16:13 -0400
+Subject: rgw_file: introduce rgw_lookup type hints
+
+The new type hints optimize object type deduction, when the
+rgw_lookup is called from an rgw_readdir callback.
+
+Fixes: http://tracker.ceph.com/issues/19623
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 2e66c7a7cc763c5c0d6f5db04855f60f2b2ceed3)
+
+Resolves (w/group): rhbz#1422822
+---
+ src/include/rados/rgw_file.h  | 13 ++++++++++---
+ src/rgw/rgw_file.cc           | 21 +++++++++++++++++----
+ src/rgw/rgw_file.h            | 26 +++++++++++++++++++++++---
+ src/test/librgw_file.cc       |  6 ++++--
+ src/test/librgw_file_gp.cc    |  3 ++-
+ src/test/librgw_file_nfsns.cc |  8 ++++++--
+ 6 files changed, 62 insertions(+), 15 deletions(-)
+
+diff --git a/src/include/rados/rgw_file.h b/src/include/rados/rgw_file.h
+index 27c336a..a007e41 100644
+--- a/src/include/rados/rgw_file.h
++++ b/src/include/rados/rgw_file.h
+@@ -26,7 +26,7 @@ extern "C" {
+ 
+ #define LIBRGW_FILE_VER_MAJOR 1
+ #define LIBRGW_FILE_VER_MINOR 1
+-#define LIBRGW_FILE_VER_EXTRA 2
++#define LIBRGW_FILE_VER_EXTRA 3
+ 
+ #define LIBRGW_FILE_VERSION(maj, min, extra) ((maj << 16) + (min << 8) + extra)
+ #define LIBRGW_FILE_VERSION_CODE LIBRGW_FILE_VERSION(LIBRGW_FILE_VER_MAJOR, LIBRGW_FILE_VER_MINOR, LIBRGW_FILE_VER_EXTRA)
+@@ -35,7 +35,8 @@ extern "C" {
+  * object types
+  */
+ enum rgw_fh_type {
+-  RGW_FS_TYPE_FILE = 0,
++  RGW_FS_TYPE_NIL = 0,
++  RGW_FS_TYPE_FILE,
+   RGW_FS_TYPE_DIRECTORY,
+ };
+ 
+@@ -88,6 +89,11 @@ struct rgw_statvfs {
+ #define RGW_LOOKUP_FLAG_NONE    0x0000
+ #define RGW_LOOKUP_FLAG_CREATE  0x0001
+ #define RGW_LOOKUP_FLAG_RCB     0x0002 /* readdir callback hint */
++#define RGW_LOOKUP_FLAG_DIR     0x0004
++#define RGW_LOOKUP_FLAG_FILE    0x0008
++
++#define RGW_LOOKUP_TYPE_FLAGS \
++  (RGW_LOOKUP_FLAG_DIR|RGW_LOOKUP_FLAG_FILE)
+ 
+ int rgw_lookup(struct rgw_fs *rgw_fs,
+ 	      struct rgw_file_handle *parent_fh, const char *path,
+@@ -196,7 +202,8 @@ int rgw_unlink(struct rgw_fs *rgw_fs,
+ /*
+     read  directory content
+ */
+-typedef bool (*rgw_readdir_cb)(const char *name, void *arg, uint64_t offset);
++typedef bool (*rgw_readdir_cb)(const char *name, void *arg, uint64_t offset,
++			       uint32_t flags);
+ 
+ #define RGW_READDIR_FLAG_NONE      0x0000
+ #define RGW_READDIR_FLAG_DOTDOT    0x0001 /* send dot names */
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 63c46dd..77a2983 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -73,6 +73,7 @@ namespace rgw {
+ 
+   LookupFHResult RGWLibFS::stat_leaf(RGWFileHandle* parent,
+ 				     const char *path,
++				     enum rgw_fh_type type,
+ 				     uint32_t flags)
+   {
+     /* find either-of <object_name>, <object_name/>, only one of
+@@ -97,6 +98,10 @@ namespace rgw {
+       switch (ix) {
+       case 0:
+       {
++	/* type hint */
++	if (type == RGW_FS_TYPE_DIRECTORY)
++	  continue;
++
+ 	RGWStatObjRequest req(cct, get_user(),
+ 			      parent->bucket_name(), obj_path,
+ 			      RGWStatObjRequest::FLAG_NONE);
+@@ -122,6 +127,10 @@ namespace rgw {
+       case 1:
+       {
+ 	/* try dir form */
++	/* type hint */
++	if (type == RGW_FS_TYPE_FILE)
++	  continue;
++
+ 	obj_path += "/";
+ 	RGWStatObjRequest req(cct, get_user(),
+ 			      parent->bucket_name(), obj_path,
+@@ -153,7 +162,8 @@ namespace rgw {
+ 	if ((rc == 0) &&
+ 	    (req.get_ret() == 0)) {
+ 	  if (req.matched) {
+-	    // we need rgw object's key name equal to file name, if not return NULL
++	    /* we need rgw object's key name equal to file name, if
++	     * not return NULL */
+ 	    if ((flags & RGWFileHandle::FLAG_EXACT_MATCH) &&
+ 		!req.exact_matched) {
+ 	      lsubdout(get_context(), rgw, 15)
+@@ -872,8 +882,8 @@ namespace rgw {
+ 
+     if (flags & RGW_READDIR_FLAG_DOTDOT) {
+       /* send '.' and '..' with their NFS-defined offsets */
+-      rcb(".", cb_arg, 1);
+-      rcb("..", cb_arg, 2);
++      rcb(".", cb_arg, 1, RGW_LOOKUP_FLAG_DIR);
++      rcb("..", cb_arg, 2, RGW_LOOKUP_FLAG_DIR);
+     }
+ 
+     if (is_root()) {
+@@ -1437,10 +1447,13 @@ int rgw_lookup(struct rgw_fs *rgw_fs,
+     }
+   } else {
+     /* lookup in a readdir callback */
++    enum rgw_fh_type fh_type = fh_type_of(flags);
++
+     uint32_t sl_flags = (flags & RGW_LOOKUP_FLAG_RCB)
+       ? RGWFileHandle::FLAG_NONE
+       : RGWFileHandle::FLAG_EXACT_MATCH;
+-    fhr = fs->stat_leaf(parent, path, sl_flags);
++
++    fhr = fs->stat_leaf(parent, path, fh_type, sl_flags);
+     if (! get<0>(fhr)) {
+       if (! (flags & RGW_LOOKUP_FLAG_CREATE))
+ 	return -ENOENT;
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index ab6c1d9..99b31fd 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -679,6 +679,22 @@ namespace rgw {
+     return static_cast<RGWFileHandle*>(fh->fh_private);
+   }
+ 
++  static inline enum rgw_fh_type fh_type_of(uint32_t flags) {
++    enum rgw_fh_type fh_type;
++    switch(flags & RGW_LOOKUP_TYPE_FLAGS)
++    {
++    case RGW_LOOKUP_FLAG_DIR:
++      fh_type = RGW_FS_TYPE_DIRECTORY;
++      break;
++    case RGW_LOOKUP_FLAG_FILE:
++      fh_type = RGW_FS_TYPE_FILE;
++      break;
++    default:
++      fh_type = RGW_FS_TYPE_NIL;
++    };
++    return fh_type;
++  }
++
+   typedef std::tuple<RGWFileHandle*, uint32_t> LookupFHResult;
+   typedef std::tuple<RGWFileHandle*, int> MkObjResult;
+ 
+@@ -1003,7 +1019,8 @@ namespace rgw {
+ 			       const char *path, uint32_t flags);
+ 
+     LookupFHResult stat_leaf(RGWFileHandle* parent, const char *path,
+-			     uint32_t flags);
++			     enum rgw_fh_type type = RGW_FS_TYPE_NIL,
++			     uint32_t flags = RGWFileHandle::FLAG_NONE);
+ 
+     int read(RGWFileHandle* rgw_fh, uint64_t offset, size_t length,
+ 	     size_t* bytes_read, void* buffer, uint32_t flags);
+@@ -1188,7 +1205,7 @@ public:
+     /* update traversal cache */
+     rgw_fh->add_marker(off, rgw_obj_key{marker.data(), ""},
+ 		       RGW_FS_TYPE_DIRECTORY);
+-    rcb(name.data(), cb_arg, off);
++    rcb(name.data(), cb_arg, off, RGW_LOOKUP_FLAG_DIR);
+     return 0;
+   }
+ 
+@@ -1275,7 +1292,10 @@ public:
+     *offset = off;
+     /* update traversal cache */
+     rgw_fh->add_marker(off, marker, type);
+-    rcb(name.data(), cb_arg, off); // XXX has to be legit C-style string
++    rcb(name.data(), cb_arg, off,
++	(type == RGW_FS_TYPE_DIRECTORY) ?
++	RGW_LOOKUP_FLAG_DIR :
++	RGW_LOOKUP_FLAG_FILE);
+     return 0;
+   }
+ 
+diff --git a/src/test/librgw_file.cc b/src/test/librgw_file.cc
+index 5ed0cb4..eb749c7 100644
+--- a/src/test/librgw_file.cc
++++ b/src/test/librgw_file.cc
+@@ -73,7 +73,8 @@ TEST(LibRGW, GETATTR_ROOT) {
+ }
+ 
+ extern "C" {
+-  static bool r1_cb(const char* name, void *arg, uint64_t offset) {
++  static bool r1_cb(const char* name, void *arg, uint64_t offset,
++		    uint32_t flags) {
+     // don't need arg--it would point to fids1
+     fids1.push_back(fid_type(name, offset, nullptr /* handle */));
+     return true; /* XXX ? */
+@@ -139,7 +140,8 @@ TEST(LibRGW, GETATTR_BUCKETS) {
+ }
+ 
+ extern "C" {
+-  static bool r2_cb(const char* name, void *arg, uint64_t offset) {
++  static bool r2_cb(const char* name, void *arg, uint64_t offset,
++		    uint32_t flags) {
+     std::vector<fid_type>& obj_vector = *(static_cast<std::vector<fid_type>*>(arg));
+     obj_vector.push_back(fid_type(name, offset, nullptr));
+     return true; /* XXX ? */
+diff --git a/src/test/librgw_file_gp.cc b/src/test/librgw_file_gp.cc
+index eba0e38..56b232c 100644
+--- a/src/test/librgw_file_gp.cc
++++ b/src/test/librgw_file_gp.cc
+@@ -191,7 +191,8 @@ TEST(LibRGW, LOOKUP_BUCKET) {
+ }
+ 
+ extern "C" {
+-  static bool r2_cb(const char* name, void *arg, uint64_t offset) {
++  static bool r2_cb(const char* name, void *arg, uint64_t offset,
++		    uint32_t flags) {
+     // don't need arg--it would point to fids
+     fids.push_back(fid_type(name, offset, nullptr));
+     return true; /* XXX ? */
+diff --git a/src/test/librgw_file_nfsns.cc b/src/test/librgw_file_nfsns.cc
+index ebac187..1731491 100644
+--- a/src/test/librgw_file_nfsns.cc
++++ b/src/test/librgw_file_nfsns.cc
+@@ -853,7 +853,8 @@ TEST(LibRGW, RELEASE_DIRS1) {
+ }
+ 
+ extern "C" {
+-  static bool r1_cb(const char* name, void *arg, uint64_t offset) {
++  static bool r1_cb(const char* name, void *arg, uint64_t offset,
++		    uint32_t flags) {
+     struct rgw_file_handle* parent_fh
+       = static_cast<struct rgw_file_handle*>(arg);
+     RGWFileHandle* rgw_fh = get_rgwfh(parent_fh);
+@@ -861,6 +862,7 @@ extern "C" {
+ 			   << " bucket=" << rgw_fh->bucket_name()
+ 			   << " dir=" << rgw_fh->full_object_name()
+ 			   << " called back name=" << name
++			   << " flags=" << flags
+ 			   << dendl;
+     string name_str{name};
+     if (! ((name_str == ".") ||
+@@ -1008,7 +1010,8 @@ TEST(LibRGW, MARKER1_SETUP_OBJECTS)
+ }
+ 
+ extern "C" {
+-  static bool r2_cb(const char* name, void *arg, uint64_t offset) {
++  static bool r2_cb(const char* name, void *arg, uint64_t offset,
++		    uint32_t flags) {
+     dirent_vec& dvec =
+       *(static_cast<dirent_vec*>(arg));
+     lsubdout(cct, rgw, 10) << __func__
+@@ -1016,6 +1019,7 @@ extern "C" {
+ 			   << " dir=" << marker_dir
+ 			   << " iv count=" << dvec.count
+ 			   << " called back name=" << name
++			   << " flags=" << flags
+ 			   << dendl;
+     string name_str{name};
+     if (! ((name_str == ".") ||

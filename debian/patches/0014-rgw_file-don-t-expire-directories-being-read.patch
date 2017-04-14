@@ -1,0 +1,188 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 11 Apr 2017 06:42:07 -0400
+Subject: rgw_file: don't expire directories being read
+
+If a readdir expire event turns out to be older than last_readdir,
+just reschedule it (but actually, we should just discard it, as
+another expire event must be in queue.
+
+Fixes: http://tracker.ceph.com/issues/19625
+
+(cherry picked from commit 007b7451c26716c51207c161dc347e9a00da53f1)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+
+Resolves (w/group): rhbz#1422822
+---
+ src/rgw/rgw_file.cc | 60 ++++++++++++++++++++++++++++++++++++++++++++++-------
+ src/rgw/rgw_file.h  | 17 ++++++++++++++-
+ 2 files changed, 68 insertions(+), 9 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 4dd017d..f1a6a08 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -685,6 +685,15 @@ namespace rgw {
+     rele();
+   } /* RGWLibFS::close */
+ 
++  inline std::ostream& operator<<(std::ostream &os, struct timespec const &ts) {
++      os << "<timespec: tv_sec=";
++      os << ts.tv_sec;
++      os << "; tv_nsec=";
++      os << ts.tv_nsec;
++      os << ">";
++    return os;
++  }
++
+   std::ostream& operator<<(std::ostream &os, RGWLibFS::event const &ev) {
+     os << "<event:";
+       switch (ev.t) {
+@@ -696,7 +705,7 @@ namespace rgw {
+ 	break;
+       };
+     os << "fid=" << ev.fhk.fh_hk.bucket << ":" << ev.fhk.fh_hk.object
+-       << ";ts=<timespec:" << ev.ts.tv_sec << ";" << ev.ts.tv_nsec << ">>";
++       << ";ts=" << ev.ts << ">";
+     return os;
+   }
+ 
+@@ -714,13 +723,19 @@ namespace rgw {
+     uint32_t max_ev =
+       std::max(1, get_context()->_conf->rgw_nfs_max_gc);
+ 
+-    struct timespec now;
++    struct timespec now, expire_ts;
+     event_vector ve;
+     bool stop = false;
+     std::deque<event> &events = state.events;
+-    (void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
+ 
+     do {
++      (void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
++
++      lsubdout(get_context(), rgw, 15)
++	<< "GC: top of expire loop"
++	<< " expire_ts=" << expire_ts
++	<< " expire_s=" << expire_s
++	<< dendl;
+       {
+ 	lock_guard guard(state.mtx); /* LOCKED */
+ 	/* just return if no events */
+@@ -731,7 +746,9 @@ namespace rgw {
+ 	  (events.size() < 500) ? max_ev : (events.size() / 4);
+ 	for (uint32_t ix = 0; (ix < _max_ev) && (events.size() > 0); ++ix) {
+ 	  event& ev = events.front();
+-	  if (ev.ts.tv_sec > (now.tv_sec + expire_s)) {
++	  expire_ts = ev.ts;
++	  expire_ts.tv_sec += expire_s;
++	  if (expire_ts > now) {
+ 	    stop = true;
+ 	    break;
+ 	  }
+@@ -758,12 +775,29 @@ namespace rgw {
+ 		<< dendl;
+ 	      goto rele;
+ 	    }
+-	    /* clear state */
++	    /* maybe clear state */
+ 	    d = get<directory>(&rgw_fh->variant_type);
+ 	    if (d) {
++	      struct timespec ev_ts = ev.ts;
+ 	      lock_guard guard(rgw_fh->mtx);
+-	      rgw_fh->clear_state();
+-	      rgw_fh->invalidate();
++	      struct timespec d_last_readdir = d->last_readdir;
++	      if (unlikely(ev_ts < d_last_readdir)) {
++		/* readdir cycle in progress, don't invalidate */
++		lsubdout(get_context(), rgw, 15)
++		  << "GC: delay expiration for "
++		  << rgw_fh->object_name()
++		  << " ev.ts=" << ev_ts
++		  << " last_readdir=" << d_last_readdir
++		  << dendl;
++		continue;
++	      } else {
++		lsubdout(get_context(), rgw, 15)
++		  << "GC: expiring "
++		  << rgw_fh->object_name()
++		  << dendl;
++		rgw_fh->clear_state();
++		rgw_fh->invalidate();
++	      }
+ 	    }
+ 	  rele:
+ 	    unref(rgw_fh);
+@@ -872,7 +906,8 @@ namespace rgw {
+ 
+     (void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now); /* !LOCKED */
+ 
+-    if (flags & RGW_READDIR_FLAG_DOTDOT) {
++    if ((*offset == 0) &&
++	(flags & RGW_READDIR_FLAG_DOTDOT)) {
+       /* send '.' and '..' with their NFS-defined offsets */
+       rcb(".", cb_arg, 1, RGW_LOOKUP_FLAG_DIR);
+       rcb("..", cb_arg, 2, RGW_LOOKUP_FLAG_DIR);
+@@ -883,11 +918,19 @@ namespace rgw {
+       << " offset=" << *offset
+       << dendl;
+ 
++    directory* d = get<directory>(&variant_type);
++    if (d) {
++      (void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now); /* !LOCKED */
++      lock_guard guard(mtx);
++      d->last_readdir = now;
++    }
++
+     if (is_root()) {
+       RGWListBucketsRequest req(cct, fs->get_user(), this, rcb, cb_arg,
+ 				offset);
+       rc = rgwlib.get_fe()->execute_req(&req);
+       if (! rc) {
++	(void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now); /* !LOCKED */
+ 	lock_guard guard(mtx);
+ 	state.atime = now;
+ 	inc_nlink(req.d_count);
+@@ -900,6 +943,7 @@ namespace rgw {
+       RGWReaddirRequest req(cct, fs->get_user(), this, rcb, cb_arg, offset);
+       rc = rgwlib.get_fe()->execute_req(&req);
+       if (! rc) {
++	(void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now); /* !LOCKED */
+ 	lock_guard guard(mtx);
+ 	state.atime = now;
+ 	inc_nlink(req.d_count);
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index cb87c7d..85e34e7 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -61,6 +61,20 @@ namespace rgw {
+   class RGWFileHandle;
+   class RGWWriteRequest;
+ 
++  static inline bool operator <(const struct timespec& lhs,
++				const struct timespec& rhs) {
++    if (lhs.tv_sec == rhs.tv_sec)
++      return lhs.tv_nsec < rhs.tv_nsec;
++    else
++      return lhs.tv_sec < rhs.tv_sec;
++  }
++
++  static inline bool operator ==(const struct timespec& lhs,
++				 const struct timespec& rhs) {
++    return ((lhs.tv_sec == rhs.tv_sec) &&
++	    (lhs.tv_nsec == rhs.tv_nsec));
++  }
++
+   /*
+    * XXX
+    * The current 64-bit, non-cryptographic hash used here is intended
+@@ -197,8 +211,9 @@ namespace rgw {
+ 
+       uint32_t flags;
+       rgw_obj_key last_marker;
++      struct timespec last_readdir;
+ 
+-      directory() : flags(FLAG_NONE) {}
++      directory() : flags(FLAG_NONE), last_readdir{0,0} {}
+     };
+ 
+     void clear_state();

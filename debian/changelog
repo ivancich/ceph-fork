@@ -1,3 +1,11 @@
+ceph (10.2.7-6redhat1) stable; urgency=medium
+
+  * rgw_file: introduce rgw_lookup type hints (rhbz#1422822)
+  * rgw_file: chunked readdir (rhbz#1422822)
+  * rgw_file: don't expire directories being read (rhbz#1422822)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Thu, 13 Apr 2017 19:20:23 -0600
+
 ceph (10.2.7-5redhat1) stable; urgency=medium
 
   * ceph-disk: Add fix subcommand (rhbz#1416575)
