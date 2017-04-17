@@ -1,0 +1,28 @@
+From: Vikhyat Umrao <vumrao@redhat.com>
+Date: Mon, 13 Feb 2017 23:07:25 +0530
+Subject: rgw: change log level to 20 for 'System already converted' message
+
+Fixes: http://tracker.ceph.com/issues/18919
+
+Signed-off-by: Vikhyat Umrao <vumrao@redhat.com>
+(cherry picked from commit 55b567c767830170d04de4cdc8f10aba30a3f379)
+(cherry picked from commit 06916a8798439ec033294d791749ce7381d92f51)
+
+Resolves: rhbz#1421819
+---
+ src/rgw/rgw_rados.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index dc22781..878795c 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -3337,7 +3337,7 @@ int RGWRados::replace_region_with_zonegroup()
+ 		  << dendl;
+     return ret;
+   } else if (ret != -ENOENT) {
+-    ldout(cct, 0) << "System already converted " << dendl;
++    ldout(cct, 20) << "System already converted " << dendl;
+     return 0;
+   }
+ 
