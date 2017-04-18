@@ -1,0 +1,76 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 18 Apr 2017 09:19:13 -0400
+Subject: rgw_file:  pre-compute unix attrs in write_finish()
+
+New serialized Unix attrs need to reflect the change being made,
+and should be reverted if the change fails.
+
+Fixes: http://tracker.ceph.com/issues/19653
+
+Resolves: rhbz#1443150
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit ed91d23ccaaac4e72a4c28a58e77485395949f04)
+---
+ src/rgw/rgw_file.cc | 20 +++++++++++++++-----
+ src/rgw/rgw_file.h  |  1 +
+ 2 files changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index f67db3d..3181e5a 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -1237,6 +1237,11 @@ namespace rgw {
+     unsigned char m[CEPH_CRYPTO_MD5_DIGESTSIZE];
+     struct req_state* s = get_state();
+ 
++    size_t osize = rgw_fh->get_size();
++    struct timespec octime = rgw_fh->get_ctime();
++    struct timespec omtime = rgw_fh->get_mtime();
++    real_time appx_t = real_clock::now();
++
+     s->obj_size = ofs; // XXX check ofs
+     perfcounter->inc(l_rgw_put_b, s->obj_size);
+ 
+@@ -1258,7 +1263,12 @@ namespace rgw {
+     policy.encode(aclbl);
+     emplace_attr(RGW_ATTR_ACL, std::move(aclbl));
+ 
++    /* unix attrs */
++    rgw_fh->set_mtime(real_clock::to_timespec(appx_t));
++    rgw_fh->set_ctime(real_clock::to_timespec(appx_t));
++    rgw_fh->set_size(bytes_written);
+     rgw_fh->encode_attrs(ux_key, ux_attrs);
++
+     emplace_attr(RGW_ATTR_UNIX_KEY1, std::move(ux_key));
+     emplace_attr(RGW_ATTR_UNIX1, std::move(ux_attrs));
+ 
+@@ -1283,11 +1293,11 @@ namespace rgw {
+ 
+     op_ret = processor->complete(etag, &mtime, real_time(), attrs, delete_at,
+ 				 if_match, if_nomatch);
+-    if (! op_ret) {
+-      /* update stats */
+-      rgw_fh->set_mtime(real_clock::to_timespec(mtime));
+-      rgw_fh->set_ctime(real_clock::to_timespec(mtime));
+-      rgw_fh->set_size(bytes_written);
++    if (op_ret != 0) {
++      /* revert attr updates */
++      rgw_fh->set_mtime(omtime);
++      rgw_fh->set_ctime(octime);
++      rgw_fh->set_size(osize);
+     }
+ 
+   done:
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index 7bc6278..6cad748 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -340,6 +340,7 @@ namespace rgw {
+     uint32_t get_owner_uid() const { return state.owner_uid; }
+     uint32_t get_owner_gid() const { return state.owner_gid; }
+ 
++    struct timespec get_ctime() const { return state.ctime; }
+     struct timespec get_mtime() const { return state.mtime; }
+ 
+     void create_stat(struct stat* st, uint32_t mask) {

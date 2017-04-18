@@ -13,3 +13,5 @@
 0013-rgw_file-chunked-readdir.patch
 0014-rgw_file-don-t-expire-directories-being-read.patch
 0015-rgw-change-log-level-to-20-for-System-already-conver.patch
+0016-rgw_file-fix-readdir-after-dirent-change.patch
+0017-rgw_file-pre-compute-unix-attrs-in-write_finish.patch

@@ -1,0 +1,129 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Fri, 14 Apr 2017 15:56:37 -0400
+Subject: rgw_file: fix readdir after dirent-change
+
+Also, fixes link count computation off-by-one, update of state.nlink
+after computation, link computation reset at start, and a time print
+in debug log.
+
+Fixes: http://tracker.ceph.com/issues/19634
+
+Resolves: rhbz#1443132
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit e0f80266ecd424bf9466579b3edc03911a7c5719)
+---
+ src/rgw/rgw_file.cc |  7 +++++--
+ src/rgw/rgw_file.h  | 20 +++++++++++---------
+ 2 files changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index f1a6a08..f67db3d 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -730,10 +730,9 @@ namespace rgw {
+ 
+     do {
+       (void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
+-
+       lsubdout(get_context(), rgw, 15)
+ 	<< "GC: top of expire loop"
+-	<< " expire_ts=" << expire_ts
++	<< " now=" << now
+ 	<< " expire_s=" << expire_s
+ 	<< dendl;
+       {
+@@ -933,6 +932,8 @@ namespace rgw {
+ 	(void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now); /* !LOCKED */
+ 	lock_guard guard(mtx);
+ 	state.atime = now;
++	if (*offset == 0)
++	  set_nlink(2);
+ 	inc_nlink(req.d_count);
+ 	*eof = req.eof();
+ 	event ev(event::type::READDIR, get_key(), state.atime);
+@@ -946,6 +947,8 @@ namespace rgw {
+ 	(void) clock_gettime(CLOCK_MONOTONIC_COARSE, &now); /* !LOCKED */
+ 	lock_guard guard(mtx);
+ 	state.atime = now;
++	if (*offset == 0)
++	  set_nlink(2);
+ 	inc_nlink(req.d_count);
+ 	*eof = req.eof();
+ 	event ev(event::type::READDIR, get_key(), state.atime);
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index 85e34e7..7bc6278 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -386,7 +386,7 @@ namespace rgw {
+ 
+       switch (fh.fh_type) {
+       case RGW_FS_TYPE_DIRECTORY:
+-	st->st_nlink = 2;
++	st->st_nlink = state.nlink;
+ 	break;
+       case RGW_FS_TYPE_FILE:
+ 	st->st_nlink = 1;
+@@ -477,13 +477,15 @@ namespace rgw {
+ 
+     const rgw_obj_key* find_marker(uint64_t off) const {
+       using std::get;
+-      const directory* d = get<directory>(&variant_type);
+-      if (d) {
+-	return &d->last_marker;
++      if (off > 0) {
++	const directory* d = get<directory>(&variant_type);
++	if (d ) {
++	  return &d->last_marker;
++	}
+       }
+       return nullptr;
+     }
+-    
++
+     bool is_open() const { return flags & FLAG_OPEN; }
+     bool is_root() const { return flags & FLAG_ROOT; }
+     bool is_bucket() const { return flags & FLAG_BUCKET; }
+@@ -1216,7 +1218,6 @@ public:
+ 			      << dendl;
+ 	return;
+       }
+-      ++d_count;
+       ++ix;
+     }
+   } /* send_response_data */
+@@ -1232,6 +1233,7 @@ public:
+     /* update traversal cache */
+     rgw_fh->add_marker(off, rgw_obj_key{marker.data(), ""},
+ 		       RGW_FS_TYPE_DIRECTORY);
++    ++d_count;
+     return rcb(name.data(), cb_arg, off, RGW_LOOKUP_FLAG_DIR);
+   }
+ 
+@@ -1248,8 +1250,8 @@ public:
+   read directory content (bucket objects)
+ */
+ 
+-  class RGWReaddirRequest : public RGWLibRequest,
+-			    public RGWListBucket /* RGWOp */
++class RGWReaddirRequest : public RGWLibRequest,
++			  public RGWListBucket /* RGWOp */
+ {
+ public:
+   RGWFileHandle* rgw_fh;
+@@ -1319,6 +1321,7 @@ public:
+     *offset = off;
+     /* update traversal cache */
+     rgw_fh->add_marker(off, marker, type);
++    ++d_count;
+     return rcb(name.data(), cb_arg, off,
+ 	       (type == RGW_FS_TYPE_DIRECTORY) ?
+ 	       RGW_LOOKUP_FLAG_DIR :
+@@ -1363,7 +1366,6 @@ public:
+ 			      << dendl;
+ 	return;
+       }
+-      ++d_count;
+       ++ix;
+     }
+     for (auto& iter : common_prefixes) {

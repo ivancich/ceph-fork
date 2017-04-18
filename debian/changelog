@@ -1,3 +1,10 @@
+ceph (10.2.7-8redhat1) stable; urgency=medium
+
+  * rgw_file: fix readdir after dirent-change (rhbz#1443132)
+  * rgw_file: pre-compute unix attrs in write_finish() (rhbz#1443150)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 18 Apr 2017 16:17:25 -0400
+
 ceph (10.2.7-7redhat1) stable; urgency=medium
 
   * rgw: change log level to 20 for 'System already converted' message
