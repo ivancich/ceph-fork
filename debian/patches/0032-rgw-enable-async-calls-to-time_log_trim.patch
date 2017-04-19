@@ -1,0 +1,57 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 8 Jun 2016 15:17:55 -0400
+Subject: rgw: enable async calls to time_log_trim
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit d67436bb0d6cb9ae7757916547b8274990f8cc6b)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_rados.cc | 13 +++++++++++--
+ src/rgw/rgw_rados.h  |  3 ++-
+ 2 files changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 6dfefa5..2c8f4fc 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -4733,7 +4733,8 @@ int RGWRados::time_log_info_async(librados::IoCtx& io_ctx, const string& oid, cl
+ }
+ 
+ int RGWRados::time_log_trim(const string& oid, const real_time& start_time, const real_time& end_time,
+-			    const string& from_marker, const string& to_marker)
++			    const string& from_marker, const string& to_marker,
++                            librados::AioCompletion *completion)
+ {
+   librados::IoCtx io_ctx;
+ 
+@@ -4746,7 +4747,15 @@ int RGWRados::time_log_trim(const string& oid, const real_time& start_time, cons
+   utime_t st(start_time);
+   utime_t et(end_time);
+ 
+-  return cls_log_trim(io_ctx, oid, st, et, from_marker, to_marker);
++  ObjectWriteOperation op;
++  cls_log_trim(op, st, et, from_marker, to_marker);
++
++  if (!completion) {
++    r = io_ctx.operate(oid, &op);
++  } else {
++    r = io_ctx.aio_operate(oid, completion, &op);
++  }
++  return r;
+ }
+ 
+ string RGWRados::objexp_hint_get_shardname(int shard_num)
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index f6d7dc1..ccc9753 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -2882,7 +2882,8 @@ public:
+   int time_log_info(const string& oid, cls_log_header *header);
+   int time_log_info_async(librados::IoCtx& io_ctx, const string& oid, cls_log_header *header, librados::AioCompletion *completion);
+   int time_log_trim(const string& oid, const ceph::real_time& start_time, const ceph::real_time& end_time,
+-                    const string& from_marker, const string& to_marker);
++                    const string& from_marker, const string& to_marker,
++                    librados::AioCompletion *completion = nullptr);
+ 
+   string objexp_hint_get_shardname(int shard_num);
+   int objexp_key_shard(const rgw_obj_key& key);

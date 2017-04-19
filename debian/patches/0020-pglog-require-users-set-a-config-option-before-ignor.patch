@@ -1,0 +1,110 @@
+From: Greg Farnum <gfarnum@redhat.com>
+Date: Mon, 17 Apr 2017 18:09:55 -0700
+Subject: pglog: require users set a config option before ignoring
+ divergent_priors
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 68fcb01211e064f0d200cc9c9576254e9a6b949c)
+
+Resolves: rhbz#1436752
+---
+ src/common/config_opts.h           | 1 +
+ src/osd/PG.cc                      | 2 +-
+ src/osd/PGLog.cc                   | 6 ++++--
+ src/osd/PGLog.h                    | 6 ++++--
+ src/tools/ceph_objectstore_tool.cc | 4 +++-
+ 5 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index dae4940..2837bd8 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -239,6 +239,7 @@ OPTION(mon_osd_allow_primary_affinity, OPT_BOOL, false)  // allow primary_affini
+ OPTION(mon_osd_prime_pg_temp, OPT_BOOL, true)  // prime osdmap with pg mapping changes
+ OPTION(mon_osd_prime_pg_temp_max_time, OPT_FLOAT, .5)  // max time to spend priming
+ OPTION(mon_osd_pool_ec_fast_read, OPT_BOOL, false) // whether turn on fast read on the pool or not
++OPTION(osd_ignore_stale_divergent_priors, OPT_BOOL, false) // do not assert on divergent_prior entries which aren't in the log and whose on-disk objects are newer
+ OPTION(mon_stat_smooth_intervals, OPT_INT, 2)  // smooth stats over last N PGMap maps
+ OPTION(mon_election_timeout, OPT_FLOAT, 5)  // on election proposer, max waiting time for all ACKs
+ OPTION(mon_lease, OPT_FLOAT, 5)       // lease interval
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index 6e6699c..87ba48b 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -3178,7 +3178,7 @@ void PG::read_state(ObjectStore *store, bufferlist &bl)
+ 		  coll,
+ 		  info_struct_v < 8 ? coll_t::meta() : coll,
+ 		  ghobject_t(info_struct_v < 8 ? OSD::make_pg_log_oid(pg_id) : pgmeta_oid),
+-		  info, oss);
++		  info, oss, cct->_conf->osd_ignore_stale_divergent_priors);
+   if (oss.tellp())
+     osd->clog->error() << oss.rdbuf();
+ 
+diff --git a/src/osd/PGLog.cc b/src/osd/PGLog.cc
+index bdb8c80..da5bf19 100644
+--- a/src/osd/PGLog.cc
++++ b/src/osd/PGLog.cc
+@@ -932,8 +932,10 @@ void PGLog::read_log(ObjectStore *store, coll_t pg_coll,
+ 		     IndexedLog &log,
+ 		     pg_missing_t &missing,
+ 		     ostringstream &oss,
++		     bool tolerate_divergent_missing_log,
+ 		     const DoutPrefixProvider *dpp,
+ 		     set<string> *log_keys_debug)
++		   
+ {
+   ldpp_dout(dpp, 20) << "read_log coll " << pg_coll
+ 		     << " log_oid " << log_oid << dendl;
+@@ -1051,9 +1053,9 @@ void PGLog::read_log(ObjectStore *store, coll_t pg_coll,
+ 	 * Unfortunately the assessment above is incorrect because of
+ 	 * http://tracker.ceph.com/issues/17916 (we were incorrectly
+ 	 * not removing the divergent_priors set from disk state!),
+-	 * so let's check that.
++	 * so let's check that if the user asked us to.
+ 	 */
+-	if (oi.version > i->first) {
++	if (oi.version > i->first && tolerate_divergent_missing_log) {
+ 	  ldpp_dout(dpp, 0) << "read_log divergent_priors entry (" << *i
+ 			    << ") inconsistent with disk state (" <<  oi
+ 			    << "), assuming it is tracker.ceph.com/issues/17916"
+diff --git a/src/osd/PGLog.h b/src/osd/PGLog.h
+index 0083303..e8109f4 100644
+--- a/src/osd/PGLog.h
++++ b/src/osd/PGLog.h
+@@ -833,10 +833,11 @@ public:
+ 
+   void read_log(ObjectStore *store, coll_t pg_coll,
+ 		coll_t log_coll, ghobject_t log_oid,
+-		const pg_info_t &info, ostringstream &oss) {
++		const pg_info_t &info, ostringstream &oss,
++		bool tolerate_divergent_missing_log) {
+     return read_log(
+       store, pg_coll, log_coll, log_oid, info, divergent_priors,
+-      log, missing, oss,
++      log, missing, oss, tolerate_divergent_missing_log,
+       this,
+       (pg_log_debug ? &log_keys_debug : 0));
+   }
+@@ -846,6 +847,7 @@ public:
+     const pg_info_t &info, map<eversion_t, hobject_t> &divergent_priors,
+     IndexedLog &log,
+     pg_missing_t &missing, ostringstream &oss,
++    bool tolerate_divergent_missing_log,
+     const DoutPrefixProvider *dpp = NULL,
+     set<string> *log_keys_debug = 0
+     );
+diff --git a/src/tools/ceph_objectstore_tool.cc b/src/tools/ceph_objectstore_tool.cc
+index 38d8883..ed78500 100644
+--- a/src/tools/ceph_objectstore_tool.cc
++++ b/src/tools/ceph_objectstore_tool.cc
+@@ -334,7 +334,9 @@ int get_log(ObjectStore *fs, __u8 struct_ver,
+     PGLog::read_log(fs, coll,
+ 		    struct_ver >= 8 ? coll : coll_t::meta(),
+ 		    struct_ver >= 8 ? pgid.make_pgmeta_oid() : log_oid,
+-		    info, divergent_priors, log, missing, oss);
++		    info, divergent_priors, log,
++		    missing, oss,
++		    g_ceph_context->_conf->osd_ignore_stale_divergent_priors);
+     if (debug && oss.str().size())
+       cerr << oss.str() << std::endl;
+   }

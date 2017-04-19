@@ -1,0 +1,36 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Fri, 22 Jul 2016 11:00:16 -0400
+Subject: rgw: use separate cr manager for read_sync_status
+
+RGWCoroutinesManager::run() is not reentrant, so concurrent users of
+read_sync_status() must use different managers
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 6b1e40d7a21c549b55e6576ec56973c8d3c092d1)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_data_sync.cc | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 09409b5..913e40b 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -638,12 +638,15 @@ int RGWRemoteDataLog::get_shard_info(int shard_id)
+ 
+ int RGWRemoteDataLog::read_sync_status(rgw_data_sync_status *sync_status)
+ {
+-  return run(new RGWReadDataSyncStatusCoroutine(&sync_env, sync_status));
++  // cannot run concurrently with run_sync(), so run in a separate manager
++  RGWCoroutinesManager crs(store->ctx(), nullptr);
++  return crs.run(new RGWReadDataSyncStatusCoroutine(&sync_env, sync_status));
+ }
+ 
+ int RGWRemoteDataLog::init_sync_status(int num_shards)
+ {
+-  return run(new RGWInitDataSyncStatusCoroutine(&sync_env, num_shards));
++  RGWCoroutinesManager crs(store->ctx(), nullptr);
++  return crs.run(new RGWInitDataSyncStatusCoroutine(&sync_env, num_shards));
+ }
+ 
+ static string full_data_sync_index_shard_oid(const string& source_zone, int shard_id)

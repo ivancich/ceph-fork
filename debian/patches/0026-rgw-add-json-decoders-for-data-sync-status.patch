@@ -1,0 +1,72 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 6 Jun 2016 14:43:09 -0400
+Subject: rgw: add json decoders for data sync status
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit ebbb70bd5165e3e835d8e528e038d512e7dedba9)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_data_sync.h | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/src/rgw/rgw_data_sync.h b/src/rgw/rgw_data_sync.h
+index b72bc90..5858d36 100644
+--- a/src/rgw/rgw_data_sync.h
++++ b/src/rgw/rgw_data_sync.h
+@@ -6,6 +6,7 @@
+ #include "rgw_bucket.h"
+ 
+ #include "common/RWLock.h"
++#include "common/ceph_json.h"
+ 
+ 
+ struct rgw_datalog_info {
+@@ -59,6 +60,18 @@ struct rgw_data_sync_info {
+     encode_json("status", s, f);
+     encode_json("num_shards", num_shards, f);
+   }
++  void decode_json(JSONObj *obj) {
++    std::string s;
++    JSONDecoder::decode_json("status", s, obj);
++    if (s == "building-full-sync-maps") {
++      state = StateBuildingFullSyncMaps;
++    } else if (s == "sync") {
++      state = StateSync;
++    } else {
++      state = StateInit;
++    }
++    JSONDecoder::decode_json("num_shards", num_shards, obj);
++  }
+ 
+   rgw_data_sync_info() : state((int)StateInit), num_shards(0) {}
+ };
+@@ -108,6 +121,18 @@ struct rgw_data_sync_marker {
+     encode_json("pos", pos, f);
+     encode_json("timestamp", utime_t(timestamp), f);
+   }
++  void decode_json(JSONObj *obj) {
++    int s;
++    JSONDecoder::decode_json("state", s, obj);
++    state = s;
++    JSONDecoder::decode_json("marker", marker, obj);
++    JSONDecoder::decode_json("next_step_marker", next_step_marker, obj);
++    JSONDecoder::decode_json("total_entries", total_entries, obj);
++    JSONDecoder::decode_json("pos", pos, obj);
++    utime_t t;
++    JSONDecoder::decode_json("timestamp", t, obj);
++    timestamp = t.to_real_time();
++  }
+ };
+ WRITE_CLASS_ENCODER(rgw_data_sync_marker)
+ 
+@@ -135,6 +160,10 @@ struct rgw_data_sync_status {
+     encode_json("info", sync_info, f);
+     encode_json("markers", sync_markers, f);
+   }
++  void decode_json(JSONObj *obj) {
++    JSONDecoder::decode_json("info", sync_info, obj);
++    JSONDecoder::decode_json("markers", sync_markers, obj);
++  }
+ };
+ WRITE_CLASS_ENCODER(rgw_data_sync_status)
+ 

@@ -1,0 +1,33 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Wed, 19 Apr 2017 10:02:58 -0400
+Subject: rgw: error more verbosely in RGWRados::create_pool
+
+Adds detail when pool creation fails with ERANGE, which can be
+caused by pool settings.
+
+Resolves: rhbz#1397937
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 8ea698425afa5305d40affc8200f91fe7b391277)
+---
+ src/rgw/rgw_rados.cc | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 878795c..2bca09a 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -5115,6 +5115,13 @@ int RGWRados::create_pool(rgw_bucket& bucket)
+   ret = rad->pool_create(pool.c_str(), 0);
+   if (ret == -EEXIST)
+     ret = 0;
++  else if (ret == -ERANGE) {
++    ldout(cct, 0)
++      << __func__
++      << " ERROR: librados::Rados::pool_create returned " << cpp_strerror(-ret)
++      << " (this can be due to a pool or placement group misconfiguration, e.g., pg_num < pgp_num)"
++      << dendl;
++  }
+   if (ret < 0)
+     return ret;
+ 

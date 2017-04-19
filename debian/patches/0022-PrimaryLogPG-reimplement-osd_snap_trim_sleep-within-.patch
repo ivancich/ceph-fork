@@ -1,0 +1,215 @@
+From: Greg Farnum <gfarnum@redhat.com>
+Date: Wed, 12 Apr 2017 16:30:55 -0700
+Subject: PrimaryLogPG: reimplement osd_snap_trim_sleep within the state
+ machine
+
+Rather than blocking the main op queue, just pause for that amount of
+time between state machine cycles.
+
+Also, add osd_snap_trim_sleep to a few of the thrasher yamls.
+
+Signed-off-by: Samuel Just <sjust@redhat.com>
+(cherry picked from commit 2ed7759cfeb03e71f0fbd98fe7c2db2bb741861c)
+
+Conflicts:
+	src/osd/PrimaryLogPG.cc
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 67336454a4cee66522bc0ca01b2c58b8960f75ec)
+
+Conflicts:
+	qa/suites/rados/thrash/thrashers/default.yaml
+	qa/suites/rados/thrash/thrashers/pggrow.yaml
+	src/osd/OSD.h
+	src/osd/ReplicatedPG.cc
+	src/osd/ReplicatedPG.h
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 360a9d9af003c650cdf00534909d6488c702c413)
+
+Resolves: rhbz#1436752
+---
+ src/common/config_opts.h |  2 +-
+ src/osd/OSD.cc           | 10 ++++++++
+ src/osd/OSD.h            |  3 +++
+ src/osd/ReplicatedPG.cc  | 12 ++--------
+ src/osd/ReplicatedPG.h   | 60 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 76 insertions(+), 11 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 01f57a5..3278bf4 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -715,7 +715,7 @@ OPTION(osd_op_thread_suicide_timeout, OPT_INT, 150)
+ OPTION(osd_recovery_thread_timeout, OPT_INT, 30)
+ OPTION(osd_recovery_thread_suicide_timeout, OPT_INT, 300)
+ OPTION(osd_recovery_sleep, OPT_FLOAT, 0)         // seconds to sleep between recovery ops
+-OPTION(osd_snap_trim_sleep, OPT_FLOAT, 0)
++OPTION(osd_snap_trim_sleep, OPT_DOUBLE, 0)
+ OPTION(osd_scrub_invalid_stats, OPT_BOOL, true)
+ OPTION(osd_remove_thread_timeout, OPT_INT, 60*60)
+ OPTION(osd_remove_thread_suicide_timeout, OPT_INT, 10*60*60)
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index 8d35ad2..0e99d68 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -254,6 +254,9 @@ OSDService::OSDService(OSD *osd) :
+   remote_reserver(&reserver_finisher, cct->_conf->osd_max_backfills,
+ 		  cct->_conf->osd_min_recovery_priority),
+   pg_temp_lock("OSDService::pg_temp_lock"),
++  snap_sleep_lock("OSDService::snap_sleep_lock"),
++  snap_sleep_timer(
++    osd->client_messenger->cct, snap_sleep_lock, false /* relax locking */),
+   snap_reserver(&reserver_finisher,
+ 		cct->_conf->osd_max_trimming_pgs),
+   map_cache_lock("OSDService::map_lock"),
+@@ -484,6 +487,12 @@ void OSDService::shutdown()
+     Mutex::Locker l(backfill_request_lock);
+     backfill_request_timer.shutdown();
+   }
++
++  {
++    Mutex::Locker l(snap_sleep_lock);
++    snap_sleep_timer.shutdown();
++  }
++
+   osdmap = OSDMapRef();
+   next_osdmap = OSDMapRef();
+ }
+@@ -495,6 +504,7 @@ void OSDService::init()
+   objecter->set_client_incarnation(0);
+   watch_timer.init();
+   agent_timer.init();
++  snap_sleep_timer.init();
+ 
+   agent_thread.create("osd_srv_agent");
+ }
+diff --git a/src/osd/OSD.h b/src/osd/OSD.h
+index f6ddeeb..8460395 100644
+--- a/src/osd/OSD.h
++++ b/src/osd/OSD.h
+@@ -861,6 +861,9 @@ public:
+ 	  ceph_clock_now(cct),
+ 	  entity_inst_t())));
+   }
++
++  Mutex snap_sleep_lock;
++  SafeTimer snap_sleep_timer;
+   AsyncReserver<spg_t> snap_reserver;
+ 
+   void queue_for_scrub(PG *pg) {
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index 492b7d8..88e0b1e 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -3617,14 +3617,6 @@ ReplicatedPG::OpContextUPtr ReplicatedPG::trim_object(const hobject_t &coid)
+ 
+ void ReplicatedPG::snap_trimmer(epoch_t queued)
+ {
+-  if (g_conf->osd_snap_trim_sleep > 0) {
+-    unlock();
+-    utime_t t;
+-    t.set_from_double(g_conf->osd_snap_trim_sleep);
+-    t.sleep();
+-    lock();
+-    dout(20) << __func__ << " slept for " << t << dendl;
+-  }
+   if (deleting || pg_has_reset_since(queued)) {
+     return;
+   }
+@@ -13070,7 +13062,7 @@ boost::statechart::result ReplicatedPG::WaitReservation::react(const SnapTrimRes
+ 
+   pending = nullptr;
+   if (!pg->is_primary() || !pg->is_active() || !pg->is_clean() ||
+-      pg->scrubber.active) {
++      pg->scrubber.active || pg->snap_trimq.empty()) {
+     post_event(SnapTrim());
+     return transit< NotTrimming >();
+   }
+@@ -13155,7 +13147,7 @@ boost::statechart::result ReplicatedPG::TrimmingObjects::react(const SnapTrim&)
+     in_flight.insert(pos);
+     pg->simple_opc_submit(std::move(ctx));
+   }
+-  return discard_event();
++  return transit< WaitTrimTimer >();
+ }
+ 
+ /* WaitingOnReplicasObjects */
+diff --git a/src/osd/ReplicatedPG.h b/src/osd/ReplicatedPG.h
+index 7b1576a..d0a2172 100644
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -1565,6 +1565,10 @@ private:
+   struct SnapTrimReserved : boost::statechart::event< SnapTrimReserved > {
+     SnapTrimReserved() : boost::statechart::event< SnapTrimReserved >() {}
+   };
++  struct SnapTrimTimerReady : boost::statechart::event< SnapTrimTimerReady > {
++    SnapTrimTimerReady() : boost::statechart::event< SnapTrimTimerReady >() {}
++  };
++
+   struct SnapTrimmer : public boost::statechart::state_machine< SnapTrimmer, NotTrimming > {
+     ReplicatedPG *pg;
+     set<hobject_t, hobject_t::BitwiseComparator> in_flight;
+@@ -1650,6 +1654,62 @@ private:
+     }
+   };
+ 
++  struct WaitTrimTimer : boost::statechart::state< WaitTrimTimer, Trimming >, NamedState {
++    typedef boost::mpl::list <
++      boost::statechart::custom_reaction< SnapTrimTimerReady >
++      > reactions;
++    Context *wakeup = nullptr;
++    bool slept = false;
++    explicit WaitTrimTimer(my_context ctx)
++      : my_base(ctx),
++	NamedState(context< SnapTrimmer >().pg->cct, "Trimming/WaitTrimTimer") {
++      context< SnapTrimmer >().log_enter(state_name);
++      struct OnTimer : Context {
++	ReplicatedPGRef pg;
++	epoch_t epoch;
++	OnTimer(ReplicatedPGRef pg, epoch_t epoch) : pg(pg), epoch(epoch) {}
++	void finish(int) override {
++	  pg->lock();
++	  if (!pg->pg_has_reset_since(epoch))
++	    pg->snap_trimmer_machine.process_event(SnapTrimTimerReady());
++	  pg->unlock();
++	}
++      };
++      auto *pg = context< SnapTrimmer >().pg;
++      if (pg->cct->_conf->osd_snap_trim_sleep > 0) {
++	wakeup = new OnTimer{pg, pg->get_osdmap()->get_epoch()};
++	Mutex::Locker l(pg->osd->snap_sleep_lock);
++	pg->osd->snap_sleep_timer.add_event_after(
++	  pg->cct->_conf->osd_snap_trim_sleep, wakeup);
++	slept = true;
++      } else {
++	post_event(SnapTrimTimerReady());
++      }
++    }
++    void exit() {
++      context< SnapTrimmer >().log_exit(state_name, enter_time);
++      auto *pg = context< SnapTrimmer >().pg;
++      if (wakeup) {
++	Mutex::Locker l(pg->osd->snap_sleep_lock);
++	pg->osd->snap_sleep_timer.cancel_event(wakeup);
++	wakeup = nullptr;
++      }
++    }
++    boost::statechart::result react(const SnapTrimTimerReady &) {
++      wakeup = nullptr;
++      auto *pg = context< SnapTrimmer >().pg;
++      if (!pg->is_primary() || !pg->is_active() || !pg->is_clean() ||
++	  pg->scrubber.active) {
++	post_event(SnapTrim());
++	return transit< NotTrimming >();
++      } else {
++	if (slept)
++	  post_event(SnapTrim());
++	return transit< TrimmingObjects >();
++      }
++    }
++  };
++
+   struct WaitingOnReplicas : boost::statechart::state< WaitingOnReplicas, Trimming >, NamedState {
+     typedef boost::mpl::list <
+       boost::statechart::custom_reaction< SnapTrim >,

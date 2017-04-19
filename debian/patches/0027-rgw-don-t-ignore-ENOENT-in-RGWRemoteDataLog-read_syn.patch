@@ -1,0 +1,55 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 8 Jun 2016 11:24:11 -0400
+Subject: rgw: don't ignore ENOENT in RGWRemoteDataLog::read_sync_status()
+
+rest handlers for sync status need to return ENOENT errors. the only
+other callers are in radosgw-admin, so the ENOENT errors are ignored at
+those call sites instead
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 2cc533b30c0f23c0750ea8d02c51b3b3d3b4821a)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_admin.cc     | 4 ++--
+ src/rgw/rgw_data_sync.cc | 6 +-----
+ 2 files changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 05c0562..3f1fd49 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -1832,7 +1832,7 @@ static void get_data_sync_status(const string& source_zone, list<string>& status
+   }
+ 
+   ret = sync.read_sync_status();
+-  if (ret < 0) {
++  if (ret < 0 && ret != -ENOENT) {
+     push_ss(ss, status, tab) << string("failed read sync status: ") + cpp_strerror(-ret);
+     return;
+   }
+@@ -5736,7 +5736,7 @@ next:
+     }
+ 
+     ret = sync.read_sync_status();
+-    if (ret < 0) {
++    if (ret < 0 && ret != -ENOENT) {
+       cerr << "ERROR: sync.read_sync_status() returned ret=" << ret << std::endl;
+       return -ret;
+     }
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 48f9f77..d9c47ee 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -638,11 +638,7 @@ int RGWRemoteDataLog::get_shard_info(int shard_id)
+ 
+ int RGWRemoteDataLog::read_sync_status(rgw_data_sync_status *sync_status)
+ {
+-  int r = run(new RGWReadDataSyncStatusCoroutine(&sync_env, sync_status));
+-  if (r == -ENOENT) {
+-    r = 0;
+-  }
+-  return r;
++  return run(new RGWReadDataSyncStatusCoroutine(&sync_env, sync_status));
+ }
+ 
+ int RGWRemoteDataLog::init_sync_status(int num_shards)

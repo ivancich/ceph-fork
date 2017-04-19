@@ -1,0 +1,46 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Thu, 28 Jul 2016 20:20:29 -0400
+Subject: rgw: pass cr registry to managers
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit ef4d7eab11fb5d2a41c9c28b9eb8b075aaff0d05)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_data_sync.cc | 4 ++--
+ src/rgw/rgw_rados.cc     | 3 ++-
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index e45f1a5..614536b 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -639,13 +639,13 @@ int RGWRemoteDataLog::get_shard_info(int shard_id)
+ int RGWRemoteDataLog::read_sync_status(rgw_data_sync_status *sync_status)
+ {
+   // cannot run concurrently with run_sync(), so run in a separate manager
+-  RGWCoroutinesManager crs(store->ctx(), nullptr);
++  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+   return crs.run(new RGWReadDataSyncStatusCoroutine(&sync_env, sync_status));
+ }
+ 
+ int RGWRemoteDataLog::init_sync_status(int num_shards)
+ {
+-  RGWCoroutinesManager crs(store->ctx(), nullptr);
++  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+   return crs.run(new RGWInitDataSyncStatusCoroutine(&sync_env, num_shards));
+ }
+ 
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index eeeedbc..55b39ab 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -3032,7 +3032,8 @@ class RGWSyncLogTrimThread : public RGWSyncProcessorThread
+   void stop_process() override { crs.stop(); }
+ public:
+   RGWSyncLogTrimThread(RGWRados *store, int interval)
+-    : RGWSyncProcessorThread(store), crs(store->ctx(), nullptr), store(store),
++    : RGWSyncProcessorThread(store),
++      crs(store->ctx(), store->get_cr_registry()), store(store),
+       http(store->ctx(), crs.get_completion_mgr()),
+       trim_interval(interval, 0)
+   {}

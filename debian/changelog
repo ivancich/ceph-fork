@@ -1,3 +1,38 @@
+ceph (10.2.7-9redhat1) stable; urgency=medium
+
+  * rgw: error more verbosely in RGWRados::create_pool (rhbz#1397937)
+  * osd: pglog: clean up divergent_priors off disk when running; don't
+    assert on startup (rhbz#1436752)
+  * pglog: require users set a config option before ignoring
+    divergent_priors (rhbz#1436752)
+  * osd/ReplicatedPG: limit the number of concurrently trimming pgs
+    (rhbz#1436752)
+  * PrimaryLogPG: reimplement osd_snap_trim_sleep within the state
+    machine (rhbz#1436752)
+  * rgw: add empty_on_enoent flag to RGWSimpleRadosReadCR
+    (rhbz#1438895)
+  * rgw: use RGWShardCollectCR for RGWReadDataSyncStatusCoroutine
+    (rhbz#1438895)
+  * rgw: add dout_prefix for rgw_data_sync.cc (rhbz#1438895)
+  * rgw: add json decoders for data sync status (rhbz#1438895)
+  * rgw: don't ignore ENOENT in RGWRemoteDataLog::read_sync_status()
+    (rhbz#1438895)
+  * rgw: expose sync managers through RGWRados (rhbz#1438895)
+  * rgw: change read_sync_status interface (rhbz#1438895)
+  * rgw: use separate cr manager for read_sync_status (rhbz#1438895)
+  * rgw: add rest handlers to query sync status (rhbz#1438895)
+  * rgw: enable async calls to time_log_trim (rhbz#1438895)
+  * rgw: add RGWRadosTimelogTrimCR (rhbz#1438895)
+  * rgw: add RGWDataLogTrimCR (rhbz#1438895)
+  * rgw: add RGWSyncLogTrimThread to RGWRados (rhbz#1438895)
+  * rgw: pass cr registry to managers (rhbz#1438895)
+  * rgw: use factory function to hide RGWDataLogTrimCR (rhbz#1438895)
+  * rgw: add static function to generate lock cookie (rhbz#1438895)
+  * rgw: hold lock for data log trimming (rhbz#1438895)
+  * rgw: DataLogTrimCR renamed zone to zone_id (rhbz#1438895)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Wed, 19 Apr 2017 19:35:17 -0400
+
 ceph (10.2.7-8redhat1) stable; urgency=medium
 
   * rgw_file: fix readdir after dirent-change (rhbz#1443132)

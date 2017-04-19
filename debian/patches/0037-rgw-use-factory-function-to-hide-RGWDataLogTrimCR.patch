@@ -1,0 +1,123 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Sat, 30 Jul 2016 13:36:36 -0400
+Subject: rgw: use factory function to hide RGWDataLogTrimCR
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 5ded7ee28baa478f94e6bfb84d0c0fc4e4af7ff8)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_data_sync.cc | 45 +++++++++++++++++++++++++++++++++------------
+ src/rgw/rgw_data_sync.h  | 21 ++++-----------------
+ src/rgw/rgw_rados.cc     |  6 +++---
+ 3 files changed, 40 insertions(+), 32 deletions(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 614536b..2b60294 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -2912,20 +2912,32 @@ class LastTimelogTrimCR : public RGWRadosTimelogTrimCR {
+   }
+ };
+ 
+-} // anonymous namespace
++class DataLogTrimCR : public RGWCoroutine {
++  RGWRados *store;
++  RGWHTTPManager *http;
++  const int num_shards;
++  const utime_t interval; //< polling interval
++  const std::string& zone; //< my zone id
++  std::vector<rgw_data_sync_status> peer_status; //< sync status for each peer
++  std::vector<rgw_data_sync_marker> min_shard_markers; //< min marker per shard
++  std::vector<std::string> last_trim; //< last trimmed marker per shard
++  int ret{0};
+ 
+-RGWDataLogTrimCR::RGWDataLogTrimCR(RGWRados *store, RGWHTTPManager *http,
+-                                   int num_shards, utime_t interval)
+-  : RGWCoroutine(store->ctx()), store(store), http(http),
+-    num_shards(num_shards), interval(interval),
+-    zone(store->get_zone().id),
+-    peer_status(store->zone_conn_map.size()),
+-    min_shard_markers(num_shards),
+-    last_trim(num_shards)
+-{
+-}
++ public:
++  DataLogTrimCR(RGWRados *store, RGWHTTPManager *http,
++                   int num_shards, utime_t interval)
++    : RGWCoroutine(store->ctx()), store(store), http(http),
++      num_shards(num_shards), interval(interval),
++      zone(store->get_zone().id),
++      peer_status(store->zone_conn_map.size()),
++      min_shard_markers(num_shards),
++      last_trim(num_shards)
++  {}
+ 
+-int RGWDataLogTrimCR::operate()
++  int operate() override;
++};
++
++int DataLogTrimCR::operate()
+ {
+   reenter(this) {
+     for (;;) {
+@@ -2988,3 +3000,12 @@ int RGWDataLogTrimCR::operate()
+   }
+   return 0;
+ }
++
++} // anonymous namespace
++
++RGWCoroutine* create_data_log_trim_cr(RGWRados *store,
++                                      RGWHTTPManager *http,
++                                      int num_shards, utime_t interval)
++{
++  return new DataLogTrimCR(store, http, num_shards, interval);
++}
+diff --git a/src/rgw/rgw_data_sync.h b/src/rgw/rgw_data_sync.h
+index 9956f4d..336d3a6 100644
+--- a/src/rgw/rgw_data_sync.h
++++ b/src/rgw/rgw_data_sync.h
+@@ -499,22 +499,9 @@ public:
+   int run();
+ };
+ 
+-
+-class RGWDataLogTrimCR : public RGWCoroutine {
+-  RGWRados *store;
+-  RGWHTTPManager *http;
+-  const int num_shards;
+-  const utime_t interval; //< polling interval
+-  const std::string& zone; //< my zone id
+-  std::vector<rgw_data_sync_status> peer_status; //< sync status for each peer
+-  std::vector<rgw_data_sync_marker> min_shard_markers; //< min marker per shard
+-  std::vector<std::string> last_trim; //< last trimmed marker per shard
+-  int ret{0};
+-
+- public:
+-  RGWDataLogTrimCR(RGWRados *store, RGWHTTPManager *http,
+-                   int num_shards, utime_t interval);
+-  int operate() override;
+-};
++// DataLogTrimCR factory function
++extern RGWCoroutine* create_data_log_trim_cr(RGWRados *store,
++                                             RGWHTTPManager *http,
++                                             int num_shards, utime_t interval);
+ 
+ #endif
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 55b39ab..4265304 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -3042,9 +3042,9 @@ public:
+     return http.set_threaded();
+   }
+   int process() override {
+-    crs.run(new RGWDataLogTrimCR(store, &http,
+-                                 cct->_conf->rgw_data_log_num_shards,
+-                                 trim_interval));
++    crs.run(create_data_log_trim_cr(store, &http,
++                                    cct->_conf->rgw_data_log_num_shards,
++                                    trim_interval));
+     return 0;
+   }
+ };

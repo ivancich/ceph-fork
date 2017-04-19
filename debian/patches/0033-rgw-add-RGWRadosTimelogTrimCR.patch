@@ -1,0 +1,95 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 8 Jun 2016 15:54:31 -0400
+Subject: rgw: add RGWRadosTimelogTrimCR
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 20f31a412d3479efe71d5745c55575173c3fe9e8)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_cr_rados.cc | 41 +++++++++++++++++++++++++++++++++++++++++
+ src/rgw/rgw_cr_rados.h  | 20 ++++++++++++++++++++
+ 2 files changed, 61 insertions(+)
+
+diff --git a/src/rgw/rgw_cr_rados.cc b/src/rgw/rgw_cr_rados.cc
+index 19fb949..99f8427 100644
+--- a/src/rgw/rgw_cr_rados.cc
++++ b/src/rgw/rgw_cr_rados.cc
+@@ -651,6 +651,47 @@ int RGWRadosTimelogAddCR::request_complete()
+   return r;
+ }
+ 
++RGWRadosTimelogTrimCR::RGWRadosTimelogTrimCR(RGWRados *store,
++                                             const std::string& oid,
++                                             const real_time& start_time,
++                                             const real_time& end_time,
++                                             const std::string& from_marker,
++                                             const std::string& to_marker)
++  : RGWSimpleCoroutine(store->ctx()), store(store), oid(oid),
++    start_time(start_time), end_time(end_time),
++    from_marker(from_marker), to_marker(to_marker)
++{
++  set_description() << "timelog trim oid=" <<  oid
++      << " start_time=" << start_time << " end_time=" << end_time
++      << " from_marker=" << from_marker << " to_marker=" << to_marker;
++}
++
++RGWRadosTimelogTrimCR::~RGWRadosTimelogTrimCR()
++{
++  if (cn) {
++    cn->put();
++  }
++}
++
++int RGWRadosTimelogTrimCR::send_request()
++{
++  set_status() << "sending request";
++
++  cn = stack->create_completion_notifier();
++  cn->get();
++  return store->time_log_trim(oid, start_time, end_time, from_marker,
++                              to_marker, cn->completion());
++}
++
++int RGWRadosTimelogTrimCR::request_complete()
++{
++  int r = cn->completion()->get_return_value();
++
++  set_status() << "request complete; ret=" << r;
++
++  return r;
++}
++
+ int RGWAsyncStatObj::_send_request()
+ {
+   return store->raw_obj_stat(obj, psize, pmtime, pepoch,
+diff --git a/src/rgw/rgw_cr_rados.h b/src/rgw/rgw_cr_rados.h
+index ce30436..87dfa15 100644
+--- a/src/rgw/rgw_cr_rados.h
++++ b/src/rgw/rgw_cr_rados.h
+@@ -991,6 +991,26 @@ public:
+   int request_complete();
+ };
+ 
++class RGWRadosTimelogTrimCR : public RGWSimpleCoroutine {
++  RGWRados *store;
++  RGWAioCompletionNotifier *cn{nullptr};
++  std::string oid;
++  real_time start_time;
++  real_time end_time;
++  std::string from_marker;
++  std::string to_marker;
++
++public:
++  RGWRadosTimelogTrimCR(RGWRados *store, const std::string& oid,
++                        const real_time& start_time, const real_time& end_time,
++                        const std::string& from_marker,
++                        const std::string& to_marker);
++  ~RGWRadosTimelogTrimCR();
++
++  int send_request() override;
++  int request_complete() override;
++};
++
+ class RGWAsyncStatObj : public RGWAsyncRadosRequest {
+   RGWRados *store;
+   rgw_obj obj;

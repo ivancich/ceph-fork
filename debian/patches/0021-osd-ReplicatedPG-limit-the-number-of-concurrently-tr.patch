@@ -1,0 +1,295 @@
+From: Greg Farnum <gfarnum@redhat.com>
+Date: Tue, 11 Apr 2017 14:04:19 -0700
+Subject: osd/ReplicatedPG: limit the number of concurrently trimming pgs
+
+This patch introduces an AsyncReserver for snap trimming to limit the
+number of pgs on any single OSD which can be trimming, as with backfill.
+Unlike backfill, we don't take remote reservations on the assumption
+that the set of pgs with trimming work to do is already well
+distributed, so it doesn't seem worth the implementation overhead to get
+reservations from the peers as well.
+
+Signed-off-by: Samuel Just <sjust@redhat.com>
+(cherry picked from commit 21cc515adfb225ba70f1d80b1b76f0345c214c22)
+
+Conflicts:
+	src/osd/PrimaryLogPG.cc
+	src/osd/PrimaryLogPG.h
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+
+(cherry picked from commit 68ea24396ca6450d4d8042a7c5f51306b7d199fa)
+(cherry picked from commit c7176b869898c870b56b1762958652d801af4c4c)
+
+Conflicts: Many. As evidenced by involving two distinct patches
+in this one commit, it wasn't a clean backport.
+
+Resolves: rhbz#1436752
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 7f78450bd184335ba0098f3ded0fefa2c79a5dd5)
+---
+ src/common/config_opts.h |  2 ++
+ src/osd/OSD.cc           |  5 ++++
+ src/osd/OSD.h            |  2 ++
+ src/osd/ReplicatedPG.cc  | 38 +++++++++++++++++++++++--
+ src/osd/ReplicatedPG.h   | 72 ++++++++++++++++++++++++++++++++++++++++++++++--
+ src/osd/osd_types.cc     |  8 ++++++
+ src/osd/osd_types.h      |  2 ++
+ 7 files changed, 124 insertions(+), 5 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 2837bd8..01f57a5 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -729,6 +729,8 @@ OPTION(osd_heartbeat_use_min_delay_socket, OPT_BOOL, false) // prio the heartbea
+ 
+ // max number of parallel snap trims/pg
+ OPTION(osd_pg_max_concurrent_snap_trims, OPT_U64, 2)
++// max number of trimming pgs
++OPTION(osd_max_trimming_pgs, OPT_U64, 2)
+ 
+ // minimum number of peers that must be reachable to mark ourselves
+ // back up after being wrongly marked down.
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index a375d8e..8d35ad2 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -254,6 +254,8 @@ OSDService::OSDService(OSD *osd) :
+   remote_reserver(&reserver_finisher, cct->_conf->osd_max_backfills,
+ 		  cct->_conf->osd_min_recovery_priority),
+   pg_temp_lock("OSDService::pg_temp_lock"),
++  snap_reserver(&reserver_finisher,
++		cct->_conf->osd_max_trimming_pgs),
+   map_cache_lock("OSDService::map_lock"),
+   map_cache(cct, cct->_conf->osd_map_cache_size),
+   map_bl_cache(cct->_conf->osd_map_cache_size),
+@@ -9006,6 +9008,9 @@ void OSD::handle_conf_change(const struct md_config_t *conf,
+     service.local_reserver.set_min_priority(cct->_conf->osd_min_recovery_priority);
+     service.remote_reserver.set_min_priority(cct->_conf->osd_min_recovery_priority);
+   }
++  if (changed.count("osd_max_trimming_pgs")) {
++    service.snap_reserver.set_max(cct->_conf->osd_max_trimming_pgs);
++  }
+   if (changed.count("osd_op_complaint_time") ||
+       changed.count("osd_op_log_threshold")) {
+     op_tracker.set_complaint_and_threshold(cct->_conf->osd_op_complaint_time,
+diff --git a/src/osd/OSD.h b/src/osd/OSD.h
+index 8438165..f6ddeeb 100644
+--- a/src/osd/OSD.h
++++ b/src/osd/OSD.h
+@@ -861,6 +861,8 @@ public:
+ 	  ceph_clock_now(cct),
+ 	  entity_inst_t())));
+   }
++  AsyncReserver<spg_t> snap_reserver;
++
+   void queue_for_scrub(PG *pg) {
+     op_wq.queue(
+       make_pair(
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index baff180..492b7d8 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -13059,21 +13059,55 @@ boost::statechart::result ReplicatedPG::NotTrimming::react(const SnapTrim&)
+ 	     << pg->snap_trimq.range_start()
+ 	     << dendl;
+     post_event(SnapTrim());
+-    return transit<TrimmingObjects>();
++    return transit<Trimming>();
+   }
+ }
+ 
++boost::statechart::result ReplicatedPG::WaitReservation::react(const SnapTrimReserved&)
++{
++  ReplicatedPG *pg = context< SnapTrimmer >().pg;
++  ldout(pg->cct, 10) << "WaitReservation react SnapTrimReserved" << dendl;
++
++  pending = nullptr;
++  if (!pg->is_primary() || !pg->is_active() || !pg->is_clean() ||
++      pg->scrubber.active) {
++    post_event(SnapTrim());
++    return transit< NotTrimming >();
++  }
++
++  context<SnapTrimmer>().snap_to_trim = pg->snap_trimq.range_start();
++  ldout(pg->cct, 10) << "NotTrimming: trimming "
++                     << pg->snap_trimq.range_start()
++                     << dendl;
++  pg->queue_snap_trim();
++  return transit< TrimmingObjects >();
++}
++
+ /* TrimmingObjects */
+ ReplicatedPG::TrimmingObjects::TrimmingObjects(my_context ctx)
+   : my_base(ctx),
+     NamedState(context< SnapTrimmer >().pg->cct, "Trimming/TrimmingObjects")
+ {
++  auto *pg = context< SnapTrimmer >().pg;
++  context< SnapTrimmer >().log_enter(state_name);
++  pg->state_set(PG_STATE_SNAPTRIM);
++  pg->publish_stats_to_osd();
++}
++
++ReplicatedPG::Trimming::Trimming(my_context ctx)
++  : my_base(ctx),
++    NamedState(context< SnapTrimmer >().pg->cct, "Trimming")
++{
+   context< SnapTrimmer >().log_enter(state_name);
+ }
+ 
+-void ReplicatedPG::TrimmingObjects::exit()
++void ReplicatedPG::Trimming::exit()
+ {
+   context< SnapTrimmer >().log_exit(state_name, enter_time);
++  auto *pg = context< SnapTrimmer >().pg;
++  pg->osd->snap_reserver.cancel_reservation(pg->get_pgid());
++  pg->state_clear(PG_STATE_SNAPTRIM);
++  pg->publish_stats_to_osd();
+   context<SnapTrimmer>().in_flight.clear();
+ }
+ 
+diff --git a/src/osd/ReplicatedPG.h b/src/osd/ReplicatedPG.h
+index 484569e..7b1576a 100644
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -1555,12 +1555,16 @@ public:
+   }
+ private:
+   struct NotTrimming;
++  struct WaitReservation;
+   struct SnapTrim : boost::statechart::event< SnapTrim > {
+     SnapTrim() : boost::statechart::event < SnapTrim >() {}
+   };
+   struct Reset : boost::statechart::event< Reset > {
+     Reset() : boost::statechart::event< Reset >() {}
+   };
++  struct SnapTrimReserved : boost::statechart::event< SnapTrimReserved > {
++    SnapTrimReserved() : boost::statechart::event< SnapTrimReserved >() {}
++  };
+   struct SnapTrimmer : public boost::statechart::state_machine< SnapTrimmer, NotTrimming > {
+     ReplicatedPG *pg;
+     set<hobject_t, hobject_t::BitwiseComparator> in_flight;
+@@ -1573,18 +1577,80 @@ private:
+   } snap_trimmer_machine;
+ 
+   /* SnapTrimmerStates */
+-  struct TrimmingObjects : boost::statechart::state< TrimmingObjects, SnapTrimmer >, NamedState {
++  struct Trimming : boost::statechart::state< Trimming,
++					      SnapTrimmer,
++					      WaitReservation >,
++			   NamedState {
++    typedef boost::mpl::list <
++      boost::statechart::custom_reaction< SnapTrim >,
++      boost::statechart::transition< Reset, NotTrimming >
++      > reactions;
++    explicit Trimming(my_context ctx);
++    void exit();
++    boost::statechart::result react(const SnapTrim&) { return discard_event(); }
++  };
++
++  struct TrimmingObjects : boost::statechart::state<TrimmingObjects, Trimming>, NamedState {
+     typedef boost::mpl::list <
+       boost::statechart::custom_reaction< SnapTrim >,
+       boost::statechart::transition< Reset, NotTrimming >
+       > reactions;
+     hobject_t pos;
+     explicit TrimmingObjects(my_context ctx);
+-    void exit();
++    void exit() { context< SnapTrimmer >().log_exit(state_name, enter_time); }
+     boost::statechart::result react(const SnapTrim&);
+   };
+ 
+-  struct WaitingOnReplicas : boost::statechart::state< WaitingOnReplicas, SnapTrimmer >, NamedState {
++  struct WaitReservation : boost::statechart::state< WaitReservation, Trimming >, NamedState {
++    /* WaitReservation is a sub-state of trimming simply so that exiting Trimming
++     * always cancels the reservation */
++    typedef boost::mpl::list <
++      boost::statechart::custom_reaction< SnapTrimReserved >
++      > reactions;
++    struct ReservationCB : public Context {
++      ReplicatedPGRef pg;
++      bool canceled;
++      ReservationCB(ReplicatedPG *pg) : pg(pg), canceled(false) {}
++      void finish(int) override {
++        pg->lock();
++        if (!canceled)
++          pg->snap_trimmer_machine.process_event(SnapTrimReserved());
++        pg->unlock();
++      }
++      void cancel() {
++        assert(pg->is_locked());
++        assert(!canceled);
++        canceled = true;
++      }
++    };
++    ReservationCB *pending = nullptr;
++
++    explicit WaitReservation(my_context ctx)
++      : my_base(ctx),
++        NamedState(context< SnapTrimmer >().pg->cct, "Trimming/WaitReservation") {
++      context< SnapTrimmer >().log_enter(state_name);
++      auto *pg = context< SnapTrimmer >().pg;
++      pending = new ReservationCB(pg);
++      pg->osd->snap_reserver.request_reservation(pg->get_pgid(), pending, 0);
++      pg->state_set(PG_STATE_SNAPTRIM_WAIT);
++      pg->publish_stats_to_osd();
++    }
++    boost::statechart::result react(const SnapTrimReserved&);
++    void exit() {
++      context< SnapTrimmer >().log_exit(state_name, enter_time);
++      if (pending)
++        pending->cancel();
++      pending = nullptr;
++      auto *pg = context< SnapTrimmer >().pg;
++      pg->state_clear(PG_STATE_SNAPTRIM_WAIT);
++      pg->publish_stats_to_osd();
++    }
++    boost::statechart::result react(const SnapTrim&) {
++      return discard_event();
++    }
++  };
++
++  struct WaitingOnReplicas : boost::statechart::state< WaitingOnReplicas, Trimming >, NamedState {
+     typedef boost::mpl::list <
+       boost::statechart::custom_reaction< SnapTrim >,
+       boost::statechart::transition< Reset, NotTrimming >
+diff --git a/src/osd/osd_types.cc b/src/osd/osd_types.cc
+index 784d454..9a89154 100644
+--- a/src/osd/osd_types.cc
++++ b/src/osd/osd_types.cc
+@@ -835,6 +835,10 @@ std::string pg_state_string(int state)
+     oss << "incomplete+";
+   if (state & PG_STATE_PEERED)
+     oss << "peered+";
++  if (state & PG_STATE_SNAPTRIM)
++    oss << "snaptrim+";
++  if (state & PG_STATE_SNAPTRIM_WAIT)
++    oss << "snaptrim_wait+";
+   string ret(oss.str());
+   if (ret.length() > 0)
+     ret.resize(ret.length() - 1);
+@@ -892,6 +896,10 @@ int pg_string_state(const std::string& state)
+     type = PG_STATE_ACTIVATING;
+   else if (state == "peered")
+     type = PG_STATE_PEERED;
++  else if (state == "snaptrim")
++    type = PG_STATE_SNAPTRIM;
++  else if (state == "snaptrim_wait")
++    type = PG_STATE_SNAPTRIM_WAIT;
+   else
+     type = -1;
+   return type;
+diff --git a/src/osd/osd_types.h b/src/osd/osd_types.h
+index 43f4332..c6231c5 100644
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -929,6 +929,8 @@ inline ostream& operator<<(ostream& out, const osd_stat_t& s) {
+ #define PG_STATE_UNDERSIZED    (1<<23) // pg acting < pool size
+ #define PG_STATE_ACTIVATING   (1<<24) // pg is peered but not yet active
+ #define PG_STATE_PEERED        (1<<25) // peered, cannot go active, can recover
++#define PG_STATE_SNAPTRIM      (1<<26) // trimming snaps
++#define PG_STATE_SNAPTRIM_WAIT (1<<27) // queued to trim snaps
+ 
+ std::string pg_state_string(int state);
+ std::string pg_vector_string(const vector<int32_t> &a);

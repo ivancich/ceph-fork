@@ -1,0 +1,41 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 16 May 2016 15:07:43 -0400
+Subject: rgw: add dout_prefix for rgw_data_sync.cc
+
+and took out the redundant 'rgw' from 'rgw meta sync:'
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 821c70d710295ceb5fd12b3058df6a672ed50b0a)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_data_sync.cc | 3 +++
+ src/rgw/rgw_sync.cc      | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 334dc79..48f9f77 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -23,6 +23,9 @@
+ 
+ #define dout_subsys ceph_subsys_rgw
+ 
++#undef dout_prefix
++#define dout_prefix (*_dout << "data sync: ")
++
+ static string datalog_sync_status_oid_prefix = "datalog.sync-status";
+ static string datalog_sync_status_shard_prefix = "datalog.sync-status.shard";
+ static string datalog_sync_full_sync_index_prefix = "data.full-sync.index";
+diff --git a/src/rgw/rgw_sync.cc b/src/rgw/rgw_sync.cc
+index 45605a1..fa5ba88 100644
+--- a/src/rgw/rgw_sync.cc
++++ b/src/rgw/rgw_sync.cc
+@@ -25,7 +25,7 @@
+ #define dout_subsys ceph_subsys_rgw
+ 
+ #undef dout_prefix
+-#define dout_prefix (*_dout << "rgw meta sync: ")
++#define dout_prefix (*_dout << "meta sync: ")
+ 
+ static string mdlog_sync_status_oid = "mdlog.sync-status";
+ static string mdlog_sync_status_shard_prefix = "mdlog.sync-status.shard";

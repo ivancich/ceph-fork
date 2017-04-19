@@ -1,0 +1,128 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Thu, 21 Jul 2016 23:46:20 -0400
+Subject: rgw: change read_sync_status interface
+
+RGWDataSyncStatusManager::read_sync_status() now operates on the given
+parameter, rather than its internal member variable. this allows
+multiple concurrent readers, which is needed for the rest interface
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit b7cd4e0e8b879b5e528de75bea3307585b96cbf2)
+Resolves: rhbz#1438895
+---
+ src/rgw/rgw_admin.cc     | 10 ++++------
+ src/rgw/rgw_data_sync.cc | 10 ++--------
+ src/rgw/rgw_data_sync.h  | 11 +++++------
+ 3 files changed, 11 insertions(+), 20 deletions(-)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 3f1fd49..6dcac06 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -1831,14 +1831,13 @@ static void get_data_sync_status(const string& source_zone, list<string>& status
+     return;
+   }
+ 
+-  ret = sync.read_sync_status();
++  rgw_data_sync_status sync_status;
++  ret = sync.read_sync_status(&sync_status);
+   if (ret < 0 && ret != -ENOENT) {
+     push_ss(ss, status, tab) << string("failed read sync status: ") + cpp_strerror(-ret);
+     return;
+   }
+ 
+-  const rgw_data_sync_status& sync_status = sync.get_sync_status();
+-
+   string status_str;
+   switch (sync_status.sync_info.state) {
+     case rgw_data_sync_info::StateInit:
+@@ -5735,14 +5734,13 @@ next:
+       return -ret;
+     }
+ 
+-    ret = sync.read_sync_status();
++    rgw_data_sync_status sync_status;
++    ret = sync.read_sync_status(&sync_status);
+     if (ret < 0 && ret != -ENOENT) {
+       cerr << "ERROR: sync.read_sync_status() returned ret=" << ret << std::endl;
+       return -ret;
+     }
+ 
+-    rgw_data_sync_status& sync_status = sync.get_sync_status();
+-
+     formatter->open_object_section("summary");
+     encode_json("sync_status", sync_status, formatter);
+ 
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index d9c47ee..09409b5 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -1524,20 +1524,14 @@ void RGWRemoteDataLog::wakeup(int shard_id, set<string>& keys) {
+   data_sync_cr->wakeup(shard_id, keys);
+ }
+ 
+-int RGWRemoteDataLog::run_sync(int num_shards, rgw_data_sync_status& sync_status)
++int RGWRemoteDataLog::run_sync(int num_shards)
+ {
+-  int r = run(new RGWReadDataSyncStatusCoroutine(&sync_env, &sync_status));
+-  if (r < 0 && r != -ENOENT) {
+-    ldout(store->ctx(), 0) << "ERROR: failed to read sync status from source_zone=" << sync_env.source_zone << " r=" << r << dendl;
+-    return r;
+-  }
+-  
+   lock.get_write();
+   data_sync_cr = new RGWDataSyncControlCR(&sync_env, num_shards);
+   data_sync_cr->get(); // run() will drop a ref, so take another
+   lock.unlock();
+ 
+-  r = run(data_sync_cr);
++  int r = run(data_sync_cr);
+ 
+   lock.get_write();
+   data_sync_cr->put();
+diff --git a/src/rgw/rgw_data_sync.h b/src/rgw/rgw_data_sync.h
+index 5858d36..91de9f1 100644
+--- a/src/rgw/rgw_data_sync.h
++++ b/src/rgw/rgw_data_sync.h
+@@ -241,7 +241,7 @@ public:
+   int get_shard_info(int shard_id);
+   int read_sync_status(rgw_data_sync_status *sync_status);
+   int init_sync_status(int num_shards);
+-  int run_sync(int num_shards, rgw_data_sync_status& sync_status);
++  int run_sync(int num_shards);
+ 
+   void wakeup(int shard_id, set<string>& keys);
+ };
+@@ -260,7 +260,6 @@ class RGWDataSyncStatusManager {
+   string source_shard_status_oid_prefix;
+   rgw_obj source_status_obj;
+ 
+-  rgw_data_sync_status sync_status;
+   map<int, rgw_obj> shard_objs;
+ 
+   int num_shards;
+@@ -276,12 +275,12 @@ public:
+   int init();
+   void finalize();
+ 
+-  rgw_data_sync_status& get_sync_status() { return sync_status; }
+-
+   static string shard_obj_name(const string& source_zone, int shard_id);
+   static string sync_status_oid(const string& source_zone);
+ 
+-  int read_sync_status() { return source_log.read_sync_status(&sync_status); }
++  int read_sync_status(rgw_data_sync_status *sync_status) {
++    return source_log.read_sync_status(sync_status);
++  }
+   int init_sync_status() { return source_log.init_sync_status(num_shards); }
+ 
+   int read_log_info(rgw_datalog_info *log_info) {
+@@ -294,7 +293,7 @@ public:
+     return source_log.read_source_log_shards_next(shard_markers, result);
+   }
+ 
+-  int run() { return source_log.run_sync(num_shards, sync_status); }
++  int run() { return source_log.run_sync(num_shards); }
+ 
+   void wakeup(int shard_id, set<string>& keys) { return source_log.wakeup(shard_id, keys); }
+   void stop() {
