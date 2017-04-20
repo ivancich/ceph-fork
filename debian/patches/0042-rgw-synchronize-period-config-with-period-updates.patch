@@ -1,0 +1,45 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 29 Mar 2017 14:18:38 -0400
+Subject: rgw: synchronize period config with period updates
+
+read period config from local storage on RGWPeriod::update(), and write
+the new config to storage on RGWPeriod::reflect()
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit b49b06534345ea5ebba5917ee32395693763aa32)
+Resolves: rhbz#1437579
+---
+ src/rgw/rgw_rados.cc | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index b09b97f..442e24d 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -1261,6 +1261,12 @@ int RGWPeriod::update()
+     }
+   }
+ 
++  ret = period_config.read(store, realm_id);
++  if (ret < 0 && ret != -ENOENT) {
++    ldout(cct, 0) << "ERROR: failed to read period config: "
++        << cpp_strerror(ret) << dendl;
++    return ret;
++  }
+   return 0;
+ }
+ 
+@@ -1283,6 +1289,13 @@ int RGWPeriod::reflect()
+       }
+     }
+   }
++
++  int r = period_config.write(store, realm_id);
++  if (r < 0) {
++    ldout(cct, 0) << "ERROR: failed to store period config: "
++        << cpp_strerror(-r) << dendl;
++    return r;
++  }
+   return 0;
+ }
+ 

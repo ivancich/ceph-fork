@@ -1,0 +1,92 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 29 Mar 2017 13:56:53 -0400
+Subject: rgw: allow RGWPeriodConfig to be stored separately
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 70a2f03810b85d9e21d09c05b9b82fb79acdb31e)
+Resolves: rhbz#1437579
+---
+ src/rgw/rgw_rados.cc | 49 +++++++++++++++++++++++++++++++++++++++++++++++++
+ src/rgw/rgw_rados.h  |  9 +++++++++
+ 2 files changed, 58 insertions(+)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 4265304..b09b97f 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -853,6 +853,55 @@ int RGWRealm::notify_new_period(const RGWPeriod& period)
+   return notify_zone(bl);
+ }
+ 
++std::string RGWPeriodConfig::get_oid(const std::string& realm_id)
++{
++  if (realm_id.empty()) {
++    return "period_config.default";
++  }
++  return "period_config." + realm_id;
++}
++
++std::string RGWPeriodConfig::get_pool_name(CephContext *cct)
++{
++  const auto& pool_name = cct->_conf->rgw_period_root_pool;
++  if (pool_name.empty()) {
++    return RGW_DEFAULT_PERIOD_ROOT_POOL;
++  }
++  return pool_name;
++}
++
++int RGWPeriodConfig::read(RGWRados *store, const std::string& realm_id)
++{
++  RGWObjectCtx obj_ctx(store);
++  const auto& pool_name = get_pool_name(store->ctx());
++  auto pool = rgw_bucket{pool_name.c_str()};
++  const auto& oid = get_oid(realm_id);
++  bufferlist bl;
++
++  int ret = rgw_get_system_obj(store, obj_ctx, pool, oid, bl, nullptr, nullptr);
++  if (ret < 0) {
++    return ret;
++  }
++  try {
++    bufferlist::iterator iter = bl.begin();
++    ::decode(*this, iter);
++  } catch (buffer::error& err) {
++    return -EIO;
++  }
++  return 0;
++}
++
++int RGWPeriodConfig::write(RGWRados *store, const std::string& realm_id)
++{
++  const auto& pool_name = get_pool_name(store->ctx());
++  auto pool = rgw_bucket{pool_name.c_str()};
++  const auto& oid = get_oid(realm_id);
++  bufferlist bl;
++  ::encode(*this, bl);
++  return rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(),
++                            false, nullptr, real_time(), nullptr);
++}
++
+ int RGWPeriod::init(CephContext *_cct, RGWRados *_store, const string& period_realm_id,
+ 		    const string& period_realm_name, bool setup_obj)
+ {
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index 59c2411..99655f5 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -1258,6 +1258,15 @@ struct RGWPeriodConfig
+ 
+   void dump(Formatter *f) const;
+   void decode_json(JSONObj *obj);
++
++  // the period config must be stored in a local object outside of the period,
++  // so that it can be used in a default configuration where no realm/period
++  // exists
++  int read(RGWRados *store, const std::string& realm_id);
++  int write(RGWRados *store, const std::string& realm_id);
++
++  static std::string get_oid(const std::string& realm_id);
++  static std::string get_pool_name(CephContext *cct);
+ };
+ WRITE_CLASS_ENCODER(RGWPeriodConfig)
+ 

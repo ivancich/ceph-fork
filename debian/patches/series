@@ -38,3 +38,8 @@
 0038-rgw-add-static-function-to-generate-lock-cookie.patch
 0039-rgw-hold-lock-for-data-log-trimming.patch
 0040-rgw-DataLogTrimCR-renamed-zone-to-zone_id.patch
+0041-rgw-allow-RGWPeriodConfig-to-be-stored-separately.patch
+0042-rgw-synchronize-period-config-with-period-updates.patch
+0043-rgw-load-period-config-separately-when-there-s-no-cu.patch
+0044-radosgw-admin-new-global-quota-commands-update-perio.patch
+0045-doc-rgw-update-section-on-global-quotas.patch
