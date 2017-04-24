@@ -1,0 +1,24 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 13 Mar 2017 11:33:02 -0400
+Subject: rgw: RGWGetObj applies skip_manifest flag to SLO
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 987377ae34382e107e1d54f0bfc1121fcedb4513)
+Resolves: rhbz#1423858
+---
+ src/rgw/rgw_op.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 3810fe1..2ad02eb 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -1275,7 +1275,7 @@ void RGWGetObj::execute()
+     return;
+   }
+   attr_iter = attrs.find(RGW_ATTR_SLO_MANIFEST);
+-  if (attr_iter != attrs.end()) {
++  if (attr_iter != attrs.end() && !skip_manifest) {
+     is_slo = true;
+     op_ret = handle_slo_manifest(attr_iter->second);
+     if (op_ret < 0) {

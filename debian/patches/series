@@ -44,3 +44,8 @@
 0044-radosgw-admin-new-global-quota-commands-update-perio.patch
 0045-doc-rgw-update-section-on-global-quotas.patch
 0046-ceph-disk-Populate-mount-options-when-running-list.patch
+0047-rgw-don-t-init-rgw_obj-from-rgw_obj_key-when-it-s-in.patch
+0048-radosgw-admin-use-zone-id-when-creating-a-zone.patch
+0049-rgw-data-sync-skips-slo-data-when-syncing-the-manife.patch
+0050-rgw-RGWGetObj-applies-skip_manifest-flag-to-SLO.patch
+0051-rgw-allow-system-users-to-read-SLO-parts.patch

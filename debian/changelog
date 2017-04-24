@@ -1,3 +1,15 @@
+ceph (10.2.7-12redhat1) stable; urgency=medium
+
+  * rgw: don't init rgw_obj from rgw_obj_key when it's incorrect to do
+    so (rhbz#1430887)
+  * radosgw-admin: use zone id when creating a zone (rhbz#1418235)
+  * rgw: data sync skips slo data when syncing the manifest object
+    (rhbz#1423858)
+  * rgw: RGWGetObj applies skip_manifest flag to SLO (rhbz#1423858)
+  * rgw: allow system users to read SLO parts (rhbz#1423858)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Mon, 24 Apr 2017 11:41:24 -0600
+
 ceph (10.2.7-11redhat1) stable; urgency=medium
 
   * ceph-disk: Populate mount options when running "list"

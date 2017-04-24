@@ -1,0 +1,42 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Mon, 27 Feb 2017 10:35:01 -0800
+Subject: rgw: don't init rgw_obj from rgw_obj_key when it's incorrect to do so
+
+Fixes: http://tracker.ceph.com/issues/19096
+
+rgw_obj_key currently deals with the bucket index key, and not
+representing a (name, instance, ns) tupple. Need to initialize
+it in two steps.
+
+Resolves: rhbz#1430887
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 392c5d9dae6ba699014ffe6e1e67818fa62d7e41)
+---
+ src/rgw/rgw_op.cc | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 9806cfb..3810fe1 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -411,7 +411,8 @@ int rgw_build_object_policies(RGWRados *store, struct req_state *s,
+     }
+     s->object_acl = new RGWAccessControlPolicy(s->cct);
+ 
+-    rgw_obj obj(s->bucket, s->object);
++    rgw_obj obj(s->bucket, s->object.name);
++    obj.set_instance(s->object.instance);
+       
+     store->set_atomic(s->obj_ctx, obj);
+     if (prefetch_data) {
+@@ -4814,7 +4815,8 @@ void RGWSetAttrs::execute()
+   if (op_ret < 0)
+     return;
+ 
+-  rgw_obj obj(s->bucket, s->object);
++  rgw_obj obj(s->bucket, s->object.name);
++  obj.set_instance(s->object.instance);
+ 
+   store->set_atomic(s->obj_ctx, obj);
+ 

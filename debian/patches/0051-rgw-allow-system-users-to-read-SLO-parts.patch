@@ -1,0 +1,33 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Tue, 21 Feb 2017 10:27:13 -0500
+Subject: rgw: allow system users to read SLO parts
+
+multisite data sync relies on fetching the object as the system user
+
+Fixes: http://tracker.ceph.com/issues/19027
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit d50d18c500fd5dd89e7cada1162cf453b36df370)
+
+Conflicts: auth rework
+
+Resolves: rhbz#1423858
+---
+ src/rgw/rgw_op.cc | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 2ad02eb..b2adba5 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -724,7 +724,9 @@ int RGWGetObj::read_user_manifest_part(rgw_bucket& bucket,
+   if (op_ret < 0)
+     return op_ret;
+ 
+-  if (!verify_object_permission(s, bucket_policy, &obj_policy, RGW_PERM_READ)) {
++  if (s->system_request) {
++    ldout(s->cct, 2) << "overriding permissions due to system operation" << dendl;
++  } else if (!verify_object_permission(s, bucket_policy, &obj_policy, RGW_PERM_READ)) {
+     return -EPERM;
+   }
+ 

@@ -1,0 +1,25 @@
+From: Orit Wasserman <owasserm@redhat.com>
+Date: Wed, 5 Apr 2017 13:31:08 +0300
+Subject: radosgw-admin: use zone id when creating a zone
+
+Fixes: http://tracker.ceph.com/issues/19498
+Resolves: rhbz#1418235
+Signed-off-by: Orit Wasserman <owasserm@redhat.com>
+(cherry picked from commit 3fea36d635fcba8ca584a1c0ec9f07840009402c)
+---
+ src/rgw/rgw_admin.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 95762b7..9d5ad7d 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -3743,7 +3743,7 @@ int main(int argc, char **argv)
+ 	  }
+ 	}
+ 
+-	RGWZoneParams zone(zone_name);
++	RGWZoneParams zone(zone_id, zone_name);
+ 	ret = zone.init(g_ceph_context, store, false);
+ 	if (ret < 0) {
+ 	  cerr << "unable to initialize zone: " << cpp_strerror(-ret) << std::endl;

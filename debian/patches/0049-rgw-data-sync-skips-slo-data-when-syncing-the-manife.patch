@@ -1,0 +1,104 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 8 Mar 2017 16:31:34 -0500
+Subject: rgw: data sync skips slo data when syncing the manifest object
+
+Fixes: http://tracker.ceph.com/issues/19027
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 8b69847d7b3e92c70090d1dddf7cea5c44fb6b20)
+
+Conflicts: bucket cleanup, overrides
+
+Resolves: rhbz#1423858
+---
+ src/rgw/rgw_rados.cc     | 3 ++-
+ src/rgw/rgw_rest_conn.cc | 6 +++++-
+ src/rgw/rgw_rest_conn.h  | 3 ++-
+ src/rgw/rgw_rest_s3.cc   | 9 +++++++++
+ src/rgw/rgw_rest_s3.h    | 1 +
+ 5 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 4d4121e..38c4686 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -6984,7 +6984,8 @@ int RGWRados::fetch_remote_obj(RGWObjectCtx& obj_ctx,
+  
+   ret = conn->get_obj(user_id, info, src_obj, pmod, unmod_ptr,
+                       dest_mtime_weight.zone_short_id, dest_mtime_weight.pg_ver,
+-                      true, &cb, &in_stream_req);
++                      true /* prepend_meta */, true /* sync manifest */,
++                      &cb, &in_stream_req);
+   if (ret < 0) {
+     goto set_err_state;
+   }
+diff --git a/src/rgw/rgw_rest_conn.cc b/src/rgw/rgw_rest_conn.cc
+index 64c07d2..49d422b 100644
+--- a/src/rgw/rgw_rest_conn.cc
++++ b/src/rgw/rgw_rest_conn.cc
+@@ -118,7 +118,8 @@ static void set_header(T val, map<string, string>& headers, const string& header
+ int RGWRESTConn::get_obj(const rgw_user& uid, req_info *info /* optional */, rgw_obj& obj,
+                          const real_time *mod_ptr, const real_time *unmod_ptr,
+                          uint32_t mod_zone_id, uint64_t mod_pg_ver,
+-                         bool prepend_metadata, RGWGetDataCB *cb, RGWRESTStreamReadRequest **req)
++                         bool prepend_metadata, bool sync_manifest,
++                         RGWGetDataCB *cb, RGWRESTStreamReadRequest **req)
+ {
+   string url;
+   int ret = get_url(url);
+@@ -133,6 +134,9 @@ int RGWRESTConn::get_obj(const rgw_user& uid, req_info *info /* optional */, rgw
+   if (prepend_metadata) {
+     params.push_back(param_pair_t(RGW_SYS_PARAM_PREFIX "prepend-metadata", self_zone_group));
+   }
++  if (sync_manifest) {
++    params.push_back(param_pair_t(RGW_SYS_PARAM_PREFIX "sync-manifest", ""));
++  }
+   if (!obj.get_instance().empty()) {
+     const string& instance = obj.get_instance();
+     params.push_back(param_pair_t("versionId", instance));
+diff --git a/src/rgw/rgw_rest_conn.h b/src/rgw/rgw_rest_conn.h
+index 415622f..94dad1e 100644
+--- a/src/rgw/rgw_rest_conn.h
++++ b/src/rgw/rgw_rest_conn.h
+@@ -93,7 +93,8 @@ public:
+   int get_obj(const rgw_user& uid, req_info *info /* optional */, rgw_obj& obj,
+               const ceph::real_time *mod_ptr, const ceph::real_time *unmod_ptr,
+               uint32_t mod_zone_id, uint64_t mod_pg_ver,
+-              bool prepend_metadata, RGWGetDataCB *cb, RGWRESTStreamReadRequest **req);
++              bool prepend_metadata, bool sync_manifest, RGWGetDataCB *cb,
++              RGWRESTStreamReadRequest **req);
+   int complete_request(RGWRESTStreamReadRequest *req, string& etag, ceph::real_time *mtime, map<string, string>& attrs);
+ 
+   int get_resource(const string& resource,
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index 930f47e..d34d8d5 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -113,6 +113,15 @@ int RGWGetObj_ObjStore_S3Website::send_response_data_error()
+   return RGWGetObj_ObjStore_S3::send_response_data_error();
+ }
+ 
++int RGWGetObj_ObjStore_S3::get_params()
++{
++  // for multisite sync requests, only read the slo manifest itself, rather than
++  // all of the data from its parts. the parts will sync as separate objects
++  skip_manifest = s->info.args.exists(RGW_SYS_PARAM_PREFIX "sync-manifest");
++
++  return RGWGetObj_ObjStore::get_params();
++}
++
+ int RGWGetObj_ObjStore_S3::send_response_data_error()
+ {
+   bufferlist bl;
+diff --git a/src/rgw/rgw_rest_s3.h b/src/rgw/rgw_rest_s3.h
+index 0f42466..41b828d 100644
+--- a/src/rgw/rgw_rest_s3.h
++++ b/src/rgw/rgw_rest_s3.h
+@@ -30,6 +30,7 @@ public:
+   RGWGetObj_ObjStore_S3() {}
+   ~RGWGetObj_ObjStore_S3() {}
+ 
++  int get_params() override;
+   int send_response_data_error();
+   int send_response_data(bufferlist& bl, off_t ofs, off_t len);
+   void set_custom_http_response(int http_ret) { custom_http_ret = http_ret; }
