@@ -1,3 +1,10 @@
+ceph (10.2.7-13redhat1) stable; urgency=medium
+
+  * Fix transfer-encoding: chunked and fast_forward_request
+    (rhbz#1435003)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 25 Apr 2017 14:59:07 -0600
+
 ceph (10.2.7-12redhat1) stable; urgency=medium
 
   * rgw: don't init rgw_obj from rgw_obj_key when it's incorrect to do
