@@ -1,0 +1,28 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Fri, 21 Apr 2017 15:04:48 -0400
+Subject: radosgw-admin: warn that 'realm rename' does not update other
+ clusters
+
+Fixes: http://tracker.ceph.com/issues/19746
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 8a459c768ffecd689a53a79dfe33eb8f1bbc318f)
+Resolves: rhbz#1423886
+---
+ src/rgw/rgw_admin.cc | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 9d5ad7d..4ef2f19 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -3104,6 +3104,9 @@ int main(int argc, char **argv)
+ 	  cerr << "realm.rename failed: " << cpp_strerror(-ret) << std::endl;
+ 	  return -ret;
+ 	}
++        cout << "Realm name updated. Note that this change only applies to "
++            "the current cluster, so this command must be run separately "
++            "on each of the realm's other clusters." << std::endl;
+       }
+       break;
+     case OPT_REALM_SET:

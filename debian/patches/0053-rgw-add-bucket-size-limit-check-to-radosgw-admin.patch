@@ -1,0 +1,395 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Sat, 5 Nov 2016 13:13:47 -0400
+Subject: rgw: add bucket size limit check to radosgw-admin
+
+The change adds a new list of all buckets x all users, with
+fields for bucket name, tenant name, current num_objects,
+current num_shards, current objects per shard, and the
+corresponding fill_status--the latter consisting of 'OK',
+'WARN <n>%', or 'OVER <n>%.'
+
+The warning check is relative to two new tunables.  The threshold
+max objects per shard is set as rgw_bucket_safe_max_objects_per_shard,
+which defaults to 100K.  The value rgw_bucket_warning_threshold is
+a percent of the current safe max at which to warn (defaults to
+90% of full).
+
+>From review:
+
+* fix indentation (rgw_admin)
+* if user a user_id is provided, check only buckets for that user
+* update shard warn pct to be pct-of-fill (not 100 - pct-of-fill)
+* print only buckets near or over per-shard limit, if --warnings-only
+* s/bucket limitcheck/bucket limit check */
+* sanity shard limit should be 90, not 10 (because that changed)
+* fixes for memleaks and other points found by cbodley
+
+Fixes: http://tracker.ceph.com/issues/17925
+Resolves: rhbz#1436386
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 7bc144ce36fedc16a3dedc54598b0d75fb8c68bc)
+---
+ src/common/config_opts.h          |   4 ++
+ src/rgw/rgw_admin.cc              |  82 ++++++++++++++++++++++---
+ src/rgw/rgw_bucket.cc             | 124 +++++++++++++++++++++++++++++++++++++-
+ src/rgw/rgw_bucket.h              |   4 ++
+ src/test/cli/radosgw-admin/help.t |   4 ++
+ 5 files changed, 207 insertions(+), 11 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index c300fbc..3580453 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1448,6 +1448,10 @@ OPTION(rgw_realm_reconfigure_delay, OPT_DOUBLE, 2) // seconds to wait before rel
+ OPTION(rgw_period_push_interval, OPT_DOUBLE, 2) // seconds to wait before retrying "period push"
+ OPTION(rgw_period_push_interval_max, OPT_DOUBLE, 30) // maximum interval after exponential backoff
+ 
++OPTION(rgw_safe_max_objects_per_shard, OPT_INT, 100*1024) // safe max loading
++OPTION(rgw_shard_warning_threshold, OPT_DOUBLE, 90) // pct of safe max
++						    // at which to warn
++
+ OPTION(rgw_swift_versioning_enabled, OPT_BOOL, false) // whether swift object versioning feature is enabled
+ 
+ OPTION(mutex_perf_counter, OPT_BOOL, false) // enable/disable mutex perf counter
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 4ef2f19..645f248 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -1,3 +1,4 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+ // vim: ts=8 sw=2 smarttab
+ 
+ #include <errno.h>
+@@ -66,6 +67,7 @@ void _usage()
+   cout << "  key create                 create access key\n";
+   cout << "  key rm                     remove access key\n";
+   cout << "  bucket list                list buckets\n";
++  cout << "  bucket limit check         show bucket sharding stats\n";
+   cout << "  bucket link                link bucket to specified user\n";
+   cout << "  bucket unlink              unlink bucket from specified user\n";
+   cout << "  bucket stats               returns bucket statistics\n";
+@@ -254,6 +256,9 @@ void _usage()
+   cout << "   --caps=<caps>             list of caps (e.g., \"usage=read, write; user=read\"\n";
+   cout << "   --yes-i-really-mean-it    required for certain operations\n";
+   cout << "   --reset-regions           reset regionmap when regionmap update\n";
++  cout << "   --warnings-only           when specified with bucket limit check, list\n";
++  cout << "                             only buckets nearing or over the current max\n";
++  cout << "                             objects per shard value\n";
+   cout << "   --bypass-gc               when specified with bucket deletion, triggers\n";
+   cout << "                             object deletions by not involving GC\n";
+   cout << "   --inconsistent-index      when specified with bucket deletion and bypass-gc set to true,\n";
+@@ -297,6 +302,7 @@ enum {
+   OPT_KEY_CREATE,
+   OPT_KEY_RM,
+   OPT_BUCKETS_LIST,
++  OPT_BUCKETS_LIMIT_CHECK,
+   OPT_BUCKET_LINK,
+   OPT_BUCKET_UNLINK,
+   OPT_BUCKET_STATS,
+@@ -505,6 +511,10 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
+   } else if (strcmp(prev_cmd, "buckets") == 0) {
+     if (strcmp(cmd, "list") == 0)
+       return OPT_BUCKETS_LIST;
++    if (strcmp(cmd, "limit") == 0) {
++      *need_more = true;
++      return 0;
++    }
+   } else if (strcmp(prev_cmd, "bucket") == 0) {
+     if (strcmp(cmd, "list") == 0)
+       return OPT_BUCKETS_LIST;
+@@ -526,14 +536,18 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
+       *need_more = true;
+       return 0;
+     }
+-  } else if ((prev_prev_cmd && strcmp(prev_prev_cmd, "bucket") == 0) &&
+-	     (strcmp(prev_cmd, "sync") == 0)) {
+-    if (strcmp(cmd, "status") == 0)
+-      return OPT_BUCKET_SYNC_STATUS;
+-    if (strcmp(cmd, "init") == 0)
+-      return OPT_BUCKET_SYNC_INIT;
+-    if (strcmp(cmd, "run") == 0)
+-      return OPT_BUCKET_SYNC_RUN;
++  } else if (prev_prev_cmd && strcmp(prev_prev_cmd, "bucket") == 0) {
++    if (strcmp(prev_cmd, "sync") == 0) {
++      if (strcmp(cmd, "status") == 0)
++	return OPT_BUCKET_SYNC_STATUS;
++      if (strcmp(cmd, "init") == 0)
++	return OPT_BUCKET_SYNC_INIT;
++      if (strcmp(cmd, "run") == 0)
++	return OPT_BUCKET_SYNC_RUN;
++    } else if ((strcmp(prev_cmd, "limit") == 0) &&
++	       (strcmp(cmd, "check") == 0)) {
++      return OPT_BUCKETS_LIMIT_CHECK;
++    }
+   } else if (strcmp(prev_cmd, "log") == 0) {
+     if (strcmp(cmd, "list") == 0)
+       return OPT_LOG_LIST;
+@@ -2307,6 +2321,7 @@ int main(int argc, char **argv)
+   int sync_stats = false;
+   int reset_regions = false;
+   int bypass_gc = false;
++  int warnings_only = false;
+   int inconsistent_index = false;
+ 
+   int verbose = false;
+@@ -2535,6 +2550,8 @@ int main(int argc, char **argv)
+      // do nothing
+     } else if (ceph_argparse_binary_flag(args, i, &bypass_gc, NULL, "--bypass-gc", (char*)NULL)) {
+      // do nothing
++    } else if (ceph_argparse_binary_flag(args, i, &warnings_only, NULL, "--warnings-only", (char*)NULL)) {
++     // do nothing
+     } else if (ceph_argparse_binary_flag(args, i, &inconsistent_index, NULL, "--inconsistent-index", (char*)NULL)) {
+      // do nothing
+     } else if (ceph_argparse_witharg(args, i, &val, "--caps", (char*)NULL)) {
+@@ -4509,6 +4526,51 @@ int main(int argc, char **argv)
+     }
+   }
+ 
++  if (opt_cmd == OPT_BUCKETS_LIMIT_CHECK) {
++    void *handle;
++    std::list<std::string> user_ids;
++    metadata_key = "user";
++    int max = 1000;
++
++    bool truncated;
++
++    if (! user_id.empty()) {
++      user_ids.push_back(user_id.id);
++      ret =
++	RGWBucketAdminOp::limit_check(store, bucket_op, user_ids, f,
++	  warnings_only);
++    } else {
++      /* list users in groups of max-keys, then perform user-bucket
++       * limit-check on each group */
++     ret = store->meta_mgr->list_keys_init(metadata_key, &handle);
++      if (ret < 0) {
++	cerr << "ERROR: buckets limit check can't get user metadata_key: "
++	     << cpp_strerror(-ret) << std::endl;
++	return -ret;
++      }
++
++      do {
++	ret = store->meta_mgr->list_keys_next(handle, max, user_ids,
++					      &truncated);
++	if (ret < 0 && ret != -ENOENT) {
++	  cerr << "ERROR: buckets limit check lists_keys_next(): "
++	       << cpp_strerror(-ret) << std::endl;
++	  break;
++	} else {
++	  /* ok, do the limit checks for this group */
++	  ret =
++	    RGWBucketAdminOp::limit_check(store, bucket_op, user_ids, f,
++	      warnings_only);
++	  if (ret < 0)
++	    break;
++	}
++	user_ids.clear();
++      } while (truncated);
++      store->meta_mgr->list_keys_complete(handle);
++    }
++    return -ret;
++  } /* OPT_BUCKETS_LIMIT_CHECK */
++
+   if (opt_cmd == OPT_BUCKETS_LIST) {
+     if (bucket_name.empty()) {
+       RGWBucketAdminOp::info(store, bucket_op, f);
+@@ -4559,8 +4621,8 @@ int main(int argc, char **argv)
+ 
+       formatter->close_section();
+       formatter->flush(cout);
+-    }
+-  }
++    } /* have bucket_name */
++  } /* OPT_BUCKETS_LIST */
+ 
+   if (opt_cmd == OPT_BUCKET_STATS) {
+     bucket_op.set_fetch_stats(true);
+diff --git a/src/rgw/rgw_bucket.cc b/src/rgw/rgw_bucket.cc
+index ca37b07..88695ad 100644
+--- a/src/rgw/rgw_bucket.cc
++++ b/src/rgw/rgw_bucket.cc
+@@ -5,8 +5,10 @@
+ 
+ #include <string>
+ #include <map>
++#include <sstream>
+ 
+ #include <boost/utility/string_ref.hpp>
++#include <boost/format.hpp>
+ 
+ #include "common/errno.h"
+ #include "common/ceph_json.h"
+@@ -1413,6 +1415,126 @@ static int bucket_stats(RGWRados *store, const std::string& tenant_name, std::st
+   return 0;
+ }
+ 
++int RGWBucketAdminOp::limit_check(RGWRados *store,
++				  RGWBucketAdminOpState& op_state,
++				  const std::list<std::string>& user_ids,
++				  RGWFormatterFlusher& flusher,
++				  bool warnings_only)
++{
++  int ret = 0;
++  const size_t max_entries =
++    store->ctx()->_conf->rgw_list_buckets_max_chunk;
++
++  const size_t safe_max_objs_per_shard =
++    store->ctx()->_conf->rgw_safe_max_objects_per_shard;
++
++  uint16_t shard_warn_pct =
++    store->ctx()->_conf->rgw_shard_warning_threshold;
++  if (shard_warn_pct > 100)
++    shard_warn_pct = 90;
++
++  Formatter *formatter = flusher.get_formatter();
++  flusher.start(0);
++
++  formatter->open_array_section("users");
++
++  for (const auto& user_id : user_ids) {
++    formatter->open_object_section("user");
++    formatter->dump_string("user_id", user_id);
++    bool done;
++    formatter->open_array_section("buckets");
++    do {
++      RGWUserBuckets buckets;
++      string marker;
++      bool is_truncated;
++
++      ret = rgw_read_user_buckets(store, user_id, buckets,
++				  marker, string(), max_entries, false,
++				  &is_truncated);
++      if (ret < 0)
++        return ret;
++
++      map<string, RGWBucketEnt>& m_buckets = buckets.get_buckets();
++
++      for (auto& iter : m_buckets) {
++	auto& bucket = iter.second.bucket;
++	uint32_t num_shards = 1;
++	uint64_t num_objects = 0;
++
++	/* need info for num_shards */
++	RGWBucketInfo info;
++	RGWObjectCtx obj_ctx(store);
++
++	marker = bucket.name; /* Casey's location for marker update,
++			       * as we may now not reach the end of
++			       * the loop body */
++
++	ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name,
++				     info, nullptr);
++	if (ret < 0)
++	  continue;
++
++	/* need stats for num_entries */
++	string bucket_ver, master_ver;
++	std::map<RGWObjCategory, RGWStorageStats> stats;
++	ret = store->get_bucket_stats(bucket, RGW_NO_SHARD, &bucket_ver,
++				      &master_ver, stats, nullptr);
++
++	if (ret < 0)
++	  continue;
++
++	for (const auto& s : stats) {
++	    num_objects += s.second.num_objects;
++	}
++
++	num_shards = info.num_shards;
++	uint64_t objs_per_shard = num_objects / num_shards;
++	{
++	  bool warn = false;
++	  stringstream ss;
++	  if (objs_per_shard > safe_max_objs_per_shard) {
++	    double over =
++	      100 - (safe_max_objs_per_shard/objs_per_shard * 100);
++	      ss << boost::format("OVER %4f%%") % over;
++	      warn = true;
++	  } else {
++	    double fill_pct =
++	      objs_per_shard / safe_max_objs_per_shard * 100;
++	    if (fill_pct >= shard_warn_pct) {
++	      ss << boost::format("WARN %4f%%") % fill_pct;
++	      warn = true;
++	    } else {
++	      ss << "OK";
++	    }
++	  }
++
++	  if (warn || (! warnings_only)) {
++	    formatter->open_object_section("bucket");
++	    formatter->dump_string("bucket", bucket.name);
++	    formatter->dump_string("tenant", bucket.tenant);
++	    formatter->dump_int("num_objects", num_objects);
++	    formatter->dump_int("num_shards", num_shards);
++	    formatter->dump_int("objects_per_shard", objs_per_shard);
++	    formatter->dump_string("fill_status", ss.str());
++	    formatter->close_section();
++	  }
++	}
++      }
++
++      done = (m_buckets.size() < max_entries);
++    } while (!done); /* foreach: bucket */
++
++    formatter->close_section();
++    formatter->close_section();
++    formatter->flush(cout);
++
++  } /* foreach: user_id */
++
++  formatter->close_section();
++  formatter->flush(cout);
++
++  return ret;
++} /* RGWBucketAdminOp::limit_check */
+ 
+ int RGWBucketAdminOp::info(RGWRados *store, RGWBucketAdminOpState& op_state,
+                   RGWFormatterFlusher& flusher)
+@@ -1433,7 +1555,7 @@ int RGWBucketAdminOp::info(RGWRados *store, RGWBucketAdminOpState& op_state,
+ 
+   CephContext *cct = store->ctx();
+ 
+-  size_t max_entries = cct->_conf->rgw_list_buckets_max_chunk;
++  const size_t max_entries = cct->_conf->rgw_list_buckets_max_chunk;
+ 
+   bool show_stats = op_state.will_fetch_stats();
+   rgw_user user_id = op_state.get_user_id();
+diff --git a/src/rgw/rgw_bucket.h b/src/rgw/rgw_bucket.h
+index 78e8848..19b1b8e 100644
+--- a/src/rgw/rgw_bucket.h
++++ b/src/rgw/rgw_bucket.h
+@@ -314,6 +314,10 @@ public:
+   static int remove_bucket(RGWRados *store, RGWBucketAdminOpState& op_state, bool bypass_gc = false, bool keep_index_consistent = true);
+   static int remove_object(RGWRados *store, RGWBucketAdminOpState& op_state);
+   static int info(RGWRados *store, RGWBucketAdminOpState& op_state, RGWFormatterFlusher& flusher);
++  static int limit_check(RGWRados *store, RGWBucketAdminOpState& op_state,
++			 const std::list<std::string>& user_ids,
++			 RGWFormatterFlusher& flusher,
++			 bool warnings_only = false);
+ };
+ 
+ 
+diff --git a/src/test/cli/radosgw-admin/help.t b/src/test/cli/radosgw-admin/help.t
+index 2b84047..5b31657 100644
+--- a/src/test/cli/radosgw-admin/help.t
++++ b/src/test/cli/radosgw-admin/help.t
+@@ -17,6 +17,7 @@
+     key create                 create access key
+     key rm                     remove access key
+     bucket list                list buckets
++    bucket limit check         show bucket sharding stats
+     bucket link                link bucket to specified user
+     bucket unlink              unlink bucket from specified user
+     bucket stats               returns bucket statistics
+@@ -205,6 +206,9 @@
+      --caps=<caps>             list of caps (e.g., "usage=read, write; user=read"
+      --yes-i-really-mean-it    required for certain operations
+      --reset-regions           reset regionmap when regionmap update
++     --warnings-only           when specified with bucket limit check, list
++                               only buckets nearing or over the current max
++                               objects per shard value
+      --bypass-gc               when specified with bucket deletion, triggers
+                                object deletions by not involving GC
+      --inconsistent-index      when specified with bucket deletion and bypass-gc set to true,

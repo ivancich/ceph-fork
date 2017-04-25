@@ -49,3 +49,6 @@
 0049-rgw-data-sync-skips-slo-data-when-syncing-the-manife.patch
 0050-rgw-RGWGetObj-applies-skip_manifest-flag-to-SLO.patch
 0051-rgw-allow-system-users-to-read-SLO-parts.patch
+0052-radosgw-admin-warn-that-realm-rename-does-not-update.patch
+0053-rgw-add-bucket-size-limit-check-to-radosgw-admin.patch
+0054-rgw-swift-disable-revocation-thread-if-sleep-0-cache.patch

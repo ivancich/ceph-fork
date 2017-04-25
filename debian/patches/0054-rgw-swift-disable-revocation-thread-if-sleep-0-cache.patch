@@ -1,0 +1,64 @@
+From: Marcus Watts <mwatts@redhat.com>
+Date: Thu, 13 Apr 2017 05:33:55 -0400
+Subject: rgw: swift: disable revocation thread if sleep == 0 || cache_size ==
+ 0
+
+Keystone tokens can be revoked.  This causes them to fail
+validation.  However, in ceph, we cache them.  As long as
+they're in the cache we trust them.  To find revoked tokens
+there's a call OSI-PKI/revoked but that's only useful for
+pki tokens.  Installations using fernet/uuid may not even
+have the proper credentials to support the call, in which
+case the call blows up in various ways filling up logs
+with complaints.
+
+This code makes the revocation thread optional; by disabling it,
+the complaints go away.  A further fix is in the works
+to use other more modern calls available in modern keystone
+installations to properly deal with non-PKI/PKIZ tokens.
+
+(NB: jewel has this logic in src/rgw/rgw_swift.cc not in src/rgw/rgw_keystone.h)
+
+To disable the revocation thread, use at least one of these:
+        rgw_keystone_token_cache_size = 0
+		using this will cause tokens to be validated on every call.
+You may instead want to set
+        rgw_keystone_revocation_interval = 0
+		using just this will disable the revocation thread,
+		but leaves the cache in use.  That avoids the extra
+		validation overhead, but means token revocation won't
+		work very well.
+
+Fixes: http://tracker.ceph.com/issues/9493
+Fixes: http://tracker.ceph.com/issues/19499
+Resolves: rhbz#1438965
+
+Signed-off-by: Marcus Watts <mwatts@redhat.com>
+(cherry picked from commit 003291a8cbca455c0e8731f66759395a0bb1f555)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+---
+ src/rgw/rgw_swift.cc | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_swift.cc b/src/rgw/rgw_swift.cc
+index 42f5c07..b63a5f0 100644
+--- a/src/rgw/rgw_swift.cc
++++ b/src/rgw/rgw_swift.cc
+@@ -826,9 +826,16 @@ void RGWSwift::init()
+ void RGWSwift::init_keystone()
+ {
+   keystone_token_cache = new RGWKeystoneTokenCache(cct, cct->_conf->rgw_keystone_token_cache_size);
+-
++  /* revocation logic needs to be smarter, but meanwhile,
++   *  make it optional.
++   * see http://tracker.ceph.com/issues/9493
++   *     http://tracker.ceph.com/issues/19499
++   */
++  if (cct->_conf->rgw_keystone_revocation_interval > 0
++    && cct->_conf->rgw_keystone_token_cache_size ) {
+   keystone_revoke_thread = new KeystoneRevokeThread(cct, this);
+   keystone_revoke_thread->create("rgw_swift_k_rev");
++  }
+ }
+ 
+ 

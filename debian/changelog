@@ -1,3 +1,13 @@
+ceph (10.2.7-14redhat1) stable; urgency=medium
+
+  * radosgw-admin: warn that 'realm rename' does not update other
+    clusters (rhbz#1423886)
+  * rgw: add bucket size limit check to radosgw-admin (rhbz#1436386)
+  * rgw: swift: disable revocation thread if sleep == 0 || cache_size
+    == 0 (rhbz#1438965)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Tue, 25 Apr 2017 15:02:17 -0600
+
 ceph (10.2.7-13redhat1) stable; urgency=medium
 
   * Fix transfer-encoding: chunked and fast_forward_request
