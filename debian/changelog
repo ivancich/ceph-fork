@@ -1,3 +1,9 @@
+ceph (10.2.7-15redhat1) stable; urgency=medium
+
+  * ceph-disk: enable directory backed OSD at boot time (rhbz#1442265)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 26 Apr 2017 08:58:57 -0600
+
 ceph (10.2.7-14redhat1) stable; urgency=medium
 
   * radosgw-admin: warn that 'realm rename' does not update other

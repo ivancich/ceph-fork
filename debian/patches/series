@@ -52,3 +52,4 @@
 0052-radosgw-admin-warn-that-realm-rename-does-not-update.patch
 0053-rgw-add-bucket-size-limit-check-to-radosgw-admin.patch
 0054-rgw-swift-disable-revocation-thread-if-sleep-0-cache.patch
+0055-ceph-disk-enable-directory-backed-OSD-at-boot-time.patch

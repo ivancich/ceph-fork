@@ -1,0 +1,164 @@
+From: Loic Dachary <ldachary@redhat.com>
+Date: Thu, 13 Apr 2017 23:49:50 +0200
+Subject: ceph-disk: enable directory backed OSD at boot time
+
+https://github.com/ceph/ceph/commit/539385b143feee3905dceaf7a8faaced42f2d3c6
+introduced a regression preventing directory backed OSD from starting at
+boot time.
+
+For device backed OSD the boot sequence starts with ceph-disk@.service
+and proceeds to
+
+    systemctl enable --runtime ceph-osd@.service
+
+where the --runtime ensure ceph-osd@12 is removed when the machine
+reboots so that it does not compete with the ceph-disk@/dev/sdb1 unit at
+boot time.
+
+However directory backed OSD solely rely on the ceph-osd@.service unit
+to start at boot time and will therefore fail to boot.
+
+The --runtime flag is selectively set for device backed OSD only.
+
+Fixes: http://tracker.ceph.com/issues/19628
+
+Signed-off-by: Loic Dachary <loic@dachary.org>
+(cherry picked from commit f425a127b7487d2093c8c943f0bcdec3d673d601)
+
+Conflicts:
+	src/ceph-disk/ceph_disk/main.py: trivial: Jewel does not support
+	   OpenRC and other inits, hence no corresponding 'elif'
+
+(cherry picked from commit 9b77b16b888b8efbf7d50d333e1880a6ec70d87a)
+
+Resolves: rhbz#1442265
+---
+ src/ceph-disk/ceph_disk/main.py | 101 +++++++++++++++++++++++++---------------
+ 1 file changed, 63 insertions(+), 38 deletions(-)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index e3217c4..7a546ef 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -2906,6 +2906,67 @@ def move_mount(
+     )
+ 
+ 
++#
++# For upgrade purposes, to make sure there are no competing units,
++# both --runtime unit and the default should be disabled. There can be
++# two units at the same time: one with --runtime and another without
++# it. If, for any reason (manual or ceph-disk) the two units co-exist
++# they will compete with each other.
++#
++def systemd_disable(
++    path,
++    osd_id,
++):
++    # ensure there is no duplicate ceph-osd@.service
++    for style in ([], ['--runtime']):
++        command_check_call(
++            [
++                'systemctl',
++                'disable',
++                'ceph-osd@{osd_id}'.format(osd_id=osd_id),
++            ] + style,
++        )
++
++
++def systemd_start(
++    path,
++    osd_id,
++):
++    systemd_disable(path, osd_id)
++    if is_mounted(path):
++        style = ['--runtime']
++    else:
++        style = []
++    command_check_call(
++        [
++            'systemctl',
++            'enable',
++            'ceph-osd@{osd_id}'.format(osd_id=osd_id),
++        ] + style,
++    )
++    command_check_call(
++        [
++            'systemctl',
++            'start',
++            'ceph-osd@{osd_id}'.format(osd_id=osd_id),
++        ],
++    )
++
++
++def systemd_stop(
++    path,
++    osd_id,
++):
++    systemd_disable(path, osd_id)
++    command_check_call(
++        [
++            'systemctl',
++            'stop',
++            'ceph-osd@{osd_id}'.format(osd_id=osd_id),
++        ],
++    )
++
++
+ def start_daemon(
+     cluster,
+     osd_id,
+@@ -2949,29 +3010,7 @@ def start_daemon(
+                 ],
+             )
+         elif os.path.exists(os.path.join(path, 'systemd')):
+-            # ensure there is no duplicate ceph-osd@.service
+-            command_check_call(
+-                [
+-                    'systemctl',
+-                    'disable',
+-                    'ceph-osd@{osd_id}'.format(osd_id=osd_id),
+-                ],
+-            )
+-            command_check_call(
+-                [
+-                    'systemctl',
+-                    'enable',
+-                    '--runtime',
+-                    'ceph-osd@{osd_id}'.format(osd_id=osd_id),
+-                ],
+-            )
+-            command_check_call(
+-                [
+-                    'systemctl',
+-                    'start',
+-                    'ceph-osd@{osd_id}'.format(osd_id=osd_id),
+-                ],
+-            )
++            systemd_start(path, osd_id)
+         else:
+             raise Error('{cluster} osd.{osd_id} is not tagged '
+                         'with an init system'.format(
+@@ -3015,21 +3054,7 @@ def stop_daemon(
+                 ],
+             )
+         elif os.path.exists(os.path.join(path, 'systemd')):
+-            command_check_call(
+-                [
+-                    'systemctl',
+-                    'disable',
+-                    '--runtime',
+-                    'ceph-osd@{osd_id}'.format(osd_id=osd_id),
+-                ],
+-            )
+-            command_check_call(
+-                [
+-                    'systemctl',
+-                    'stop',
+-                    'ceph-osd@{osd_id}'.format(osd_id=osd_id),
+-                ],
+-            )
++            systemd_stop(path, osd_id)
+         else:
+             raise Error('{cluster} osd.{osd_id} is not tagged with an init '
+                         ' system'.format(cluster=cluster, osd_id=osd_id))
