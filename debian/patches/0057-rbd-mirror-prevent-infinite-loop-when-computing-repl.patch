@@ -1,0 +1,36 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 4 May 2017 17:57:34 -0400
+Subject: rbd-mirror: prevent infinite loop when computing replay status
+
+If the image had a non-primary predecessor epoch whose tag tid
+duplicates an epoch within its own journal, an infinite loop
+would result.
+
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 3f179bf86216540d8e25aad469c604f96f6aecd8)
+(cherry picked from commit 7ec6e8bc50b62b43f27cf572c9d267c1a5f9520e)
+
+Resolves: rhbz#1448066
+---
+ src/tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc b/src/tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc
+index 917a706..c3a0400 100644
+--- a/src/tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc
++++ b/src/tools/rbd_mirror/image_replayer/ReplayStatusFormatter.cc
+@@ -195,7 +195,13 @@ void ReplayStatusFormatter<I>::handle_update_tag_cache(uint64_t master_tag_tid,
+     }
+   }
+ 
+-  if (tag_data.predecessor.tag_tid == 0) {
++  if (tag_data.predecessor.mirror_uuid !=
++        librbd::Journal<>::LOCAL_MIRROR_UUID &&
++      tag_data.predecessor.mirror_uuid !=
++        librbd::Journal<>::ORPHAN_MIRROR_UUID) {
++    dout(20) << "hit remote image non-primary epoch" << dendl;
++    tag_data.predecessor.tag_tid = mirror_tag_tid;
++  } else if (tag_data.predecessor.tag_tid == 0) {
+     // We failed. Don't consider this fatal, just terminate retrieving.
+     dout(20) << "making fake tag" << dendl;
+     tag_data.predecessor.tag_tid = mirror_tag_tid;

@@ -1,3 +1,11 @@
+ceph (10.2.7-17redhat1) stable; urgency=medium
+
+  * rbd-mirror: prevent infinite loop when computing replay status
+    (rhbz#1448066)
+  * librbd: add no-op event when promoting an image (rhbz#1448066)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 09 May 2017 16:12:42 -0400
+
 ceph (10.2.7-16redhat1) stable; urgency=medium
 
   * cls/rgw: list_plain_entries() stops before bi_log entries

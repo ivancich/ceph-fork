@@ -1,0 +1,203 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Thu, 4 May 2017 17:56:22 -0400
+Subject: librbd: add no-op event when promoting an image
+
+The rbd-mirror process needs an event in the journal
+to properly detect the transition between primary and
+non-primary state between peers.
+
+Fixes: http://tracker.ceph.com/issues/19858
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 4031555dda7597d24e9eb04b9ff29173909586f7)
+
+Conflicts:
+	src/librbd/journal/DemoteRequest.cc: logic exists in Journal.cc
+
+(cherry picked from commit 7970ec586bebd26b1ca4955136ad8f48bb833af6)
+
+Conflicts:
+	src/librbd/journal/PromoteRequest.[h|cc]: logic exists in Journal.cc
+	src/librbd/journal/Types.[h|cc]: trivial resolution
+	src/test/librbd/journal/test_mock_PromoteRequest.cc: does not exist
+
+(cherry picked from commit 618a82e11e53cf2f1d5d306a2eb330cdf5e459ca)
+
+Resolves: rhbz#1448066
+---
+ src/librbd/Journal.cc        | 36 +++++++++++++++++++++++++++++++++++-
+ src/librbd/journal/Replay.cc |  4 ++--
+ src/librbd/journal/Replay.h  |  2 +-
+ src/librbd/journal/Types.cc  | 16 ++++++++--------
+ src/librbd/journal/Types.h   |  9 +++++----
+ 5 files changed, 51 insertions(+), 16 deletions(-)
+
+diff --git a/src/librbd/Journal.cc b/src/librbd/Journal.cc
+index 5686e17..d5df1a2 100644
+--- a/src/librbd/Journal.cc
++++ b/src/librbd/Journal.cc
+@@ -797,6 +797,40 @@ int Journal<I>::promote(I *image_ctx) {
+     return r;
+   }
+ 
++  journaler.start_append(0, 0, 0);
++  BOOST_SCOPE_EXIT_ALL(&journaler) {
++    C_SaferCond stop_append_ctx;
++    journaler.stop_append(&stop_append_ctx);
++    stop_append_ctx.wait();
++  };
++
++  journal::EventEntry event_entry{journal::DemotePromoteEvent{}};
++  bufferlist event_entry_bl;
++  ::encode(event_entry, event_entry_bl);
++  Future future = journaler.append(new_tag.tid, event_entry_bl);
++
++  C_SaferCond flush_ctx;
++  future.flush(&flush_ctx);
++  r = flush_ctx.wait();
++  if (r < 0) {
++    lderr(cct) << __func__ << ": "
++               << "failed to append promotion journal event: " << cpp_strerror(r)
++               << dendl;
++    return r;
++  }
++
++  journaler.committed(future);
++
++  C_SaferCond flush_commit_ctx;
++  journaler.flush_commit_position(&flush_commit_ctx);
++  r = flush_commit_ctx.wait();
++  if (r < 0) {
++    lderr(cct) << __func__ << ": "
++               << "failed to flush promotion commit position: "
++               << cpp_strerror(r) << dendl;
++    return r;
++  }
++
+   return 0;
+ }
+ 
+@@ -962,7 +996,7 @@ int Journal<I>::demote() {
+       return r;
+     }
+ 
+-    journal::EventEntry event_entry{journal::DemoteEvent{}};
++    journal::EventEntry event_entry{journal::DemotePromoteEvent{}};
+     bufferlist event_entry_bl;
+     ::encode(event_entry, event_entry_bl);
+ 
+diff --git a/src/librbd/journal/Replay.cc b/src/librbd/journal/Replay.cc
+index e8592f5..387de37 100644
+--- a/src/librbd/journal/Replay.cc
++++ b/src/librbd/journal/Replay.cc
+@@ -624,10 +624,10 @@ void Replay<I>::handle_event(const journal::FlattenEvent &event,
+ }
+ 
+ template <typename I>
+-void Replay<I>::handle_event(const journal::DemoteEvent &event,
++void Replay<I>::handle_event(const journal::DemotePromoteEvent &event,
+ 			     Context *on_ready, Context *on_safe) {
+   CephContext *cct = m_image_ctx.cct;
+-  ldout(cct, 20) << ": Demote event" << dendl;
++  ldout(cct, 20) << ": Demote/Promote event" << dendl;
+   on_ready->complete(0);
+   on_safe->complete(0);
+ }
+diff --git a/src/librbd/journal/Replay.h b/src/librbd/journal/Replay.h
+index 30642db..af74cc8 100644
+--- a/src/librbd/journal/Replay.h
++++ b/src/librbd/journal/Replay.h
+@@ -155,7 +155,7 @@ private:
+                     Context *on_safe);
+   void handle_event(const FlattenEvent &event, Context *on_ready,
+                     Context *on_safe);
+-  void handle_event(const DemoteEvent &event, Context *on_ready,
++  void handle_event(const DemotePromoteEvent &event, Context *on_ready,
+                     Context *on_safe);
+   void handle_event(const UnknownEvent &event, Context *on_ready,
+                     Context *on_safe);
+diff --git a/src/librbd/journal/Types.cc b/src/librbd/journal/Types.cc
+index f402edf..f1d87e6 100644
+--- a/src/librbd/journal/Types.cc
++++ b/src/librbd/journal/Types.cc
+@@ -205,13 +205,13 @@ void ResizeEvent::dump(Formatter *f) const {
+   f->dump_unsigned("size", size);
+ }
+ 
+-void DemoteEvent::encode(bufferlist& bl) const {
++void DemotePromoteEvent::encode(bufferlist& bl) const {
+ }
+ 
+-void DemoteEvent::decode(__u8 version, bufferlist::iterator& it) {
++void DemotePromoteEvent::decode(__u8 version, bufferlist::iterator& it) {
+ }
+ 
+-void DemoteEvent::dump(Formatter *f) const {
++void DemotePromoteEvent::dump(Formatter *f) const {
+ }
+ 
+ void UnknownEvent::encode(bufferlist& bl) const {
+@@ -281,8 +281,8 @@ void EventEntry::decode(bufferlist::iterator& it) {
+   case EVENT_TYPE_FLATTEN:
+     event = FlattenEvent();
+     break;
+-  case EVENT_TYPE_DEMOTE:
+-    event = DemoteEvent();
++  case EVENT_TYPE_DEMOTE_PROMOTE:
++    event = DemotePromoteEvent();
+     break;
+   default:
+     event = UnknownEvent();
+@@ -336,7 +336,7 @@ void EventEntry::generate_test_instances(std::list<EventEntry *> &o) {
+ 
+   o.push_back(new EventEntry(FlattenEvent(123)));
+ 
+-  o.push_back(new EventEntry(DemoteEvent()));
++  o.push_back(new EventEntry(DemotePromoteEvent()));
+ }
+ 
+ // Journal Client
+@@ -585,8 +585,8 @@ std::ostream &operator<<(std::ostream &out, const EventType &type) {
+   case EVENT_TYPE_FLATTEN:
+     out << "Flatten";
+     break;
+-  case EVENT_TYPE_DEMOTE:
+-    out << "Demote";
++  case EVENT_TYPE_DEMOTE_PROMOTE:
++    out << "Demote/Promote";
+     break;
+   default:
+     out << "Unknown (" << static_cast<uint32_t>(type) << ")";
+diff --git a/src/librbd/journal/Types.h b/src/librbd/journal/Types.h
+index c8c13a9..f282da7 100644
+--- a/src/librbd/journal/Types.h
++++ b/src/librbd/journal/Types.h
+@@ -35,7 +35,7 @@ enum EventType {
+   EVENT_TYPE_RENAME         = 10,
+   EVENT_TYPE_RESIZE         = 11,
+   EVENT_TYPE_FLATTEN        = 12,
+-  EVENT_TYPE_DEMOTE         = 13
++  EVENT_TYPE_DEMOTE_PROMOTE = 13
+ };
+ 
+ struct AioDiscardEvent {
+@@ -264,8 +264,9 @@ struct FlattenEvent : public OpEventBase {
+   using OpEventBase::dump;
+ };
+ 
+-struct DemoteEvent {
+-  static const EventType TYPE = static_cast<EventType>(EVENT_TYPE_DEMOTE);
++struct DemotePromoteEvent {
++  static const EventType TYPE = static_cast<EventType>(
++    EVENT_TYPE_DEMOTE_PROMOTE);
+ 
+   void encode(bufferlist& bl) const;
+   void decode(__u8 version, bufferlist::iterator& it);
+@@ -293,7 +294,7 @@ typedef boost::variant<AioDiscardEvent,
+                        RenameEvent,
+                        ResizeEvent,
+                        FlattenEvent,
+-                       DemoteEvent,
++                       DemotePromoteEvent,
+                        UnknownEvent> Event;
+ 
+ struct EventEntry {

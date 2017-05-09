@@ -54,3 +54,5 @@
 0054-rgw-swift-disable-revocation-thread-if-sleep-0-cache.patch
 0055-ceph-disk-enable-directory-backed-OSD-at-boot-time.patch
 0056-cls-rgw-list_plain_entries-stops-before-bi_log-entri.patch
+0057-rbd-mirror-prevent-infinite-loop-when-computing-repl.patch
+0058-librbd-add-no-op-event-when-promoting-an-image.patch
