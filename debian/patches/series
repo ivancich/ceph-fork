@@ -56,3 +56,4 @@
 0056-cls-rgw-list_plain_entries-stops-before-bi_log-entri.patch
 0057-rbd-mirror-prevent-infinite-loop-when-computing-repl.patch
 0058-librbd-add-no-op-event-when-promoting-an-image.patch
+0059-rgw-remove-unnecessary-output.patch

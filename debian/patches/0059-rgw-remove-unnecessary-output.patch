@@ -1,0 +1,31 @@
+From: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+Date: Tue, 14 Jun 2016 15:34:08 +0800
+Subject: rgw: remove unnecessary output
+
+a lot of radosgw-admin command will output
+"error in read_id for object name: default : (2) No such file or directory"
+when the zone named 'default' is not exist:
+
+Signed-off-by: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+(cherry picked from commit 4e9c7be08b9828db2795536ce170a675d25bc1ed)
+
+Resolves: rhbz#1447628
+---
+ src/rgw/rgw_rados.cc | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 38c4686..8748d25 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -388,7 +388,9 @@ int RGWSystemMetaObj::init(CephContext *_cct, RGWRados *_store, bool setup_obj,
+     } else if (!old_format) {
+       r = read_id(name, id);
+       if (r < 0) {
+-        ldout(cct, 0) << "error in read_id for object name: " << name << " : " << cpp_strerror(-r) << dendl;
++        if (r != -ENOENT) {
++          ldout(cct, 0) << "error in read_id for object name: " << name << " : " << cpp_strerror(-r) << dendl;
++        }
+         return r;
+       }
+     }
