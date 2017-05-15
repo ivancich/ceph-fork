@@ -1,0 +1,47 @@
+From: Loic Dachary <ldachary@redhat.com>
+Date: Tue, 9 May 2017 12:32:51 +0200
+Subject: ceph-disk: separate ceph-osd --check-needs-* logs
+
+It is using the OSD id zero but have nothing to do with OSD zero and
+this is confusing to the user. The log themselves do not need to be kept
+around and are stored in the run directory so that they can be disposed
+of after reboot.
+
+Fixes: http://tracker.ceph.com/issues/19888
+
+Signed-off-by: Loic Dachary <loic@dachary.org>
+(cherry picked from commit c7b3c46bd63b78475868e405bf20d9c142f0336a)
+
+Resolves: rhbz#1449826
+---
+ src/ceph-disk/ceph_disk/main.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index 7a546ef..cfb2980 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -1425,6 +1425,7 @@ def check_journal_reqs(args):
+     _, _, allows_journal = command([
+         'ceph-osd', '--check-allows-journal',
+         '-i', '0',
++        '--log-file', '$run_dir/$cluster-osd-check.log',
+         '--cluster', args.cluster,
+         '--setuser', get_ceph_user(),
+         '--setgroup', get_ceph_group(),
+@@ -1432,6 +1433,7 @@ def check_journal_reqs(args):
+     _, _, wants_journal = command([
+         'ceph-osd', '--check-wants-journal',
+         '-i', '0',
++        '--log-file', '$run_dir/$cluster-osd-check.log',
+         '--cluster', args.cluster,
+         '--setuser', get_ceph_user(),
+         '--setgroup', get_ceph_group(),
+@@ -1439,6 +1441,7 @@ def check_journal_reqs(args):
+     _, _, needs_journal = command([
+         'ceph-osd', '--check-needs-journal',
+         '-i', '0',
++        '--log-file', '$run_dir/$cluster-osd-check.log',
+         '--cluster', args.cluster,
+         '--setuser', get_ceph_user(),
+         '--setgroup', get_ceph_group(),

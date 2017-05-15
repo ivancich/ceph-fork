@@ -57,3 +57,4 @@
 0057-rbd-mirror-prevent-infinite-loop-when-computing-repl.patch
 0058-librbd-add-no-op-event-when-promoting-an-image.patch
 0059-rgw-remove-unnecessary-output.patch
+0060-ceph-disk-separate-ceph-osd-check-needs-logs.patch
