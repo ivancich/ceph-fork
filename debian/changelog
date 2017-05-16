@@ -1,3 +1,9 @@
+ceph (10.2.7-20redhat1) stable; urgency=medium
+
+  * rgw_file: v3: fix write-timer action (rhbz#1450274)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 16 May 2017 14:51:31 -0400
+
 ceph (10.2.7-19redhat1) stable; urgency=medium
 
   * ceph-disk: separate ceph-osd --check-needs-* logs (rhbz#1449826)

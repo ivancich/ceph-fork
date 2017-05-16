@@ -1,0 +1,44 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Mon, 15 May 2017 17:30:29 -0400
+Subject: rgw_file: v3: fix write-timer action
+
+For now, unify with v4 write-on-close path, by calling
+RGWFileHandle::close() on write-timer expire, since it will
+call write_finish() as a side-effect.
+
+Fixes: http://tracker.ceph.com/issues/19932
+Resolves: rhbz#1450274
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit ce6ecb553b85ea158af28c22827b93135a75d159)
+---
+ src/rgw/rgw_file.cc | 2 ++
+ src/rgw/rgw_file.h  | 2 +-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 3181e5a..1f3dd84 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -1104,6 +1104,8 @@ namespace rgw {
+     int rc = write_finish(FLAG_LOCKED);
+ 
+     flags &= ~FLAG_OPEN;
++    flags &= ~FLAG_STATELESS_OPEN;
++
+     return rc;
+   } /* RGWFileHandle::close */
+ 
+diff --git a/src/rgw/rgw_file.h b/src/rgw/rgw_file.h
+index 6cad748..bbe193c 100644
+--- a/src/rgw/rgw_file.h
++++ b/src/rgw/rgw_file.h
+@@ -771,7 +771,7 @@ namespace rgw {
+       }
+ 
+       void operator()() {
+-	rgw_fh.write_finish();
++	rgw_fh.close(); /* will finish in-progress write */
+ 	rgw_fh.get_fs()->unref(&rgw_fh);
+       }
+     };
