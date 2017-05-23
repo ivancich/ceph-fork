@@ -59,3 +59,4 @@
 0059-rgw-remove-unnecessary-output.patch
 0060-ceph-disk-separate-ceph-osd-check-needs-logs.patch
 0061-rgw_file-v3-fix-write-timer-action.patch
+0062-rgw_file-remove-hidden-uxattr-objects-from-buckets-o.patch
