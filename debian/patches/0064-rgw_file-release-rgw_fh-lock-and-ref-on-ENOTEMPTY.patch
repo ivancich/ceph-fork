@@ -1,0 +1,47 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 23 May 2017 15:05:45 -0400
+Subject: rgw_file: release rgw_fh lock and ref on ENOTEMPTY
+
+An early return in new unlink bucket num_entries check was
+missing a conditional unlock and unref.
+
+Fixes: http://tracker.ceph.com/issues/20061
+Resolves (with prior): rhbz#1422822, rhbz#1451305
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 51c25593dd741b4df2e839fcef82b143f8c8cfca)
+---
+ src/rgw/rgw_file.cc | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index 8a15c35..fc16bff 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -245,7 +245,9 @@ namespace rgw {
+       /* a bucket may have an object storing Unix attributes, check
+        * for and delete it */
+       LookupFHResult fhr;
+-      fhr = stat_bucket(parent, name, bs, RGWFileHandle::FLAG_LOCKED);
++      fhr = stat_bucket(parent, name, bs, (rgw_fh) ?
++			RGWFileHandle::FLAG_LOCKED :
++			RGWFileHandle::FLAG_NONE);
+       bkt_fh = get<0>(fhr);
+       if (unlikely(! bkt_fh)) {
+ 	/* implies !rgw_fh, so also !LOCKED */
+@@ -253,7 +255,14 @@ namespace rgw {
+       }
+ 
+       if (bs.num_entries > 1) {
+-	unref(bkt_fh); /* return extra ref */
++	unref(bkt_fh); /* return stat_bucket ref */
++	if (likely(!! rgw_fh)) { /* return lock and ref from
++				  * lookup_fh (or caller in the
++				  * special case of
++				  * RGWFileHandle::FLAG_UNLINK_THIS) */
++	  rgw_fh->mtx.unlock();
++	  unref(rgw_fh);
++	}
+ 	return -ENOTEMPTY;
+       } else {
+ 	/* delete object w/key "<bucket>/" (uxattrs), if any */

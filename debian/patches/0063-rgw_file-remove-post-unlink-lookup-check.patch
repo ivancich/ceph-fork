@@ -1,0 +1,33 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Mon, 22 May 2017 17:37:11 -0400
+Subject: rgw_file:  remove post-unlink lookup check
+
+This could induce asserts in multi-nfs-gateway scenarios.
+
+Fixes: http://tracker.ceph.com/issues/20047
+Resolves: rhbz#1454942
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit b3db617ddd6fa2477726b54828b6410b36989ac7)
+---
+ src/rgw/rgw_file.cc | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index ae6bf3b..8a15c35 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -314,13 +314,6 @@ namespace rgw {
+     fh_cache.remove(rgw_fh->fh.fh_hk.object, rgw_fh,
+ 		    RGWFileHandle::FHCache::FLAG_LOCK);
+ 
+-#if 1 /* XXX verify clear cache */
+-    fh_key fhk(rgw_fh->fh.fh_hk);
+-    LookupFHResult tfhr = lookup_fh(fhk, RGWFileHandle::FLAG_LOCKED);
+-    RGWFileHandle* nfh = get<0>(tfhr);
+-    assert(!nfh);
+-#endif
+-
+     if (! rc) {
+       real_time t = real_clock::now();
+       parent->set_mtime(real_clock::to_timespec(t));

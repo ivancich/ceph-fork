@@ -60,3 +60,5 @@
 0060-ceph-disk-separate-ceph-osd-check-needs-logs.patch
 0061-rgw_file-v3-fix-write-timer-action.patch
 0062-rgw_file-remove-hidden-uxattr-objects-from-buckets-o.patch
+0063-rgw_file-remove-post-unlink-lookup-check.patch
+0064-rgw_file-release-rgw_fh-lock-and-ref-on-ENOTEMPTY.patch

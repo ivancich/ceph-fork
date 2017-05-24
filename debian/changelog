@@ -1,3 +1,10 @@
+ceph (10.2.7-22redhat1) stable; urgency=medium
+
+  * rgw_file: release rgw_fh lock and ref on ENOTEMPTY (rhbz#1422822
+    rhbz#1451305)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 23 May 2017 20:14:02 -0400
+
 ceph (10.2.7-21redhat1) stable; urgency=medium
 
   * rgw_file: remove hidden uxattr objects from buckets on delete
