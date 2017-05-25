@@ -62,3 +62,5 @@
 0062-rgw_file-remove-hidden-uxattr-objects-from-buckets-o.patch
 0063-rgw_file-remove-post-unlink-lookup-check.patch
 0064-rgw_file-release-rgw_fh-lock-and-ref-on-ENOTEMPTY.patch
+0065-ceph-disk-dmcrypt-activate-must-use-the-same-cluster.patch
+0066-rgw_file-store-bucket-uxattrs-on-the-bucket.patch

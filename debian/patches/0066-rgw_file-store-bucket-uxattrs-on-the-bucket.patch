@@ -1,0 +1,33 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Thu, 25 May 2017 16:25:19 -0400
+Subject: rgw_file: store bucket uxattrs on the bucket
+
+This turns out to be the corollary of the earlier bug in removing
+buckets w/uxattrs. Rather than conditionally put the attrs on a '/'
+object, put them on the bucket--because that works, and will be
+slightly more efficient when the check for the '/' object goes
+away.
+
+Fixes: http://tracker.ceph.com/issues/20082
+Resolves: rhbz#1450401
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 448edbfa55b921c2cb58c4f051c8aeef15fe3c17)
+---
+ src/rgw/rgw_file.cc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_file.cc b/src/rgw/rgw_file.cc
+index fc16bff..25c2586 100644
+--- a/src/rgw/rgw_file.cc
++++ b/src/rgw/rgw_file.cc
+@@ -646,7 +646,8 @@ namespace rgw {
+     buffer::list ux_key, ux_attrs;
+     string obj_name{rgw_fh->relative_object_name()};
+ 
+-    if (rgw_fh->is_dir()) {
++    if (rgw_fh->is_dir() &&
++	(likely(! rgw_fh->is_bucket()))) {
+       obj_name += "/";
+     }
+ 

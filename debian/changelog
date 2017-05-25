@@ -1,3 +1,11 @@
+ceph (10.2.7-23redhat1) stable; urgency=medium
+
+  * ceph-disk: dmcrypt activate must use the same cluster as prepare
+    (rhbz#1391920)
+  * rgw_file: store bucket uxattrs on the bucket (rhbz#1450401)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Thu, 25 May 2017 17:23:03 -0400
+
 ceph (10.2.7-22redhat1) stable; urgency=medium
 
   * rgw_file: release rgw_fh lock and ref on ENOTEMPTY (rhbz#1422822
