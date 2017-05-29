@@ -1,0 +1,94 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Fri, 26 May 2017 12:41:40 -0400
+Subject: rgw-admin: fix bucket limit check argparse, div(0)
+
+1. normalize arg parsing for "bucket limit check"
+1.1 s/buckets/bucket/
+
+2. avoid dividing by num_shards when it is 0
+
+Resolves: rhbz#1391650
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit fb8e2fa61f0b4621b5fdc83048467982a7ca2961)
+---
+ src/rgw/rgw_admin.cc  | 16 ++++++++--------
+ src/rgw/rgw_bucket.cc |  3 ++-
+ 2 files changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 645f248..b77ac16 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -302,7 +302,7 @@ enum {
+   OPT_KEY_CREATE,
+   OPT_KEY_RM,
+   OPT_BUCKETS_LIST,
+-  OPT_BUCKETS_LIMIT_CHECK,
++  OPT_BUCKET_LIMIT_CHECK,
+   OPT_BUCKET_LINK,
+   OPT_BUCKET_UNLINK,
+   OPT_BUCKET_STATS,
+@@ -511,10 +511,6 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
+   } else if (strcmp(prev_cmd, "buckets") == 0) {
+     if (strcmp(cmd, "list") == 0)
+       return OPT_BUCKETS_LIST;
+-    if (strcmp(cmd, "limit") == 0) {
+-      *need_more = true;
+-      return 0;
+-    }
+   } else if (strcmp(prev_cmd, "bucket") == 0) {
+     if (strcmp(cmd, "list") == 0)
+       return OPT_BUCKETS_LIST;
+@@ -536,6 +532,10 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
+       *need_more = true;
+       return 0;
+     }
++    if (strcmp(cmd, "limit") == 0) {
++      *need_more = true;
++      return 0;
++    }
+   } else if (prev_prev_cmd && strcmp(prev_prev_cmd, "bucket") == 0) {
+     if (strcmp(prev_cmd, "sync") == 0) {
+       if (strcmp(cmd, "status") == 0)
+@@ -546,7 +546,7 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
+ 	return OPT_BUCKET_SYNC_RUN;
+     } else if ((strcmp(prev_cmd, "limit") == 0) &&
+ 	       (strcmp(cmd, "check") == 0)) {
+-      return OPT_BUCKETS_LIMIT_CHECK;
++      return OPT_BUCKET_LIMIT_CHECK;
+     }
+   } else if (strcmp(prev_cmd, "log") == 0) {
+     if (strcmp(cmd, "list") == 0)
+@@ -4526,7 +4526,7 @@ int main(int argc, char **argv)
+     }
+   }
+ 
+-  if (opt_cmd == OPT_BUCKETS_LIMIT_CHECK) {
++  if (opt_cmd == OPT_BUCKET_LIMIT_CHECK) {
+     void *handle;
+     std::list<std::string> user_ids;
+     metadata_key = "user";
+@@ -4569,7 +4569,7 @@ int main(int argc, char **argv)
+       store->meta_mgr->list_keys_complete(handle);
+     }
+     return -ret;
+-  } /* OPT_BUCKETS_LIMIT_CHECK */
++  } /* OPT_BUCKET_LIMIT_CHECK */
+ 
+   if (opt_cmd == OPT_BUCKETS_LIST) {
+     if (bucket_name.empty()) {
+diff --git a/src/rgw/rgw_bucket.cc b/src/rgw/rgw_bucket.cc
+index 88695ad..8678a0c 100644
+--- a/src/rgw/rgw_bucket.cc
++++ b/src/rgw/rgw_bucket.cc
+@@ -1488,7 +1488,8 @@ int RGWBucketAdminOp::limit_check(RGWRados *store,
+ 	}
+ 
+ 	num_shards = info.num_shards;
+-	uint64_t objs_per_shard = num_objects / num_shards;
++	uint64_t objs_per_shard =
++	  (num_shards) ? num_objects/num_shards : num_objects;
+ 	{
+ 	  bool warn = false;
+ 	  stringstream ss;

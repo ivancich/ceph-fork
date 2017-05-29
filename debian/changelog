@@ -1,3 +1,9 @@
+ceph (10.2.7-24redhat1) stable; urgency=medium
+
+  * rgw-admin: fix bucket limit check argparse, div(0) (rhbz#1391650)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Mon, 29 May 2017 15:25:44 -0400
+
 ceph (10.2.7-23redhat1) stable; urgency=medium
 
   * ceph-disk: dmcrypt activate must use the same cluster as prepare
