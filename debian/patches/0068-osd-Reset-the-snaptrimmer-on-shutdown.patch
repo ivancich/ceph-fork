@@ -1,0 +1,35 @@
+From: Greg Farnum <gfarnum@redhat.com>
+Date: Thu, 25 May 2017 21:52:49 -0700
+Subject: osd: Reset() the snaptrimmer on shutdown
+
+We were failing to exit various wait states which held PGRefs. Error!
+
+Fixes: http://tracker.ceph.com/issues/19931
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit b0e9deeea8a8e90f6d7e9d56b6b4aed890e01d7b)
+
+Conflicts:
+	src/osd/ReplicatedPG.cc
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 967d6a54055b438d6730ab7b7c1fc1a1b980c5e2)
+
+Resolves: rbhz#1454355
+---
+ src/osd/ReplicatedPG.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index 88e0b1e..9a69ea4 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -10017,6 +10017,8 @@ void ReplicatedPG::on_shutdown()
+   cancel_flush_ops(false);
+   cancel_proxy_ops(false);
+   apply_and_flush_repops(false);
++  // clean up snap trim references
++  snap_trimmer_machine.process_event(Reset());
+ 
+   pgbackend->on_change();
+ 

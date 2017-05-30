@@ -1,0 +1,134 @@
+From: Greg Farnum <gfarnum@redhat.com>
+Date: Thu, 25 May 2017 22:32:01 -0700
+Subject: osd: do not default-abort on leaked pg refs
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 4caf2df0c380a1281db9509b3feb342705512b58)
+
+Conflicts:
+	qa/clusters/fixed-4.yaml
+	src/osd/OSD.cc
+
+Fixes: http://tracker.ceph.com/issues/20084
+
+Signed-off-by: Greg Farnum <gfarnum@redhat.com>
+(cherry picked from commit 01abfed8f26eab70dc3242aeaa4c44599f542af2)
+
+Resolves: rhbz#1454355
+---
+ qa/clusters/extra-client.yaml   | 5 +++++
+ qa/clusters/fixed-1.yaml        | 4 ++++
+ qa/clusters/fixed-2.yaml        | 5 +++++
+ qa/clusters/fixed-3-cephfs.yaml | 5 +++++
+ qa/clusters/fixed-3.yaml        | 5 +++++
+ qa/clusters/fixed-4.yaml        | 5 +++++
+ src/common/config_opts.h        | 1 +
+ src/osd/OSD.cc                  | 4 +++-
+ 8 files changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/qa/clusters/extra-client.yaml b/qa/clusters/extra-client.yaml
+index 349439c..107ad82 100644
+--- a/qa/clusters/extra-client.yaml
++++ b/qa/clusters/extra-client.yaml
+@@ -7,3 +7,8 @@ openstack:
+ - volumes: # attached to each instance
+     count: 3
+     size: 10 # GB
++overrides:
++  ceph:
++    conf:
++      osd:
++        osd shutdown pgref assert: true
+diff --git a/qa/clusters/fixed-1.yaml b/qa/clusters/fixed-1.yaml
+index 3768607..1529378 100644
+--- a/qa/clusters/fixed-1.yaml
++++ b/qa/clusters/fixed-1.yaml
+@@ -6,5 +6,9 @@ overrides:
+         osd crush chooseleaf type: 0
+         osd pool default pg num:  128
+         osd pool default pgp num:  128
++  ceph:
++    conf:
++      osd:
++        osd shutdown pgref assert: true
+ roles:
+ - [mon.a, osd.0, osd.1, osd.2, client.0]
+diff --git a/qa/clusters/fixed-2.yaml b/qa/clusters/fixed-2.yaml
+index 861e509..e992837 100644
+--- a/qa/clusters/fixed-2.yaml
++++ b/qa/clusters/fixed-2.yaml
+@@ -5,3 +5,8 @@ openstack:
+ - volumes: # attached to each instance
+     count: 3
+     size: 10 # GB
++overrides:
++  ceph:
++    conf:
++      osd:
++        osd shutdown pgref assert: true
+diff --git a/qa/clusters/fixed-3-cephfs.yaml b/qa/clusters/fixed-3-cephfs.yaml
+index 499c84c..c6573b4 100644
+--- a/qa/clusters/fixed-3-cephfs.yaml
++++ b/qa/clusters/fixed-3-cephfs.yaml
+@@ -9,3 +9,8 @@ openstack:
+ log-rotate:
+   ceph-mds: 10G
+   ceph-osd: 10G
++overrides:
++  ceph:
++    conf:
++      osd:
++        osd shutdown pgref assert: true
+diff --git a/qa/clusters/fixed-3.yaml b/qa/clusters/fixed-3.yaml
+index 8e622d2..668e8b3 100644
+--- a/qa/clusters/fixed-3.yaml
++++ b/qa/clusters/fixed-3.yaml
+@@ -6,3 +6,8 @@ openstack:
+ - volumes: # attached to each instance
+     count: 3
+     size: 10 # GB
++overrides:
++  ceph:
++    conf:
++      osd:
++        osd shutdown pgref assert: true
+diff --git a/qa/clusters/fixed-4.yaml b/qa/clusters/fixed-4.yaml
+index 7f051dc..f4e4b76 100644
+--- a/qa/clusters/fixed-4.yaml
++++ b/qa/clusters/fixed-4.yaml
+@@ -3,3 +3,8 @@ roles:
+ - [mon.b, osd.1, osd.5, osd.9, osd.13] 
+ - [mon.c, osd.2, osd.6, osd.10, osd.14] 
+ - [osd.3, osd.7, osd.11, osd.15, client.0] 
++overrides:
++  ceph:
++    conf:
++      osd:
++        osd shutdown pgref assert: true
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 3580453..c5d9951 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -880,6 +880,7 @@ OPTION(osd_recovery_op_warn_multiple, OPT_U32, 16)
+ 
+ // Max time to wait between notifying mon of shutdown and shutting down
+ OPTION(osd_mon_shutdown_timeout, OPT_DOUBLE, 5)
++OPTION(osd_shutdown_pgref_assert, OPT_BOOL, false) // crash if the OSD has stray PG refs on shutdown
+ 
+ OPTION(osd_max_object_size, OPT_U64, 100*1024L*1024L*1024L) // OSD's maximum object size
+ OPTION(osd_max_object_name_len, OPT_U32, 2048) // max rados object name len
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index 0e99d68..877c5b3 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -2745,7 +2745,9 @@ int OSD::shutdown()
+ #ifdef PG_DEBUG_REFS
+ 	p->second->dump_live_ids();
+ #endif
+-        assert(0);
++	if (cct->_conf->osd_shutdown_pgref_assert) {
++	  assert(0);
++	}
+       }
+       p->second->unlock();
+       p->second->put("PGMap");

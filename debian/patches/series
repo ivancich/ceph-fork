@@ -65,3 +65,5 @@
 0065-ceph-disk-dmcrypt-activate-must-use-the-same-cluster.patch
 0066-rgw_file-store-bucket-uxattrs-on-the-bucket.patch
 0067-rgw-admin-fix-bucket-limit-check-argparse-div-0.patch
+0068-osd-Reset-the-snaptrimmer-on-shutdown.patch
+0069-osd-do-not-default-abort-on-leaked-pg-refs.patch

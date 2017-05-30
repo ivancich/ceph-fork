@@ -1,3 +1,10 @@
+ceph (10.2.7-25redhat1) stable; urgency=medium
+
+  * osd: Reset() the snaptrimmer on shutdown
+  * osd: do not default-abort on leaked pg refs (rhbz#1454355)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 30 May 2017 12:07:28 -0400
+
 ceph (10.2.7-24redhat1) stable; urgency=medium
 
   * rgw-admin: fix bucket limit check argparse, div(0) (rhbz#1391650)
