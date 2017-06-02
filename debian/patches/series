@@ -67,3 +67,4 @@
 0067-rgw-admin-fix-bucket-limit-check-argparse-div-0.patch
 0068-osd-Reset-the-snaptrimmer-on-shutdown.patch
 0069-osd-do-not-default-abort-on-leaked-pg-refs.patch
+0070-osd-Object-level-shard-errors-are-tracked-and-used-i.patch
