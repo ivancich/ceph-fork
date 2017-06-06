@@ -1,3 +1,12 @@
+ceph (10.2.7-27redhat1) stable; urgency=medium
+
+  * rbd: properly decode features when using image name optional
+    (rhbz#1458715)
+  * librbd: filter expected error codes from is_exclusive_lock_owner
+    (rhbz#1439355)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 06 Jun 2017 11:20:28 -0400
+
 ceph (10.2.7-26redhat1) stable; urgency=medium
 
   * osd: Object level shard errors are tracked and used if no auth

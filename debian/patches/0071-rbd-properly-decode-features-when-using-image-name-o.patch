@@ -1,0 +1,35 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Mon, 5 Jun 2017 13:17:19 -0400
+Subject: rbd: properly decode features when using image name optional
+
+Fixes: http://tracker.ceph.com/issues/20185
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit f1b05a2b062a59ec1b6682f7683bfd816433a931)
+
+Resolves: rhbz#1458715
+---
+ src/tools/rbd/action/Feature.cc | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/src/tools/rbd/action/Feature.cc b/src/tools/rbd/action/Feature.cc
+index d1b6d1f..de48917 100644
+--- a/src/tools/rbd/action/Feature.cc
++++ b/src/tools/rbd/action/Feature.cc
+@@ -56,9 +56,14 @@ int execute(const po::variables_map &vm, bool enabled) {
+     return r;
+   }
+ 
+-  const std::vector<std::string> &args = vm[at::POSITIONAL_ARGUMENTS]
+-    .as<std::vector<std::string> >();
+-  std::vector<std::string> feature_names(args.begin() + 1, args.end());
++  std::vector<std::string> feature_names;
++  if (vm.count(at::POSITIONAL_ARGUMENTS)) {
++    const std::vector<std::string> &args =
++      vm[at::POSITIONAL_ARGUMENTS].as<std::vector<std::string> >();
++    feature_names.insert(feature_names.end(), args.begin() + arg_index,
++                         args.end());
++  }
++
+   if (feature_names.empty()) {
+     std::cerr << "rbd: at least one feature name must be specified"
+               << std::endl;

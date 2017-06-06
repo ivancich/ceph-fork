@@ -68,3 +68,5 @@
 0068-osd-Reset-the-snaptrimmer-on-shutdown.patch
 0069-osd-do-not-default-abort-on-leaked-pg-refs.patch
 0070-osd-Object-level-shard-errors-are-tracked-and-used-i.patch
+0071-rbd-properly-decode-features-when-using-image-name-o.patch
+0072-librbd-filter-expected-error-codes-from-is_exclusive.patch
