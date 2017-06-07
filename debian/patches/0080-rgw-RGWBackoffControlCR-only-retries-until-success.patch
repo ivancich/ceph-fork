@@ -1,0 +1,63 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 27 Feb 2017 15:19:54 -0500
+Subject: rgw: RGWBackoffControlCR only retries until success
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit a898fb76a4179add68ccb526f2917768736ac52b)
+Resolves: rhbz#1458734
+---
+ src/rgw/rgw_sync.cc | 25 +++++++++++++------------
+ 1 file changed, 13 insertions(+), 12 deletions(-)
+
+diff --git a/src/rgw/rgw_sync.cc b/src/rgw/rgw_sync.cc
+index 2e173f6..8e58643 100644
+--- a/src/rgw/rgw_sync.cc
++++ b/src/rgw/rgw_sync.cc
+@@ -83,8 +83,8 @@ void RGWSyncBackoff::backoff(RGWCoroutine *op)
+ }
+ 
+ int RGWBackoffControlCR::operate() {
+-  RGWCoroutine *finisher_cr;
+   reenter(this) {
++    // retry the operation until it succeeds
+     while (true) {
+       yield {
+         Mutex::Locker l(lock);
+@@ -97,7 +97,10 @@ int RGWBackoffControlCR::operate() {
+         cr->put();
+         cr = NULL;
+       }
+-      if (retcode < 0 && retcode != -EBUSY && retcode != -EAGAIN) {
++      if (retcode >= 0) {
++        break;
++      }
++      if (retcode != -EBUSY && retcode != -EAGAIN) {
+         ldout(cct, 0) << "ERROR: RGWBackoffControlCR called coroutine returned " << retcode << dendl;
+         if (exit_on_error) {
+           return set_cr_error(retcode);
+@@ -107,17 +110,15 @@ int RGWBackoffControlCR::operate() {
+         backoff.reset();
+       }
+       yield backoff.backoff(this);
+-      finisher_cr = alloc_finisher_cr();
+-      if (finisher_cr) {
+-        yield call(finisher_cr);
+-        if (retcode < 0) {
+-          ldout(cct, 0) << "ERROR: call to finisher_cr() failed: retcode=" << retcode << dendl;
+-          if (exit_on_error) {
+-            return set_cr_error(retcode);
+-          }
+-        }
+-      }
+     }
++
++    // run an optional finisher
++    yield call(alloc_finisher_cr());
++    if (retcode < 0) {
++      ldout(cct, 0) << "ERROR: call to finisher_cr() failed: retcode=" << retcode << dendl;
++      return set_cr_error(retcode);
++    }
++    return set_cr_done();
+   }
+   return 0;
+ }

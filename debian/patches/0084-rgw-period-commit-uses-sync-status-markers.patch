@@ -1,0 +1,124 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 20 Mar 2017 16:13:03 -0400
+Subject: rgw: period commit uses sync status markers
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit bb49e2fbed3a87de837329cfa0c11f8d97633a94)
+Resolves: rhbz#1458734
+
+Conflicts:
+	src/rgw/rgw_rados.cc: RGWPeriod::update removed
+---
+ src/rgw/rgw_rados.cc | 58 +++++++++++++++++++++++++++++++++-------------------
+ src/rgw/rgw_rados.h  |  2 +-
+ src/rgw/rgw_sync.h   |  1 -
+ 3 files changed, 38 insertions(+), 23 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 8748d25..8593c7a 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -1324,33 +1324,49 @@ void RGWPeriod::update(const RGWZoneGroupMap& map)
+   period_map.master_zonegroup = map.master_zonegroup;
+ }
+ 
+-int RGWPeriod::update_sync_status()
++static int read_sync_status(RGWRados *store, rgw_meta_sync_status *sync_status)
+ {
+-  // must be new period's master zone to write sync status
+-  if (master_zone != store->get_zone_params().get_id()) {
+-    ldout(cct, 0) << "my zone " << store->get_zone_params().get_id()
+-        << " is not period's master zone " << master_zone << dendl;
+-    return -EINVAL;
++  // initialize a sync status manager to read the status
++  RGWMetaSyncStatusManager mgr(store, store->get_async_rados());
++  int r = mgr.init();
++  if (r < 0) {
++    return r;
+   }
++  r = mgr.read_sync_status(sync_status);
++  mgr.stop();
++  return r;
++}
+ 
+-  auto mdlog = store->meta_mgr->get_log(get_id());
+-  const auto num_shards = cct->_conf->rgw_md_log_max_shards;
++int RGWPeriod::update_sync_status(const RGWPeriod &current_period)
++{
++  rgw_meta_sync_status status;
++  int r = read_sync_status(store, &status);
++  if (r < 0) {
++    ldout(cct, 0) << "period failed to read sync status: "
++        << cpp_strerror(-r) << dendl;
++    return r;
++  }
+ 
+   std::vector<std::string> markers;
+-  markers.reserve(num_shards);
+ 
+-  // gather the markers for each shard
+-  // TODO: use coroutines to read them in parallel
+-  for (int i = 0; i < num_shards; i++) {
+-    RGWMetadataLogInfo info;
+-    int r = mdlog->get_info(i, &info);
+-    if (r < 0) {
+-      ldout(cct, 0) << "period failed to get metadata log info for shard " << i
+-          << ": " << cpp_strerror(-r) << dendl;
+-      return r;
++  const auto current_epoch = current_period.get_realm_epoch();
++  if (current_epoch != status.sync_info.realm_epoch) {
++    // no sync status markers for the current period
++    assert(current_epoch > status.sync_info.realm_epoch);
++    const int behind = current_epoch - status.sync_info.realm_epoch;
++    lderr(cct) << "ERROR: This zone is " << behind << " period(s) behind "
++          "the current master zone in metadata sync." << dendl;
++    return -EINVAL;
++  } else {
++    markers.reserve(status.sync_info.num_shards);
++    for (auto& i : status.sync_markers) {
++      auto& marker = i.second;
++      // filter out markers from other periods
++      if (marker.realm_epoch != current_epoch) {
++        marker.marker.clear();
++      }
++      markers.emplace_back(std::move(marker.marker));
+     }
+-    ldout(cct, 15) << "got shard " << i << " marker " << info.marker << dendl;
+-    markers.emplace_back(std::move(info.marker));
+   }
+ 
+   std::swap(sync_status, markers);
+@@ -1388,7 +1404,7 @@ int RGWPeriod::commit(RGWRealm& realm, const RGWPeriod& current_period,
+   // did the master zone change?
+   if (master_zone != current_period.get_master_zone()) {
+     // store the current metadata sync status in the period
+-    int r = update_sync_status();
++    int r = update_sync_status(current_period);
+     if (r < 0) {
+       ldout(cct, 0) << "failed to update metadata sync status: "
+           << cpp_strerror(-r) << dendl;
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index f670469..5f384ca 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -1454,7 +1454,7 @@ class RGWPeriod
+   const string get_period_oid_prefix();
+ 
+   // gather the metadata sync status for each shard; only for use on master zone
+-  int update_sync_status();
++  int update_sync_status(const RGWPeriod &current_period);
+ 
+ public:
+   RGWPeriod() : epoch(0) {}
+diff --git a/src/rgw/rgw_sync.h b/src/rgw/rgw_sync.h
+index 2d2e7b2..442f2d9 100644
+--- a/src/rgw/rgw_sync.h
++++ b/src/rgw/rgw_sync.h
+@@ -255,7 +255,6 @@ public:
+     : store(_store), master_log(store, async_rados, this),
+       ts_to_shard_lock("ts_to_shard_lock") {}
+   int init();
+-  void finish();
+ 
+   int read_sync_status(rgw_meta_sync_status *sync_status) {
+     return master_log.read_sync_status(sync_status);

@@ -72,3 +72,15 @@
 0072-librbd-filter-expected-error-codes-from-is_exclusive.patch
 0073-rgw-dont-spawn-error_repo-until-lease-is-acquired.patch
 0074-rgw-fix-memory-leaks.patch
+0075-rgw-use-separate-http_manager-for-read_sync_status.patch
+0076-rgw-fix-for-broken-yields-in-RGWMetaSyncShardCR.patch
+0077-rgw-add-and-operators-for-period-history-cursor.patch
+0078-rgw-fix-marker-comparison-to-detect-end-of-mdlog-per.patch
+0079-rgw-clean-up-RGWInitDataSyncStatusCoroutine.patch
+0080-rgw-RGWBackoffControlCR-only-retries-until-success.patch
+0081-rgw-store-realm-epoch-with-sync-status-markers.patch
+0082-rgw-change-metadata-read_sync_status-interface.patch
+0083-rgw-use-RGWShardCollectCR-for-RGWReadSyncStatusCorou.patch
+0084-rgw-period-commit-uses-sync-status-markers.patch
+0085-rgw-require-yes-i-really-mean-it-to-promote-zone-wit.patch
+0086-rgw-remove-rgw_realm_reconfigure_delay.patch

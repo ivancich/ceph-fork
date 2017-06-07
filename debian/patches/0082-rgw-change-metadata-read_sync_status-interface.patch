@@ -1,0 +1,254 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 1 Aug 2016 14:35:53 -0400
+Subject: rgw: change metadata read_sync_status interface
+
+makes the same change to read_sync_status() in RGWMetaSyncStatusManager,
+needed to support multiple concurrent readers for the rest interface
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 0372df20be86cb616600626ee4c755b31032f134)
+Resolves: rhbz#1458734
+---
+ src/rgw/rgw_admin.cc    | 16 +++++++-------
+ src/rgw/rgw_rest_log.cc |  3 +--
+ src/rgw/rgw_sync.cc     | 56 ++++++++++++++++++++++++++++++-------------------
+ src/rgw/rgw_sync.h      | 12 ++++-------
+ 4 files changed, 46 insertions(+), 41 deletions(-)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index b77ac16..701e986 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -1728,14 +1728,13 @@ static void get_md_sync_status(list<string>& status)
+     return;
+   }
+ 
+-  ret = sync.read_sync_status();
++  rgw_meta_sync_status sync_status;
++  ret = sync.read_sync_status(&sync_status);
+   if (ret < 0) {
+     status.push_back(string("failed to read sync status: ") + cpp_strerror(-ret));
+     return;
+   }
+ 
+-  const rgw_meta_sync_status& sync_status = sync.get_sync_status();
+-
+   string status_str;
+   switch (sync_status.sync_info.state) {
+     case rgw_meta_sync_info::StateInit:
+@@ -5823,14 +5822,13 @@ next:
+       return -ret;
+     }
+ 
+-    ret = sync.read_sync_status();
++    rgw_meta_sync_status sync_status;
++    ret = sync.read_sync_status(&sync_status);
+     if (ret < 0) {
+       cerr << "ERROR: sync.read_sync_status() returned ret=" << ret << std::endl;
+       return -ret;
+     }
+ 
+-    const rgw_meta_sync_status& sync_status = sync.get_sync_status();
+-
+     formatter->open_object_section("summary");
+     encode_json("sync_status", sync_status, formatter);
+ 
+@@ -5866,7 +5864,7 @@ next:
+     }
+     ret = sync.init_sync_status();
+     if (ret < 0) {
+-      cerr << "ERROR: sync.get_sync_status() returned ret=" << ret << std::endl;
++      cerr << "ERROR: sync.init_sync_status() returned ret=" << ret << std::endl;
+       return -ret;
+     }
+   }
+@@ -5947,7 +5945,7 @@ next:
+ 
+     ret = sync.init_sync_status();
+     if (ret < 0) {
+-      cerr << "ERROR: sync.get_sync_status() returned ret=" << ret << std::endl;
++      cerr << "ERROR: sync.init_sync_status() returned ret=" << ret << std::endl;
+       return -ret;
+     }
+   }
+@@ -5995,7 +5993,7 @@ next:
+     }
+     ret = sync.init_sync_status();
+     if (ret < 0) {
+-      cerr << "ERROR: sync.get_sync_status() returned ret=" << ret << std::endl;
++      cerr << "ERROR: sync.init_sync_status() returned ret=" << ret << std::endl;
+       return -ret;
+     }
+   }
+diff --git a/src/rgw/rgw_rest_log.cc b/src/rgw/rgw_rest_log.cc
+index 478a5ca..46480bf 100644
+--- a/src/rgw/rgw_rest_log.cc
++++ b/src/rgw/rgw_rest_log.cc
+@@ -862,8 +862,7 @@ void RGWOp_MDLog_Status::execute()
+     http_ret = -ENOENT;
+     return;
+   }
+-  http_ret = sync->read_sync_status();
+-  status = sync->get_sync_status();
++  http_ret = sync->read_sync_status(&status);
+ }
+ 
+ void RGWOp_MDLog_Status::send_response()
+diff --git a/src/rgw/rgw_sync.cc b/src/rgw/rgw_sync.cc
+index 03ad6d2..81c063f 100644
+--- a/src/rgw/rgw_sync.cc
++++ b/src/rgw/rgw_sync.cc
+@@ -323,13 +323,14 @@ int RGWMetaSyncStatusManager::init()
+ 
+   RGWMetaSyncEnv& sync_env = master_log.get_sync_env();
+ 
+-  r = read_sync_status();
++  rgw_meta_sync_status sync_status;
++  r = read_sync_status(&sync_status);
+   if (r < 0 && r != -ENOENT) {
+     lderr(store->ctx()) << "ERROR: failed to read sync status, r=" << r << dendl;
+     return r;
+   }
+ 
+-  int num_shards = master_log.get_sync_status().sync_info.num_shards;
++  int num_shards = sync_status.sync_info.num_shards;
+ 
+   for (int i = 0; i < num_shards; i++) {
+     shard_objs[i] = rgw_obj(store->get_zone_params().log_pool, sync_env.shard_obj_name(i));
+@@ -1834,13 +1835,24 @@ void RGWRemoteMetaLog::init_sync_env(RGWMetaSyncEnv *env) {
+   env->error_logger = error_logger;
+ }
+ 
+-int RGWRemoteMetaLog::read_sync_status()
++int RGWRemoteMetaLog::read_sync_status(rgw_meta_sync_status *sync_status)
+ {
+   if (store->is_meta_master()) {
+     return 0;
+   }
+-
+-  return run(new RGWReadSyncStatusCoroutine(&sync_env, &sync_status));
++  // cannot run concurrently with run_sync(), so run in a separate manager
++  RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
++  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
++  int ret = http_manager.set_threaded();
++  if (ret < 0) {
++    ldout(store->ctx(), 0) << "failed in http_manager.set_threaded() ret=" << ret << dendl;
++    return ret;
++  }
++  RGWMetaSyncEnv sync_env_local = sync_env;
++  sync_env_local.http_manager = &http_manager;
++  ret = crs.run(new RGWReadSyncStatusCoroutine(&sync_env_local, sync_status));
++  http_manager.stop();
++  return ret;
+ }
+ 
+ int RGWRemoteMetaLog::init_sync_status()
+@@ -1849,29 +1861,28 @@ int RGWRemoteMetaLog::init_sync_status()
+     return 0;
+   }
+ 
+-  auto& sync_info = sync_status.sync_info;
+-  if (!sync_info.num_shards) {
+-    rgw_mdlog_info mdlog_info;
+-    int r = read_log_info(&mdlog_info);
+-    if (r < 0) {
+-      lderr(store->ctx()) << "ERROR: fail to fetch master log info (r=" << r << ")" << dendl;
+-      return r;
+-    }
+-    sync_info.num_shards = mdlog_info.num_shards;
+-    auto cursor = store->period_history->get_current();
+-    if (cursor) {
+-      sync_info.period = cursor.get_period().get_id();
+-      sync_info.realm_epoch = cursor.get_epoch();
+-    }
++  rgw_mdlog_info mdlog_info;
++  int r = read_log_info(&mdlog_info);
++  if (r < 0) {
++    lderr(store->ctx()) << "ERROR: fail to fetch master log info (r=" << r << ")" << dendl;
++    return r;
++  }
++
++  rgw_meta_sync_info sync_info;
++  sync_info.num_shards = mdlog_info.num_shards;
++  auto cursor = store->period_history->get_current();
++  if (cursor) {
++    sync_info.period = cursor.get_period().get_id();
++    sync_info.realm_epoch = cursor.get_epoch();
+   }
+ 
+   return run(new RGWInitSyncStatusCoroutine(&sync_env, sync_info));
+ }
+ 
+-int RGWRemoteMetaLog::store_sync_info()
++int RGWRemoteMetaLog::store_sync_info(const rgw_meta_sync_info& sync_info)
+ {
+   return run(new RGWSimpleRadosWriteCR<rgw_meta_sync_info>(async_rados, store, store->get_zone_params().log_pool,
+-				 sync_env.status_oid(), sync_status.sync_info));
++				 sync_env.status_oid(), sync_info));
+ }
+ 
+ // return a cursor to the period at our sync position
+@@ -1945,6 +1956,7 @@ int RGWRemoteMetaLog::run_sync()
+     break;
+   }
+ 
++  rgw_meta_sync_status sync_status;
+   do {
+     if (going_down.read()) {
+       ldout(store->ctx(), 1) << __func__ << "(): going down" << dendl;
+@@ -2020,7 +2032,7 @@ int RGWRemoteMetaLog::run_sync()
+         }
+ 
+         sync_status.sync_info.state = rgw_meta_sync_info::StateSync;
+-        r = store_sync_info();
++        r = store_sync_info(sync_status.sync_info);
+         if (r < 0) {
+           ldout(store->ctx(), 0) << "ERROR: failed to update sync status" << dendl;
+           return r;
+diff --git a/src/rgw/rgw_sync.h b/src/rgw/rgw_sync.h
+index 6ddfd35..2d2e7b2 100644
+--- a/src/rgw/rgw_sync.h
++++ b/src/rgw/rgw_sync.h
+@@ -191,10 +191,9 @@ class RGWRemoteMetaLog : public RGWCoroutinesManager {
+   RGWSyncBackoff backoff;
+ 
+   RGWMetaSyncEnv sync_env;
+-  rgw_meta_sync_status sync_status;
+ 
+   void init_sync_env(RGWMetaSyncEnv *env);
+-  int store_sync_info();
++  int store_sync_info(const rgw_meta_sync_info& sync_info);
+ 
+   atomic_t going_down;
+ 
+@@ -214,7 +213,7 @@ public:
+   int read_log_info(rgw_mdlog_info *log_info);
+   int read_master_log_shards_info(const string& master_period, map<int, RGWMetadataLogInfo> *shards_info);
+   int read_master_log_shards_next(const string& period, map<int, string> shard_markers, map<int, rgw_mdlog_shard_data> *result);
+-  int read_sync_status();
++  int read_sync_status(rgw_meta_sync_status *sync_status);
+   int init_sync_status();
+   int run_sync();
+ 
+@@ -223,7 +222,6 @@ public:
+   RGWMetaSyncEnv& get_sync_env() {
+     return sync_env;
+   }
+-  const rgw_meta_sync_status& get_sync_status() const { return sync_status; }
+ };
+ 
+ class RGWMetaSyncStatusManager {
+@@ -259,11 +257,9 @@ public:
+   int init();
+   void finish();
+ 
+-  const rgw_meta_sync_status& get_sync_status() const {
+-    return master_log.get_sync_status();
++  int read_sync_status(rgw_meta_sync_status *sync_status) {
++    return master_log.read_sync_status(sync_status);
+   }
+-
+-  int read_sync_status() { return master_log.read_sync_status(); }
+   int init_sync_status() { return master_log.init_sync_status(); }
+   int read_log_info(rgw_mdlog_info *log_info) {
+     return master_log.read_log_info(log_info);

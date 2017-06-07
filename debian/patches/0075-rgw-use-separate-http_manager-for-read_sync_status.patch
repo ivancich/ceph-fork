@@ -1,0 +1,57 @@
+From: "lu.shasha" <lu.shasha@eisoo.com>
+Date: Mon, 27 Feb 2017 15:52:43 +0800
+Subject: rgw: use separate http_manager for read_sync_status
+
+concurrent users of read_sync_status() use different cr managers, when get_resource must
+use http_manager related to the cr manager.
+
+Fixes: http://tracker.ceph.com/issues/19236
+
+Signed-off-by: Shasha Lu <lu.shasha@eisoo.com>
+(cherry picked from commit c412024889f8995d98096ac863bafee71624bd70)
+(cherry picked from commit 30c952735327d05b6049e9364c1a053ebf651751)
+Resolves: rhbz#1458734
+---
+ src/rgw/rgw_data_sync.cc | 24 ++++++++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 762d8e3..4d4ede8 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -641,13 +641,33 @@ int RGWRemoteDataLog::read_sync_status(rgw_data_sync_status *sync_status)
+ {
+   // cannot run concurrently with run_sync(), so run in a separate manager
+   RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+-  return crs.run(new RGWReadDataSyncStatusCoroutine(&sync_env, sync_status));
++  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
++  int ret = http_manager.set_threaded();
++  if (ret < 0) {
++    ldout(store->ctx(), 0) << "failed in http_manager.set_threaded() ret=" << ret << dendl;
++    return ret;
++  }
++  RGWDataSyncEnv sync_env_local = sync_env;
++  sync_env_local.http_manager = &http_manager;
++  ret = crs.run(new RGWReadDataSyncStatusCoroutine(&sync_env_local, sync_status));
++  http_manager.stop();
++  return ret;
+ }
+ 
+ int RGWRemoteDataLog::init_sync_status(int num_shards)
+ {
+   RGWCoroutinesManager crs(store->ctx(), store->get_cr_registry());
+-  return crs.run(new RGWInitDataSyncStatusCoroutine(&sync_env, num_shards));
++  RGWHTTPManager http_manager(store->ctx(), crs.get_completion_mgr());
++  int ret = http_manager.set_threaded();
++  if (ret < 0) {
++    ldout(store->ctx(), 0) << "failed in http_manager.set_threaded() ret=" << ret << dendl;
++    return ret;
++  }
++  RGWDataSyncEnv sync_env_local = sync_env;
++  sync_env_local.http_manager = &http_manager;
++  ret = crs.run(new RGWInitDataSyncStatusCoroutine(&sync_env_local, num_shards));
++  http_manager.stop();
++  return ret;
+ }
+ 
+ static string full_data_sync_index_shard_oid(const string& source_zone, int shard_id)

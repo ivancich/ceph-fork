@@ -1,0 +1,48 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Mon, 22 Aug 2016 22:06:15 -0400
+Subject: rgw: add == and != operators for period history cursor
+
+RGWMetaSyncCR was using operator== but it always returned true!
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 09c847ff790f55004871fb7304361ae6c9845b1a)
+Resolves: rhbz#1458734
+---
+ src/rgw/rgw_period_history.cc | 9 +++++++++
+ src/rgw/rgw_period_history.h  | 3 +++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/rgw/rgw_period_history.cc b/src/rgw/rgw_period_history.cc
+index eff0e78..895700f 100644
+--- a/src/rgw/rgw_period_history.cc
++++ b/src/rgw/rgw_period_history.cc
+@@ -69,6 +69,15 @@ bool Cursor::has_next() const
+   return epoch < history->get_newest_epoch();
+ }
+ 
++bool operator==(const Cursor& lhs, const Cursor& rhs)
++{
++  return lhs.history == rhs.history && lhs.epoch == rhs.epoch;
++}
++
++bool operator!=(const Cursor& lhs, const Cursor& rhs)
++{
++  return !(lhs == rhs);
++}
+ 
+ class RGWPeriodHistory::Impl final {
+  public:
+diff --git a/src/rgw/rgw_period_history.h b/src/rgw/rgw_period_history.h
+index 9541493..0796c61 100644
+--- a/src/rgw/rgw_period_history.h
++++ b/src/rgw/rgw_period_history.h
+@@ -75,6 +75,9 @@ class RGWPeriodHistory final {
+     void prev() { epoch--; }
+     void next() { epoch++; }
+ 
++    friend bool operator==(const Cursor& lhs, const Cursor& rhs);
++    friend bool operator!=(const Cursor& lhs, const Cursor& rhs);
++
+    private:
+     // private constructors for RGWPeriodHistory
+     friend class RGWPeriodHistory::Impl;

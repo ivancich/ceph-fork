@@ -1,3 +1,24 @@
+ceph (10.2.7-29redhat1) stable; urgency=medium
+
+  * rgw: use separate http_manager for read_sync_status (rhbz#1458734)
+  * rgw: fix for broken yields in RGWMetaSyncShardCR (rhbz#1458734)
+  * rgw: add == and != operators for period history cursor
+    (rhbz#1458734)
+  * rgw: fix marker comparison to detect end of mdlog period
+    (rhbz#1458734)
+  * rgw: clean up RGWInitDataSyncStatusCoroutine (rhbz#1458734)
+  * rgw: RGWBackoffControlCR only retries until success (rhbz#1458734)
+  * rgw: store realm epoch with sync status markers (rhbz#1458734)
+  * rgw: change metadata read_sync_status interface (rhbz#1458734)
+  * rgw: use RGWShardCollectCR for RGWReadSyncStatusCoroutine
+    (rhbz#1458734)
+  * rgw: period commit uses sync status markers (rhbz#1458734)
+  * rgw: require --yes-i-really-mean-it to promote zone with stale
+    metadata (rhbz#1458734)
+  * rgw: remove rgw_realm_reconfigure_delay (rhbz#1458734)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Wed, 07 Jun 2017 18:55:23 -0400
+
 ceph (10.2.7-28redhat1) stable; urgency=medium
 
   * rgw: dont spawn error_repo until lease is acquired (rhbz#1459593)

@@ -1,0 +1,92 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Tue, 21 Mar 2017 12:19:01 -0400
+Subject: rgw: remove rgw_realm_reconfigure_delay
+
+when the master zone is changed, this config variable was increasing the
+window of time where the old master zone would continue to handle
+requests to modify metadata. those changes would not be reflected by the
+new metadata master zone, and would be lost to the cluster
+
+it was an attempt to optimize for the unlikely case of multiple period
+changes in a short period of time, but the logic in reload() handles this
+case correctly as is
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit f422d4f1841e15a4ecf2d9304aa77021e8bd8626)
+Resolves: rhbz#1458734
+---
+ src/common/config_opts.h      |  1 -
+ src/rgw/rgw_realm_reloader.cc |  8 +++-----
+ src/rgw/rgw_realm_reloader.h  | 13 ++++++-------
+ 3 files changed, 9 insertions(+), 13 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index c5d9951..fc5d3474 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1445,7 +1445,6 @@ OPTION(rgw_run_sync_thread, OPT_BOOL, true) // whether radosgw (not radosgw-admi
+ OPTION(rgw_sync_lease_period, OPT_INT, 120) // time in second for lease that rgw takes on a specific log (or log shard)
+ OPTION(rgw_sync_log_trim_interval, OPT_INT, 1200) // time in seconds between attempts to trim sync logs
+ 
+-OPTION(rgw_realm_reconfigure_delay, OPT_DOUBLE, 2) // seconds to wait before reloading realm configuration
+ OPTION(rgw_period_push_interval, OPT_DOUBLE, 2) // seconds to wait before retrying "period push"
+ OPTION(rgw_period_push_interval_max, OPT_DOUBLE, 30) // maximum interval after exponential backoff
+ 
+diff --git a/src/rgw/rgw_realm_reloader.cc b/src/rgw/rgw_realm_reloader.cc
+index 8f38e98..4d36d7e 100644
+--- a/src/rgw/rgw_realm_reloader.cc
++++ b/src/rgw/rgw_realm_reloader.cc
+@@ -64,12 +64,10 @@ void RGWRealmReloader::handle_notify(RGWRealmNotify type,
+   reload_scheduled = new C_Reload(this);
+   cond.SignalOne(); // wake reload() if it blocked on a bad configuration
+ 
+-  // schedule reload() with a delay so we can batch up changes
+-  auto delay = cct->_conf->rgw_realm_reconfigure_delay;
+-  timer.add_event_after(delay, reload_scheduled);
++  // schedule reload() without delay
++  timer.add_event_after(0, reload_scheduled);
+ 
+-  ldout(cct, 4) << "Notification on realm, reconfiguration scheduled in "
+-      << delay << 's' << dendl;
++  ldout(cct, 4) << "Notification on realm, reconfiguration scheduled" << dendl;
+ }
+ 
+ void RGWRealmReloader::reload()
+diff --git a/src/rgw/rgw_realm_reloader.h b/src/rgw/rgw_realm_reloader.h
+index 3e60cd4..309ada2 100644
+--- a/src/rgw/rgw_realm_reloader.h
++++ b/src/rgw/rgw_realm_reloader.h
+@@ -10,8 +10,8 @@
+ class RGWRados;
+ 
+ /**
+- * RGWRealmReloader responds to notifications by recreating RGWRados with the
+- * updated realm configuration.
++ * RGWRealmReloader responds to new period notifications by recreating RGWRados
++ * with the updated realm configuration.
+  */
+ class RGWRealmReloader : public RGWRealmWatcher::Watcher {
+  public:
+@@ -20,8 +20,7 @@ class RGWRealmReloader : public RGWRealmWatcher::Watcher {
+    * is required to ensure that they stop issuing requests on the old
+    * RGWRados instance, and restart with the updated configuration.
+    *
+-   * This abstraction avoids a depency on class RGWFrontend, which is only
+-   * defined in rgw_main.cc
++   * This abstraction avoids a depency on class RGWFrontend.
+    */
+   class Pauser {
+    public:
+@@ -50,9 +49,9 @@ class RGWRealmReloader : public RGWRealmWatcher::Watcher {
+   Pauser *const frontends;
+ 
+   /// reload() takes a significant amount of time, so we don't want to run
+-  /// it in the handle_notify() thread. we choose a timer thread because we
+-  /// also want to add a delay (see rgw_realm_reconfigure_delay) so that we
+-  /// can batch up notifications within that window
++  /// it in the handle_notify() thread. we choose a timer thread instead of a
++  /// Finisher because it allows us to cancel events that were scheduled while
++  /// reload() is still running
+   SafeTimer timer;
+   Mutex mutex; //< protects access to timer and reload_scheduled
+   Cond cond; //< to signal reload() after an invalid realm config

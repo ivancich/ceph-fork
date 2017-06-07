@@ -1,0 +1,171 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Tue, 21 Mar 2017 16:10:27 -0400
+Subject: rgw: require --yes-i-really-mean-it to promote zone with stale
+ metadata
+
+if a zone is promoted to master before it has a chance to sync from the
+previous master zone, any metadata entries after its sync position will
+be lost
+
+print an error if 'period commit' is trying to promote a zone that is
+more than one period behind the current master, and only allow the
+commit to proceed if the --yes-i-really-mean-it flag is provided
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 721e3d6ee5917b19cfc15e3e9582d23623b8cca7)
+Resolves: rhbz#1458734
+---
+ src/rgw/rgw_admin.cc | 16 +++++++++-------
+ src/rgw/rgw_rados.cc | 25 +++++++++++++++++++------
+ src/rgw/rgw_rados.h  |  5 +++--
+ 3 files changed, 31 insertions(+), 15 deletions(-)
+
+diff --git a/src/rgw/rgw_admin.cc b/src/rgw/rgw_admin.cc
+index 701e986..4ed1aa0 100644
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -1483,7 +1483,8 @@ static int send_to_remote_or_url(const string& remote, const string& url,
+ 
+ static int commit_period(RGWRealm& realm, RGWPeriod& period,
+                          string remote, const string& url,
+-                         const string& access, const string& secret)
++                         const string& access, const string& secret,
++                         bool force)
+ {
+   const string& master_zone = period.get_master_zone();
+   if (master_zone.empty()) {
+@@ -1501,7 +1502,7 @@ static int commit_period(RGWRealm& realm, RGWPeriod& period,
+       return ret;
+     }
+     // the master zone can commit locally
+-    ret = period.commit(realm, current_period, cerr);
++    ret = period.commit(realm, current_period, cerr, force);
+     if (ret < 0) {
+       cerr << "failed to commit period: " << cpp_strerror(-ret) << std::endl;
+     }
+@@ -1578,7 +1579,7 @@ static int update_period(const string& realm_id, const string& realm_name,
+                          const string& period_id, const string& period_epoch,
+                          bool commit, const string& remote, const string& url,
+                          const string& access, const string& secret,
+-                         Formatter *formatter)
++                         Formatter *formatter, bool force)
+ {
+   RGWRealm realm(realm_id, realm_name);
+   int ret = realm.init(g_ceph_context, store);
+@@ -1609,7 +1610,7 @@ static int update_period(const string& realm_id, const string& realm_name,
+     return ret;
+   }
+   if (commit) {
+-    ret = commit_period(realm, period, remote, url, access, secret);
++    ret = commit_period(realm, period, remote, url, access, secret, force);
+     if (ret < 0) {
+       cerr << "failed to commit period: " << cpp_strerror(-ret) << std::endl;
+       return ret;
+@@ -2874,7 +2875,7 @@ int main(int argc, char **argv)
+       {
+         int ret = update_period(realm_id, realm_name, period_id, period_epoch,
+                                 commit, remote, url, access_key, secret_key,
+-                                formatter);
++                                formatter, yes_i_really_mean_it);
+ 	if (ret < 0) {
+ 	  return ret;
+ 	}
+@@ -4462,7 +4463,7 @@ int main(int argc, char **argv)
+     {
+       int ret = update_period(realm_id, realm_name, period_id, period_epoch,
+                               commit, remote, url, access_key, secret_key,
+-                              formatter);
++                              formatter, yes_i_really_mean_it);
+       if (ret < 0) {
+ 	return ret;
+       }
+@@ -4483,7 +4484,8 @@ int main(int argc, char **argv)
+         cerr << "period init failed: " << cpp_strerror(-ret) << std::endl;
+         return ret;
+       }
+-      ret = commit_period(realm, period, remote, url, access_key, secret_key);
++      ret = commit_period(realm, period, remote, url, access_key, secret_key,
++                          yes_i_really_mean_it);
+       if (ret < 0) {
+         cerr << "failed to commit period: " << cpp_strerror(-ret) << std::endl;
+         return ret;
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 8593c7a..c164d06 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -1337,7 +1337,9 @@ static int read_sync_status(RGWRados *store, rgw_meta_sync_status *sync_status)
+   return r;
+ }
+ 
+-int RGWPeriod::update_sync_status(const RGWPeriod &current_period)
++int RGWPeriod::update_sync_status(const RGWPeriod &current_period,
++                                  std::ostream& error_stream,
++                                  bool force_if_stale)
+ {
+   rgw_meta_sync_status status;
+   int r = read_sync_status(store, &status);
+@@ -1354,9 +1356,20 @@ int RGWPeriod::update_sync_status(const RGWPeriod &current_period)
+     // no sync status markers for the current period
+     assert(current_epoch > status.sync_info.realm_epoch);
+     const int behind = current_epoch - status.sync_info.realm_epoch;
+-    lderr(cct) << "ERROR: This zone is " << behind << " period(s) behind "
+-          "the current master zone in metadata sync." << dendl;
+-    return -EINVAL;
++    if (!force_if_stale && current_epoch > 1) {
++      error_stream << "ERROR: This zone is " << behind << " period(s) behind "
++          "the current master zone in metadata sync. If this zone is promoted "
++          "to master, any metadata changes during that time are likely to "
++          "be lost.\n"
++          "Waiting for this zone to catch up on metadata sync (see "
++          "'radosgw-admin sync status') is recommended.\n"
++          "To promote this zone to master anyway, add the flag "
++          "--yes-i-really-mean-it." << std::endl;
++      return -EINVAL;
++    }
++    // empty sync status markers - other zones will skip this period during
++    // incremental metadata sync
++    markers.resize(status.sync_info.num_shards);
+   } else {
+     markers.reserve(status.sync_info.num_shards);
+     for (auto& i : status.sync_markers) {
+@@ -1374,7 +1387,7 @@ int RGWPeriod::update_sync_status(const RGWPeriod &current_period)
+ }
+ 
+ int RGWPeriod::commit(RGWRealm& realm, const RGWPeriod& current_period,
+-                      std::ostream& error_stream)
++                      std::ostream& error_stream, bool force_if_stale)
+ {
+   ldout(cct, 20) << __func__ << " realm " << realm.get_id() << " period " << current_period.get_id() << dendl;
+   // gateway must be in the master zone to commit
+@@ -1404,7 +1417,7 @@ int RGWPeriod::commit(RGWRealm& realm, const RGWPeriod& current_period,
+   // did the master zone change?
+   if (master_zone != current_period.get_master_zone()) {
+     // store the current metadata sync status in the period
+-    int r = update_sync_status(current_period);
++    int r = update_sync_status(current_period, error_stream, force_if_stale);
+     if (r < 0) {
+       ldout(cct, 0) << "failed to update metadata sync status: "
+           << cpp_strerror(-r) << dendl;
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index 5f384ca..f9d0454 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -1454,7 +1454,8 @@ class RGWPeriod
+   const string get_period_oid_prefix();
+ 
+   // gather the metadata sync status for each shard; only for use on master zone
+-  int update_sync_status(const RGWPeriod &current_period);
++  int update_sync_status(const RGWPeriod &current_period,
++                         std::ostream& error_stream, bool force_if_stale);
+ 
+ public:
+   RGWPeriod() : epoch(0) {}
+@@ -1527,7 +1528,7 @@ public:
+ 
+   // commit a staging period; only for use on master zone
+   int commit(RGWRealm& realm, const RGWPeriod &current_period,
+-             std::ostream& error_stream);
++             std::ostream& error_stream, bool force_if_stale = false);
+ 
+   void encode(bufferlist& bl) const {
+     ENCODE_START(1, 1, bl);
