@@ -1,3 +1,10 @@
+ceph (10.2.7-28redhat1) stable; urgency=medium
+
+  * rgw: dont spawn error_repo until lease is acquired (rhbz#1459593)
+  * rgw:fix memory leaks (rhbz#1459596)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Wed, 07 Jun 2017 12:21:38 -0400
+
 ceph (10.2.7-27redhat1) stable; urgency=medium
 
   * rbd: properly decode features when using image name optional

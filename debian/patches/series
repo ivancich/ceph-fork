@@ -70,3 +70,5 @@
 0070-osd-Object-level-shard-errors-are-tracked-and-used-i.patch
 0071-rbd-properly-decode-features-when-using-image-name-o.patch
 0072-librbd-filter-expected-error-codes-from-is_exclusive.patch
+0073-rgw-dont-spawn-error_repo-until-lease-is-acquired.patch
+0074-rgw-fix-memory-leaks.patch

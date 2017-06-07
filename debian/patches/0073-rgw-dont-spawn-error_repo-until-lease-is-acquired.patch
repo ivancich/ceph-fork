@@ -1,0 +1,46 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Thu, 20 Apr 2017 16:33:32 -0400
+Subject: rgw: dont spawn error_repo until lease is acquired
+
+if RGWDataSyncShardCR fails to acquire its lease, it doesn't call
+error_repo->finish() to stop the coroutine. wait until the lease
+succeeds before spawning the error_repo
+
+Fixes: http://tracker.ceph.com/issues/19446
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 1524a5eb249113fed8da1d47a4f92dec98db4566)
+Resolves: rhbz#1459593
+
+Conflicts:
+	src/rgw/rgw_data_sync.cc: rgw_raw_obj
+---
+ src/rgw/rgw_data_sync.cc | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index b4b9980..0310c4c 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -1195,9 +1195,6 @@ public:
+ 
+   int incremental_sync() {
+     reenter(&incremental_cr) {
+-      error_repo = new RGWOmapAppend(sync_env->async_rados, sync_env->store, pool, error_oid, 1 /* no buffer */);
+-      error_repo->get();
+-      spawn(error_repo, false);
+       yield init_lease_cr();
+       while (!lease_cr->is_locked()) {
+         if (lease_cr->is_done()) {
+@@ -1209,6 +1206,11 @@ public:
+         yield;
+       }
+       set_status("lease acquired");
++      error_repo = new RGWOmapAppend(sync_env->async_rados, sync_env->store,
++                                     pool, error_oid,
++                                     1 /* no buffer */);
++      error_repo->get();
++      spawn(error_repo, false);
+       logger.log("inc sync");
+       set_marker_tracker(new RGWDataSyncShardMarkerTrack(sync_env, status_oid, sync_marker));
+       do {

@@ -1,0 +1,52 @@
+From: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+Date: Wed, 1 Jun 2016 17:20:49 +0800
+Subject: rgw:fix memory leaks
+
+Signed-off-by: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+(cherry picked from commit 73e5be2b6133cf4caa0e5e5c8c9eae748b785dbf)
+Resolves: rhbz#1459596
+---
+ src/rgw/rgw_data_sync.cc | 1 +
+ src/rgw/rgw_sync.cc      | 3 +++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 0310c4c..762d8e3 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -412,6 +412,7 @@ public:
+ 
+   int request_complete() {
+     int ret = http_op->wait(result);
++    http_op->put();
+     if (ret < 0 && ret != -ENOENT) {
+       ldout(sync_env->store->ctx(), 0) << "ERROR: failed to list remote datalog shard, ret=" << ret << dendl;
+       return ret;
+diff --git a/src/rgw/rgw_sync.cc b/src/rgw/rgw_sync.cc
+index fa5ba88..a7daa61 100644
+--- a/src/rgw/rgw_sync.cc
++++ b/src/rgw/rgw_sync.cc
+@@ -492,6 +492,7 @@ public:
+       }
+       yield {
+         int ret = http_op->wait(shard_info);
++        http_op->put();
+         if (ret < 0) {
+           return set_cr_error(ret);
+         }
+@@ -556,6 +557,7 @@ public:
+ 
+   int request_complete() {
+     int ret = http_op->wait(result);
++    http_op->put();
+     if (ret < 0 && ret != -ENOENT) {
+       ldout(sync_env->store->ctx(), 0) << "ERROR: failed to list remote mdlog shard, ret=" << ret << dendl;
+       return ret;
+@@ -951,6 +953,7 @@ public:
+       }
+       yield {
+         int ret = http_op->wait_bl(pbl);
++        http_op->put();
+         if (ret < 0) {
+           return set_cr_error(ret);
+         }
