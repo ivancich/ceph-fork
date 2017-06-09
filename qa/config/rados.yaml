@@ -7,4 +7,4 @@ overrides:
         osd debug verify missing on start: true
         osd debug verify cached snaps: true
         objecter_retry_writes_after_first_reply: true
-        osd debug: 10
+        debug osd: 10
