@@ -1,0 +1,5 @@
+overrides:
+  ceph:
+    conf:
+      osd:
+        objecter_retry_writes_after_first_reply: true
