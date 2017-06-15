@@ -6,5 +6,5 @@ overrides:
         osd op queue cut off: debug_random
         osd debug verify missing on start: true
         osd debug verify cached snaps: true
-        objecter_retry_writes_after_first_reply: true
+        objecter_retry_writes_after_first_reply: false
         debug osd: 10
