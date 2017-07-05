@@ -1,3 +1,19 @@
+ceph (10.2.7-30redhat1) stable; urgency=medium
+
+  * rgw: add a field to store generic user data in the bucket index,
+    that can populated/fetched via a configurable custom http header
+    (rhbz#1445891)
+  * rgw: cls: ceph::timespan tag_timeout wrong units (rhbz#1464099)
+  * fix infinite loop in rest api for log list (rhbz#1465446)
+  * rgw: RGWMetadataLog::list_entries() no longer splices
+    (rhbz#1465446)
+  * rgw: fix RGWMetadataLog::list_entries() for null last_marker
+    (rhbz#1465446)
+  * rgw: rest handlers for mdlog and datalog list dont loop
+    (rhbz#1465446)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Wed, 05 Jul 2017 16:36:40 -0400
+
 ceph (10.2.7-29redhat1) stable; urgency=medium
 
   * rgw: use separate http_manager for read_sync_status (rhbz#1458734)

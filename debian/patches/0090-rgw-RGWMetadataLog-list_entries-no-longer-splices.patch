@@ -1,0 +1,57 @@
+From: Casey Bodley <cbodley@redhat.com>
+Date: Wed, 28 Jun 2017 12:18:33 -0400
+Subject: rgw: RGWMetadataLog::list_entries() no longer splices
+
+Signed-off-by: Casey Bodley <cbodley@redhat.com>
+(cherry picked from commit 112464483ecb407ef1388ba8a3f8d29cb0725594)
+
+Resolves: rhbz#1465446
+---
+ src/cls/log/cls_log_client.cc | 4 ++--
+ src/rgw/rgw_metadata.cc       | 8 +++-----
+ 2 files changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/src/cls/log/cls_log_client.cc b/src/cls/log/cls_log_client.cc
+index 88e1045..48a79ba 100644
+--- a/src/cls/log/cls_log_client.cc
++++ b/src/cls/log/cls_log_client.cc
+@@ -95,11 +95,11 @@ public:
+         bufferlist::iterator iter = outbl.begin();
+         ::decode(ret, iter);
+         if (entries)
+-	  *entries = ret.entries;
++          *entries = std::move(ret.entries);
+         if (truncated)
+           *truncated = ret.truncated;
+         if (marker)
+-          *marker = ret.marker;
++          *marker = std::move(ret.marker);
+       } catch (buffer::error& err) {
+         // nothing we can do about it atm
+       }
+diff --git a/src/rgw/rgw_metadata.cc b/src/rgw/rgw_metadata.cc
+index 222bf04..6be0538 100644
+--- a/src/rgw/rgw_metadata.cc
++++ b/src/rgw/rgw_metadata.cc
+@@ -149,18 +149,16 @@ int RGWMetadataLog::list_entries(void *handle,
+     *truncated = false;
+     return 0;
+   }
+-  
+-  list<cls_log_entry> log_entries;
+-  
++
+   int ret = store->time_log_list(ctx->cur_oid, ctx->from_time, ctx->end_time,
+-				 max_entries, log_entries, ctx->marker,
++				 max_entries, entries, ctx->marker,
+ 				 last_marker, truncated);
+   if ((ret < 0) && (ret != -ENOENT))
+     return ret;
+ 
+   ctx->marker = *last_marker;
+-  entries.splice(entries.end(), log_entries);
+   
++
+   if (ret == -ENOENT)
+     *truncated = false;
+ 

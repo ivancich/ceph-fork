@@ -1,0 +1,33 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Thu, 29 Jun 2017 15:19:36 -0400
+Subject: rgw: cls: ceph::timespan tag_timeout wrong units
+
+In rgw_dir_suggest(), the ceph::timespan tag_timeout is intended
+to be a value in seconds, but has been taken as something much
+smaller (millis?).  The incorrect time scale likely induces a race
+condition with object deletes.
+
+Fixes: http://tracker.ceph.com/issues/20380
+Resolves: rhbz#1464099
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit e6763ebd6124c1b4736c5c7850077df7644bc8f5)
+---
+ src/cls/rgw/cls_rgw.cc | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/cls/rgw/cls_rgw.cc b/src/cls/rgw/cls_rgw.cc
+index 86dcc66..2a8de1a 100644
+--- a/src/cls/rgw/cls_rgw.cc
++++ b/src/cls/rgw/cls_rgw.cc
+@@ -1904,7 +1904,9 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
+     return rc;
+   }
+ 
+-  timespan tag_timeout(header.tag_timeout ? header.tag_timeout : CEPH_RGW_TAG_TIMEOUT);
++  timespan tag_timeout(
++    std::chrono::seconds(
++      header.tag_timeout ? header.tag_timeout : CEPH_RGW_TAG_TIMEOUT));
+ 
+   bufferlist::iterator in_iter = in->begin();
+ 

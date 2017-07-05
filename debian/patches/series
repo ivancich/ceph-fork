@@ -84,3 +84,9 @@
 0084-rgw-period-commit-uses-sync-status-markers.patch
 0085-rgw-require-yes-i-really-mean-it-to-promote-zone-wit.patch
 0086-rgw-remove-rgw_realm_reconfigure_delay.patch
+0087-rgw-add-a-field-to-store-generic-user-data-in-the-bu.patch
+0088-rgw-cls-ceph-timespan-tag_timeout-wrong-units.patch
+0089-fix-infinite-loop-in-rest-api-for-log-list.patch
+0090-rgw-RGWMetadataLog-list_entries-no-longer-splices.patch
+0091-rgw-fix-RGWMetadataLog-list_entries-for-null-last_ma.patch
+0092-rgw-rest-handlers-for-mdlog-and-datalog-list-dont-lo.patch

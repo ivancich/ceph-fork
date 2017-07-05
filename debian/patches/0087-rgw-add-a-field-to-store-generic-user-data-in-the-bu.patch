@@ -1,0 +1,336 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 16 May 2017 14:45:10 -0400
+Subject: rgw: add a field to store generic user data in the bucket index,
+ that can populated/fetched via a configurable custom http header
+
+Fixes: http://tracker.ceph.com/issues/19644
+Resolves: rhbz#1445891
+
+Signed-off-by: Pavan Rallabhandi <prallabhandi@walmartlabs.com>
+(cherry picked from commit abca7a8)
+Signed-off-by: Matt Benjamin mbenjamin@redhat.com
+---
+ src/cls/rgw/cls_rgw_types.cc |  2 ++
+ src/cls/rgw/cls_rgw_types.h  | 10 ++++++++--
+ src/common/config_opts.h     |  5 ++++-
+ src/rgw/rgw_common.h         |  1 +
+ src/rgw/rgw_json_enc.cc      |  1 +
+ src/rgw/rgw_op.cc            |  8 +++++---
+ src/rgw/rgw_op.h             |  1 +
+ src/rgw/rgw_rados.cc         | 19 ++++++++++++++-----
+ src/rgw/rgw_rados.h          | 11 ++++++-----
+ src/rgw/rgw_rest_swift.cc    |  9 +++++++++
+ 10 files changed, 51 insertions(+), 16 deletions(-)
+
+diff --git a/src/cls/rgw/cls_rgw_types.cc b/src/cls/rgw/cls_rgw_types.cc
+index 27a413e..481c064 100644
+--- a/src/cls/rgw/cls_rgw_types.cc
++++ b/src/cls/rgw/cls_rgw_types.cc
+@@ -61,6 +61,7 @@ void rgw_bucket_dir_entry_meta::dump(Formatter *f) const
+   encode_json("owner_display_name", owner_display_name, f);
+   encode_json("content_type", content_type, f);
+   encode_json("accounted_size", accounted_size, f);
++  encode_json("user_data", user_data, f);
+ }
+ 
+ void rgw_bucket_dir_entry_meta::decode_json(JSONObj *obj) {
+@@ -75,6 +76,7 @@ void rgw_bucket_dir_entry_meta::decode_json(JSONObj *obj) {
+   JSONDecoder::decode_json("owner_display_name", owner_display_name, obj);
+   JSONDecoder::decode_json("content_type", content_type, obj);
+   JSONDecoder::decode_json("accounted_size", accounted_size, obj);
++  JSONDecoder::decode_json("user_data", user_data, obj);
+ }
+ 
+ void rgw_bucket_dir_entry::generate_test_instances(list<rgw_bucket_dir_entry*>& o)
+diff --git a/src/cls/rgw/cls_rgw_types.h b/src/cls/rgw/cls_rgw_types.h
+index c7942ac..a1e904d 100644
+--- a/src/cls/rgw/cls_rgw_types.h
++++ b/src/cls/rgw/cls_rgw_types.h
+@@ -1,3 +1,5 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
+ #ifndef CEPH_CLS_RGW_TYPES_H
+ #define CEPH_CLS_RGW_TYPES_H
+ 
+@@ -95,12 +97,13 @@ struct rgw_bucket_dir_entry_meta {
+   string owner_display_name;
+   string content_type;
+   uint64_t accounted_size;
++  string user_data;
+ 
+   rgw_bucket_dir_entry_meta() :
+   category(0), size(0), accounted_size(0) { }
+ 
+   void encode(bufferlist &bl) const {
+-    ENCODE_START(4, 3, bl);
++    ENCODE_START(5, 3, bl);
+     ::encode(category, bl);
+     ::encode(size, bl);
+     ::encode(mtime, bl);
+@@ -109,10 +112,11 @@ struct rgw_bucket_dir_entry_meta {
+     ::encode(owner_display_name, bl);
+     ::encode(content_type, bl);
+     ::encode(accounted_size, bl);
++    ::encode(user_data, bl);
+     ENCODE_FINISH(bl);
+   }
+   void decode(bufferlist::iterator &bl) {
+-    DECODE_START_LEGACY_COMPAT_LEN(4, 3, 3, bl);
++    DECODE_START_LEGACY_COMPAT_LEN(5, 3, 3, bl);
+     ::decode(category, bl);
+     ::decode(size, bl);
+     ::decode(mtime, bl);
+@@ -125,6 +129,8 @@ struct rgw_bucket_dir_entry_meta {
+       ::decode(accounted_size, bl);
+     else
+       accounted_size = size;
++    if (struct_v >= 5)
++      ::decode(user_data, bl);
+     DECODE_FINISH(bl);
+   }
+   void dump(Formatter *f) const;
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index fc5d3474..73d957a 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1455,7 +1455,10 @@ OPTION(rgw_shard_warning_threshold, OPT_DOUBLE, 90) // pct of safe max
+ OPTION(rgw_swift_versioning_enabled, OPT_BOOL, false) // whether swift object versioning feature is enabled
+ 
+ OPTION(mutex_perf_counter, OPT_BOOL, false) // enable/disable mutex perf counter
+-OPTION(throttler_perf_counter, OPT_BOOL, true) // enable/disable throttler perf counter
++OPTION(throttler_perf_counter, OPT_BOOL, true) // enable/disable
++					       // throttler perf
++					       // counter
++OPTION(rgw_swift_custom_header, OPT_STR, "") // option to enable swift custom headers
+ 
+ // This will be set to true when it is safe to start threads.
+ // Once it is true, it will never change.
+diff --git a/src/rgw/rgw_common.h b/src/rgw/rgw_common.h
+index 645f236..d131939 100644
+--- a/src/rgw/rgw_common.h
++++ b/src/rgw/rgw_common.h
+@@ -1331,6 +1331,7 @@ struct RGWObjEnt {
+   string tag;
+   uint32_t flags;
+   uint64_t versioned_epoch;
++  string user_data;
+ 
+   RGWObjEnt() : size(0), flags(0), versioned_epoch(0) {}
+ 
+diff --git a/src/rgw/rgw_json_enc.cc b/src/rgw/rgw_json_enc.cc
+index e78813b..0aeab65 100644
+--- a/src/rgw/rgw_json_enc.cc
++++ b/src/rgw/rgw_json_enc.cc
+@@ -701,6 +701,7 @@ void RGWObjEnt::dump(Formatter *f) const
+   encode_json("content_type", content_type, f);
+   encode_json("tag", tag, f);
+   encode_json("flags", flags, f);
++  encode_json("user_data", user_data, f);
+ }
+ 
+ void RGWBucketEnt::dump(Formatter *f) const
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index b2adba5..2933db0 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -2272,7 +2272,8 @@ protected:
+   int prepare(RGWRados *store, string *oid_rand);
+   int do_complete(string& etag, real_time *mtime, real_time set_mtime,
+                   map<string, bufferlist>& attrs, real_time delete_at,
+-                  const char *if_match = NULL, const char *if_nomatch = NULL);
++                  const char *if_match = NULL, const char *if_nomatch = NULL,
++		  const string *user_data = nullptr);
+ 
+ public:
+   bool immutable_head() { return true; }
+@@ -2346,7 +2347,7 @@ static bool is_v2_upload_id(const string& upload_id)
+ 
+ int RGWPutObjProcessor_Multipart::do_complete(string& etag, real_time *mtime, real_time set_mtime,
+                                               map<string, bufferlist>& attrs, real_time delete_at,
+-                                              const char *if_match, const char *if_nomatch)
++                                              const char *if_match, const char *if_nomatch, const string *user_data)
+ {
+   complete_writing_data();
+ 
+@@ -2767,7 +2768,8 @@ void RGWPutObj::execute()
+   }
+ 
+   op_ret = processor->complete(etag, &mtime, real_time(), attrs, delete_at,
+-			      if_match, if_nomatch);
++			       if_match, if_nomatch,
++			       (user_data.empty() ? nullptr : &user_data));
+ 
+ done:
+   dispose_processor(processor);
+diff --git a/src/rgw/rgw_op.h b/src/rgw/rgw_op.h
+index f887520..45c39a4 100644
+--- a/src/rgw/rgw_op.h
++++ b/src/rgw/rgw_op.h
+@@ -669,6 +669,7 @@ protected:
+   uint64_t olh_epoch;
+   string version_id;
+   bufferlist bl_aux;
++  string user_data;
+ 
+   ceph::real_time delete_at;
+ 
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index c164d06..a8ebb3f 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -2240,9 +2240,10 @@ void RGWObjVersionTracker::generate_new_write_ver(CephContext *cct)
+ 
+ int RGWPutObjProcessor::complete(string& etag, real_time *mtime, real_time set_mtime,
+                                  map<string, bufferlist>& attrs, real_time delete_at,
+-                                 const char *if_match, const char * if_nomatch)
++                                 const char *if_match, const char * if_nomatch,
++				 const string *user_data)
+ {
+-  int r = do_complete(etag, mtime, set_mtime, attrs, delete_at, if_match, if_nomatch);
++  int r = do_complete(etag, mtime, set_mtime, attrs, delete_at, if_match, if_nomatch, user_data);
+   if (r < 0)
+     return r;
+ 
+@@ -2586,7 +2587,8 @@ int RGWPutObjProcessor_Atomic::complete_writing_data()
+ int RGWPutObjProcessor_Atomic::do_complete(string& etag, real_time *mtime, real_time set_mtime,
+                                            map<string, bufferlist>& attrs, real_time delete_at,
+                                            const char *if_match,
+-                                           const char *if_nomatch) {
++                                           const char *if_nomatch,
++					   const string *user_data) {
+   int r = complete_writing_data();
+   if (r < 0)
+     return r;
+@@ -2611,6 +2613,7 @@ int RGWPutObjProcessor_Atomic::do_complete(string& etag, real_time *mtime, real_
+   obj_op.meta.flags = PUT_OBJ_CREATE;
+   obj_op.meta.olh_epoch = olh_epoch;
+   obj_op.meta.delete_at = delete_at;
++  obj_op.meta.user_data = user_data;
+ 
+   r = obj_op.write_meta(obj_len, attrs);
+   if (r < 0) {
+@@ -6459,7 +6462,7 @@ int RGWRados::Object::Write::write_meta(uint64_t size,
+ 
+   r = index_op.complete(poolid, epoch, size,
+                         meta.set_mtime, etag, content_type, &acl_bl,
+-                        meta.category, meta.remove_objs);
++                        meta.category, meta.remove_objs, meta.user_data);
+   if (r < 0)
+     goto done_cancel;
+ 
+@@ -9131,7 +9134,8 @@ int RGWRados::Bucket::UpdateIndex::prepare(RGWModifyOp op)
+ 
+ int RGWRados::Bucket::UpdateIndex::complete(int64_t poolid, uint64_t epoch, uint64_t size,
+                                     ceph::real_time& ut, string& etag, string& content_type, bufferlist *acl_bl, RGWObjCategory category,
+-                                    list<rgw_obj_key> *remove_objs)
++					    list<rgw_obj_key> *remove_objs,
++					    const string *user_data)
+ {
+   if (blind) {
+     return 0;
+@@ -9149,6 +9153,9 @@ int RGWRados::Bucket::UpdateIndex::complete(int64_t poolid, uint64_t epoch, uint
+   ent.size = size;
+   ent.mtime = ut;
+   ent.etag = etag;
++  if (user_data)
++    ent.user_data = *user_data; // XXX ent.meta.user_data
++
+   ACLOwner owner;
+   if (acl_bl && acl_bl->length()) {
+     int ret = store->decode_policy(*acl_bl, &owner);
+@@ -11689,6 +11696,7 @@ int RGWRados::cls_obj_complete_op(BucketShard& bs, RGWModifyOp op, string& tag,
+   dir_meta.owner = ent.owner.to_str();
+   dir_meta.owner_display_name = ent.owner_display_name;
+   dir_meta.content_type = ent.content_type;
++  dir_meta.user_data = ent.user_data;
+   dir_meta.category = category;
+ 
+   rgw_bucket_entry_ver ver;
+@@ -11809,6 +11817,7 @@ int RGWRados::cls_bucket_list(rgw_bucket& bucket, int shard_id, rgw_obj_key& sta
+     e.tag = dirent.tag;
+     e.flags = dirent.flags;
+     e.versioned_epoch = dirent.versioned_epoch;
++    e.user_data = dirent.meta.user_data;
+ 
+     bool force_check = force_check_filter && force_check_filter(dirent.key.name);
+     if ((!dirent.exists && !dirent.is_delete_marker()) || !dirent.pending_map.empty() || force_check) {
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index f9d0454..439c895 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -2319,10 +2319,11 @@ public:
+         uint64_t olh_epoch;
+         ceph::real_time delete_at;
+         bool canceled;
++	const string *user_data;
+ 
+         MetaParams() : mtime(NULL), rmattrs(NULL), data(NULL), manifest(NULL), ptag(NULL),
+                  remove_objs(NULL), category(RGW_OBJ_CATEGORY_MAIN), flags(0),
+-                 if_match(NULL), if_nomatch(NULL), olh_epoch(0), canceled(false) {}
++		       if_match(NULL), if_nomatch(NULL), olh_epoch(0), canceled(false), user_data(nullptr) {}
+       } meta;
+ 
+       explicit Write(RGWRados::Object *_target) : target(_target) {}
+@@ -2449,7 +2450,7 @@ public:
+       int complete(int64_t poolid, uint64_t epoch, uint64_t size,
+                    ceph::real_time& ut, string& etag, string& content_type,
+                    bufferlist *acl_bl, RGWObjCategory category,
+-		   list<rgw_obj_key> *remove_objs);
++		   list<rgw_obj_key> *remove_objs, const string *user_data = nullptr);
+       int complete_del(int64_t poolid, uint64_t epoch,
+                        ceph::real_time& removed_mtime, /* mtime of removed object */
+                        list<rgw_obj_key> *remove_objs);
+@@ -3175,7 +3176,7 @@ protected:
+ 
+   virtual int do_complete(string& etag, ceph::real_time *mtime, ceph::real_time set_mtime,
+                           map<string, bufferlist>& attrs, ceph::real_time delete_at,
+-                          const char *if_match = NULL, const char *if_nomatch = NULL) = 0;
++                          const char *if_match = NULL, const char *if_nomatch = NULL, const string *user_data = NULL) = 0;
+ 
+ public:
+   RGWPutObjProcessor(RGWObjectCtx& _obj_ctx, RGWBucketInfo& _bi) : store(NULL), obj_ctx(_obj_ctx), is_complete(false), bucket_info(_bi), canceled(false) {}
+@@ -3191,7 +3192,7 @@ public:
+   }
+   virtual int complete(string& etag, ceph::real_time *mtime, ceph::real_time set_mtime,
+                        map<string, bufferlist>& attrs, ceph::real_time delete_at,
+-                       const char *if_match = NULL, const char *if_nomatch = NULL);
++                       const char *if_match = NULL, const char *if_nomatch = NULL, const string *user_data = NULL);
+ 
+   CephContext *ctx();
+ 
+@@ -3265,7 +3266,7 @@ protected:
+   int write_data(bufferlist& bl, off_t ofs, void **phandle, rgw_obj *pobj, bool exclusive);
+   virtual int do_complete(string& etag, ceph::real_time *mtime, ceph::real_time set_mtime,
+                           map<string, bufferlist>& attrs, ceph::real_time delete_at,
+-                          const char *if_match = NULL, const char *if_nomatch = NULL);
++                          const char *if_match = NULL, const char *if_nomatch = NULL, const string *user_data = nullptr);
+ 
+   int prepare_next_part(off_t ofs);
+   int complete_parts();
+diff --git a/src/rgw/rgw_rest_swift.cc b/src/rgw/rgw_rest_swift.cc
+index d63a772..5dfc7e8 100644
+--- a/src/rgw/rgw_rest_swift.cc
++++ b/src/rgw/rgw_rest_swift.cc
+@@ -272,6 +272,8 @@ void RGWListBucket_ObjStore_SWIFT::send_response()
+       s->formatter->dump_string("name", key.name);
+       s->formatter->dump_string("hash", iter->etag);
+       s->formatter->dump_int("bytes", iter->size);
++      if (!iter->user_data.empty())
++	s->formatter->dump_string("user_custom_data", iter->user_data);
+       string single_content_type = iter->content_type;
+       if (iter->content_type.size()) {
+         // content type might hold multiple values, just dump the last one
+@@ -663,6 +665,13 @@ int RGWPutObj_ObjStore_SWIFT::get_params()
+     return r;
+   }
+ 
++  if (!s->cct->_conf->rgw_swift_custom_header.empty()) {
++    string custom_header = s->cct->_conf->rgw_swift_custom_header;
++    if (s->info.env->exists(custom_header.c_str())) {
++      user_data = s->info.env->get(custom_header.c_str());
++    }
++  }
++
+   dlo_manifest = s->info.env->get("HTTP_X_OBJECT_MANIFEST");
+   bool exists;
+   string multipart_manifest = s->info.args.get("multipart-manifest", &exists);
