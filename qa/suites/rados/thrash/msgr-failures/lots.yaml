@@ -3,5 +3,3 @@ overrides:
     conf:
       global:
         ms inject socket failures: 200
-      osd:
-        osd heartbeat use min delay socket: true
