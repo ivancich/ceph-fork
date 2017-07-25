@@ -6,3 +6,5 @@ overrides:
         osd_max_pg_log_entries: 2
     log-whitelist:
     - (OSDMAP_FLAGS)
+    - (OBJECT_MISPLACED)
+    - (SMALLER_PGP_NUM)
