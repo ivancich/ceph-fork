@@ -1,0 +1,40 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Thu, 29 Jun 2017 20:12:39 -0400
+Subject: include/ceph_features.h: add feature bit for handling deletes during
+ recovery
+
+The BLKIN feature bit was actually unused - it was a remnant from
+earlier versions of the blkin work, but all the encoding is handled by
+struct-level versioning in the version that merged.
+
+Use bit 60 (unused in any prior version) so that recovery deletes
+could potentially be backported.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 2525609b30d21adf38b6fe2b27873b97d762b98b)
+
+Resolves: rhbz#1452780
+---
+ src/include/ceph_features.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/include/ceph_features.h b/src/include/ceph_features.h
+index 9756746..56e2054 100755
+--- a/src/include/ceph_features.h
++++ b/src/include/ceph_features.h
+@@ -85,6 +85,7 @@
+ #define CEPH_FEATURE_NEW_OSDOPREPLY_ENCODING (1ULL<<58) /* New, v7 encoding */
+ #define CEPH_FEATURE_FS_FILE_LAYOUT_V2       (1ULL<<58) /* file_layout_t */
+ 
++#define CEPH_FEATURE_OSD_RECOVERY_DELETES (1ULL<<60)
+ #define CEPH_FEATURE_RESERVED2 (1ULL<<61)  /* slow down, we are almost out... */
+ #define CEPH_FEATURE_RESERVED  (1ULL<<62)  /* DO NOT USE THIS ... last bit! */
+ #define CEPH_FEATURE_RESERVED_BROKEN  (1ULL<<63)  /* DO NOT USE THIS; see below */
+@@ -179,6 +180,7 @@ static inline unsigned long long ceph_sanitize_features(unsigned long long f) {
+ 	 CEPH_FEATURE_CRUSH_TUNABLES5 |	    \
+ 	 CEPH_FEATURE_SERVER_JEWEL |  \
+ 	 CEPH_FEATURE_FS_FILE_LAYOUT_V2 |		 \
++	 CEPH_FEATURE_OSD_RECOVERY_DELETES | \
+ 	 0ULL)
+ 
+ #define CEPH_FEATURES_SUPPORTED_DEFAULT  CEPH_FEATURES_ALL

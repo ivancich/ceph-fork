@@ -1,0 +1,390 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Fri, 23 Jun 2017 22:28:24 -0400
+Subject: message,
+ osd: add request/response messages for deletes during recovery
+
+The existing BackfillRemove message has no reply, and PushOps have too
+much logic that would need changing to accomodate deletions.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 100a3d70e55bd7e4bf0f1df412938a90dba0de49)
+
+Conflicts: message includes due to non-backported newer messages,
+more manual fast dispatch handling
+
+Resolves: rhbz#1452780
+---
+ src/messages/MOSDPGRecoveryDelete.h      | 85 ++++++++++++++++++++++++++++++++
+ src/messages/MOSDPGRecoveryDeleteReply.h | 58 ++++++++++++++++++++++
+ src/messages/Makefile.am                 |  2 +
+ src/msg/Message.cc                       |  8 +++
+ src/msg/Message.h                        |  2 +
+ src/osd/ECBackend.cc                     | 11 ++++-
+ src/osd/OSD.cc                           | 19 +++++++
+ src/osd/OSD.h                            |  2 +
+ src/osd/PG.cc                            | 19 +++++++
+ src/osd/ReplicatedBackend.cc             |  2 +
+ src/test/encoding/types.h                |  4 ++
+ 11 files changed, 210 insertions(+), 2 deletions(-)
+ create mode 100644 src/messages/MOSDPGRecoveryDelete.h
+ create mode 100644 src/messages/MOSDPGRecoveryDeleteReply.h
+
+diff --git a/src/messages/MOSDPGRecoveryDelete.h b/src/messages/MOSDPGRecoveryDelete.h
+new file mode 100644
+index 0000000..363b4a4
+--- /dev/null
++++ b/src/messages/MOSDPGRecoveryDelete.h
+@@ -0,0 +1,85 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#ifndef CEPH_MOSDPGRECOVERYDELETE_H
++#define CEPH_MOSDPGRECOVERYDELETE_H
++
++#include "msg/Message.h"
++#include "osd/osd_types.h"
++
++/*
++ * instruct non-primary to remove some objects during recovery
++ */
++
++struct MOSDPGRecoveryDelete : public Message {
++
++  static const int HEAD_VERSION = 1;
++  static const int COMPAT_VERSION = 1;
++
++  pg_shard_t from;
++  spg_t pgid;            ///< target spg_t
++  epoch_t map_epoch;
++  list<pair<hobject_t, eversion_t> > objects;    ///< objects to remove
++
++private:
++  uint64_t cost;
++
++public:
++  int get_cost() const {
++    return cost;
++  }
++
++  epoch_t get_map_epoch() const {
++    return map_epoch;
++  }
++
++  epoch_t get_min_epoch() const {
++    return map_epoch;
++  }
++
++  spg_t get_spg() const {
++    return pgid;
++  }
++
++  void set_cost(uint64_t c) {
++    cost = c;
++  }
++
++  MOSDPGRecoveryDelete()
++    : Message(MSG_OSD_PG_RECOVERY_DELETE, HEAD_VERSION, COMPAT_VERSION) {}
++
++  MOSDPGRecoveryDelete(pg_shard_t from, spg_t pgid, epoch_t map_epoch)
++    : Message(MSG_OSD_PG_RECOVERY_DELETE, HEAD_VERSION, COMPAT_VERSION),
++      from(from),
++      pgid(pgid),
++      map_epoch(map_epoch) {}
++
++private:
++  ~MOSDPGRecoveryDelete() {}
++
++public:
++  const char *get_type_name() const { return "recovery_delete"; }
++  void print(ostream& out) const {
++    out << "MOSDPGRecoveryDelete(" << pgid << " e" << map_epoch << " " << objects << ")";
++  }
++
++  void encode_payload(uint64_t features) {
++    ::encode(from, payload);
++    ::encode(pgid, payload);
++    ::encode(map_epoch, payload);
++    ::encode(cost, payload);
++    ::encode(objects, payload);
++  }
++  void decode_payload() {
++    bufferlist::iterator p = payload.begin();
++    ::decode(from, p);
++    ::decode(pgid, p);
++    ::decode(map_epoch, p);
++    ::decode(cost, p);
++    ::decode(objects, p);
++  }
++};
++
++
++
++#endif
+diff --git a/src/messages/MOSDPGRecoveryDeleteReply.h b/src/messages/MOSDPGRecoveryDeleteReply.h
+new file mode 100644
+index 0000000..ca3a0ab
+--- /dev/null
++++ b/src/messages/MOSDPGRecoveryDeleteReply.h
+@@ -0,0 +1,58 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#ifndef MOSDRECOVERYDELETEREPLY_H
++#define MOSDRECOVERYDELETEREPLY_H
++
++#include "msg/Message.h"
++#include "osd/osd_types.h"
++
++struct MOSDPGRecoveryDeleteReply : public Message {
++  static const int HEAD_VERSION = 1;
++  static const int COMPAT_VERSION = 1;
++
++  pg_shard_t from;
++  spg_t pgid;
++  epoch_t map_epoch;
++  list<pair<hobject_t, eversion_t> > objects;
++
++  epoch_t get_map_epoch() const {
++    return map_epoch;
++  }
++  epoch_t get_min_epoch() const {
++    return map_epoch;
++  }
++  spg_t get_spg() const {
++    return pgid;
++  }
++
++  MOSDPGRecoveryDeleteReply()
++    : Message(MSG_OSD_PG_RECOVERY_DELETE_REPLY, HEAD_VERSION, COMPAT_VERSION)
++    {}
++
++  void decode_payload() override {
++    bufferlist::iterator p = payload.begin();
++    ::decode(pgid.pgid, p);
++    ::decode(map_epoch, p);
++    ::decode(objects, p);
++    ::decode(pgid.shard, p);
++    ::decode(from, p);
++  }
++
++  void encode_payload(uint64_t features) override {
++    ::encode(pgid.pgid, payload);
++    ::encode(map_epoch, payload);
++    ::encode(objects, payload);
++    ::encode(pgid.shard, payload);
++    ::encode(from, payload);
++  }
++
++  void print(ostream& out) const override {
++    out << "MOSDPGRecoveryDeleteReply(" << pgid
++        << " e" << map_epoch << " " << objects << ")";
++  }
++
++  const char *get_type_name() const override { return "recovery_delete_reply"; }
++};
++
++#endif
+diff --git a/src/messages/Makefile.am b/src/messages/Makefile.am
+index 0f4257b..3849326 100644
+--- a/src/messages/Makefile.am
++++ b/src/messages/Makefile.am
+@@ -92,6 +92,8 @@ noinst_HEADERS += \
+ 	messages/MOSDPGQuery.h \
+ 	messages/MOSDPGRemove.h \
+ 	messages/MOSDPGScan.h \
++	messages/MOSDPGRecoveryDelete.h \
++	messages/MOSDPGRecoveryDeleteReply.h \
+ 	messages/MOSDPGUpdateLogMissing.h \
+ 	messages/MOSDPGUpdateLogMissingReply.h \
+ 	messages/MOSDECSubOpWrite.h \
+diff --git a/src/msg/Message.cc b/src/msg/Message.cc
+index f65f16e..37f1347 100644
+--- a/src/msg/Message.cc
++++ b/src/msg/Message.cc
+@@ -82,6 +82,8 @@ using namespace std;
+ #include "messages/MOSDRepScrub.h"
+ #include "messages/MOSDPGScan.h"
+ #include "messages/MOSDPGBackfill.h"
++#include "messages/MOSDPGRecoveryDelete.h"
++#include "messages/MOSDPGRecoveryDeleteReply.h"
+ 
+ #include "messages/MRemoveSnaps.h"
+ 
+@@ -510,6 +512,12 @@ Message *decode_message(CephContext *cct, int crcflags,
+   case MSG_OSD_PG_PUSH_REPLY:
+     m = new MOSDPGPushReply;
+     break;
++  case MSG_OSD_PG_RECOVERY_DELETE:
++    m = new MOSDPGRecoveryDelete;
++    break;
++  case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
++    m = new MOSDPGRecoveryDeleteReply;
++    break;
+   case MSG_OSD_EC_WRITE:
+     m = new MOSDECSubOpWrite;
+     break;
+diff --git a/src/msg/Message.h b/src/msg/Message.h
+index 06b894a..a379132 100644
+--- a/src/msg/Message.h
++++ b/src/msg/Message.h
+@@ -119,6 +119,8 @@
+ #define MSG_OSD_PG_UPDATE_LOG_MISSING  114
+ #define MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY  115
+ 
++#define MSG_OSD_PG_RECOVERY_DELETE 118
++#define MSG_OSD_PG_RECOVERY_DELETE_REPLY 119
+ 
+ // *** MDS ***
+ 
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index b34f728..616b40f 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -683,9 +683,16 @@ void ECBackend::recover_object(
+ }
+ 
+ bool ECBackend::can_handle_while_inactive(
+-  OpRequestRef _op)
++  OpRequestRef op)
+ {
+-  return false;
++  dout(10) << __func__ << ": " << op << dendl;
++  switch (op->get_req()->get_type()) {
++  case MSG_OSD_PG_RECOVERY_DELETE:
++  case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
++    return true;
++  default:
++    return false;
++  }
+ }
+ 
+ bool ECBackend::handle_message(
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index 877c5b3..120a581 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -90,6 +90,8 @@
+ #include "messages/MOSDECSubOpWriteReply.h"
+ #include "messages/MOSDECSubOpRead.h"
+ #include "messages/MOSDECSubOpReadReply.h"
++#include "messages/MOSDPGRecoveryDelete.h"
++#include "messages/MOSDPGRecoveryDeleteReply.h"
+ #include "messages/MOSDPGUpdateLogMissing.h"
+ #include "messages/MOSDPGUpdateLogMissingReply.h"
+ 
+@@ -6122,6 +6124,14 @@ epoch_t op_required_epoch(OpRequestRef op)
+     return replica_op_required_epoch<
+       MOSDPGUpdateLogMissingReply, MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY>(
+       op);
++  case MSG_OSD_PG_RECOVERY_DELETE:
++    return replica_op_required_epoch<
++      MOSDPGRecoveryDelete, MSG_OSD_PG_RECOVERY_DELETE>(
++      op);
++  case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
++    return replica_op_required_epoch<
++      MOSDPGRecoveryDeleteReply, MSG_OSD_PG_RECOVERY_DELETE_REPLY>(
++      op);
+   default:
+     assert(0);
+     return 0;
+@@ -6247,6 +6257,15 @@ bool OSD::dispatch_op_fast(OpRequestRef& op, OSDMapRef& osdmap)
+ 		      MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY>(
+       op, osdmap);
+     break;
++  case MSG_OSD_PG_RECOVERY_DELETE:
++    handle_replica_op<MOSDPGRecoveryDelete, MSG_OSD_PG_RECOVERY_DELETE>(
++      op, osdmap);
++    break;
++  case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
++    handle_replica_op<MOSDPGRecoveryDeleteReply,
++		      MSG_OSD_PG_RECOVERY_DELETE_REPLY>(
++      op, osdmap);
++    break;
+   default:
+     assert(0);
+   }
+diff --git a/src/osd/OSD.h b/src/osd/OSD.h
+index 8460395..b84d572 100644
+--- a/src/osd/OSD.h
++++ b/src/osd/OSD.h
+@@ -2360,6 +2360,8 @@ protected:
+     case MSG_OSD_REP_SCRUB:
+     case MSG_OSD_PG_UPDATE_LOG_MISSING:
+     case MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY:
++    case MSG_OSD_PG_RECOVERY_DELETE:
++    case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
+       return true;
+     default:
+       return false;
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index 87ba48b..d19f0e0 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -45,6 +45,9 @@
+ #include "messages/MOSDRepOp.h"
+ #include "messages/MOSDSubOpReply.h"
+ #include "messages/MOSDRepOpReply.h"
++#include "messages/MOSDPGRecoveryDelete.h"
++#include "messages/MOSDPGRecoveryDeleteReply.h"
++
+ #include "common/BackTrace.h"
+ 
+ #ifdef WITH_LTTNG
+@@ -5454,6 +5457,11 @@ bool PG::can_discard_request(OpRequestRef& op)
+     return can_discard_replica_op<MOSDSubOpReply, MSG_OSD_SUBOPREPLY>(op);
+   case MSG_OSD_REPOPREPLY:
+     return can_discard_replica_op<MOSDRepOpReply, MSG_OSD_REPOPREPLY>(op);
++  case MSG_OSD_PG_RECOVERY_DELETE:
++    return can_discard_replica_op<MOSDPGRecoveryDelete, MSG_OSD_PG_RECOVERY_DELETE>(op);
++
++  case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
++    return can_discard_replica_op<MOSDPGRecoveryDeleteReply, MSG_OSD_PG_RECOVERY_DELETE_REPLY>(op);
+ 
+   case MSG_OSD_EC_WRITE:
+     return can_discard_replica_op<MOSDECSubOpWrite, MSG_OSD_EC_WRITE>(op);
+@@ -5567,6 +5575,17 @@ bool PG::op_must_wait_for_map(epoch_t cur_epoch, OpRequestRef& op)
+     return !have_same_or_newer_map(
+       cur_epoch,
+       static_cast<MOSDPGUpdateLogMissingReply*>(op->get_req())->map_epoch);
++
++  case MSG_OSD_PG_RECOVERY_DELETE:
++    return !have_same_or_newer_map(
++      cur_epoch,
++      static_cast<MOSDPGRecoveryDelete*>(op->get_req())->map_epoch);
++
++  case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
++    return !have_same_or_newer_map(
++      cur_epoch,
++      static_cast<MOSDPGRecoveryDeleteReply*>(op->get_req())->map_epoch);
++
+   }
+   assert(0);
+   return false;
+diff --git a/src/osd/ReplicatedBackend.cc b/src/osd/ReplicatedBackend.cc
+index 6fe012f..6312904 100644
+--- a/src/osd/ReplicatedBackend.cc
++++ b/src/osd/ReplicatedBackend.cc
+@@ -134,6 +134,8 @@ bool ReplicatedBackend::can_handle_while_inactive(OpRequestRef op)
+   dout(10) << __func__ << ": " << op << dendl;
+   switch (op->get_req()->get_type()) {
+   case MSG_OSD_PG_PULL:
++  case MSG_OSD_PG_RECOVERY_DELETE:
++  case MSG_OSD_PG_RECOVERY_DELETE_REPLY:
+     return true;
+   case MSG_OSD_SUBOP: {
+     MOSDSubOp *m = static_cast<MOSDSubOp*>(op->get_req());
+diff --git a/src/test/encoding/types.h b/src/test/encoding/types.h
+index e202436..1d84f9e 100644
+--- a/src/test/encoding/types.h
++++ b/src/test/encoding/types.h
+@@ -560,6 +560,10 @@ MESSAGE(MOSDPGNotify)
+ MESSAGE(MOSDPGQuery)
+ #include "messages/MOSDPGRemove.h"
+ MESSAGE(MOSDPGRemove)
++#include "messages/MOSDPGRecoveryDelete.h"
++MESSAGE(MOSDPGRecoveryDelete)
++#include "messages/MOSDPGRecoveryDeleteReply.h"
++MESSAGE(MOSDPGRecoveryDeleteReply)
+ #include "messages/MOSDPGScan.h"
+ MESSAGE(MOSDPGScan)
+ #include "messages/MOSDPGTemp.h"

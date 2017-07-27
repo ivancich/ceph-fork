@@ -1,0 +1,39 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Mon, 24 Jul 2017 16:47:54 -0400
+Subject: osd/PG: downgrade warning about obsolete rollback to debug output
+
+We fix this automatically, so there's no need for the user to worry
+about it. This is more likely to occur now that deletes are part of
+recovery. This is not a cherry-pick because it does not occur in master
+due to changes made for ec overwrite support.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+
+Resolves: rhbz#1452780
+---
+ src/osd/PG.cc | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index 12e20ad..7f1bf35 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -3748,12 +3748,12 @@ void PG::_scan_rollback_obs(
+        i != rollback_obs.end();
+        ++i) {
+     if (i->generation < trimmed_to.version) {
+-      osd->clog->error() << "osd." << osd->whoami
+-			<< " pg " << info.pgid
+-			<< " found obsolete rollback obj "
+-			<< *i << " generation < trimmed_to "
+-			<< trimmed_to
+-			<< "...repaired";
++      dout(20) << "osd." << osd->whoami
++	       << " pg " << info.pgid
++	       << " found obsolete rollback obj "
++	       << *i << " generation < trimmed_to "
++	       << trimmed_to
++	       << "...repaired" << dendl;
+       t.remove(coll, *i);
+     }
+   }

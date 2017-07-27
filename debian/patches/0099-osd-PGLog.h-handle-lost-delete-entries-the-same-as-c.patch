@@ -1,0 +1,42 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Fri, 23 Jun 2017 20:33:45 -0400
+Subject: osd/PGLog.h: handle lost+delete entries the same as client deletes
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 6b3e6302a7217deebd114ddea22b3560e09068bf)
+
+Resolves: rhbz#1452780
+---
+ src/osd/PGLog.cc | 12 +-----------
+ 1 file changed, 1 insertion(+), 11 deletions(-)
+
+diff --git a/src/osd/PGLog.cc b/src/osd/PGLog.cc
+index 9f21334..67e9369 100644
+--- a/src/osd/PGLog.cc
++++ b/src/osd/PGLog.cc
+@@ -595,14 +595,6 @@ void PGLog::append_log_entries_update_missing(
+     }
+     if (cmp(p->soid, last_backfill, last_backfill_bitwise) <= 0) {
+       missing.add_next_event(*p);
+-      if (rollbacker) {
+-	// hack to match PG::mark_all_unfound_lost
+-	if (p->is_lost_delete() && p->mod_desc.can_rollback()) {
+-	  rollbacker->try_stash(p->soid, p->version.version);
+-	} else if (p->is_lost_delete()) {
+-	  rollbacker->remove(p->soid);
+-	}
+-      }
+     }
+   }
+   if (log)
+@@ -1000,9 +992,7 @@ void PGLog::read_log(ObjectStore *store, coll_t pg_coll,
+ 	continue;
+       if (did.count(i->soid)) continue;
+       did.insert(i->soid);
+-      
+-      if (i->is_delete()) continue;
+-      
++
+       bufferlist bv;
+       int r = store->getattr(
+ 	pg_coll,

@@ -1,0 +1,54 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Sun, 23 Jul 2017 02:27:50 -0400
+Subject: osd: PrimaryLogPG,
+ PGBackend: complete callback even if interval changes
+
+This avoids leaking the callback passed to remove_missing_object().
+Use EAGAIN to signal that the work was not completed, so we don't have
+to take the pg lock and check if the interval changed again in
+PGBackend.
+
+Fixes: http://tracker.ceph.com/issues/20747
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 3f591d4f43a455a273f334d82bab8c92aeb664a1)
+
+Resolves: rhbz#1452780
+---
+ src/osd/PGBackend.cc    | 6 ++++--
+ src/osd/ReplicatedPG.cc | 5 ++++-
+ 2 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/src/osd/PGBackend.cc b/src/osd/PGBackend.cc
+index 93701dc..f634d20 100644
+--- a/src/osd/PGBackend.cc
++++ b/src/osd/PGBackend.cc
+@@ -130,8 +130,10 @@ void PGBackend::handle_recovery_delete(OpRequestRef op)
+   ConnectionRef conn = m->get_connection();
+ 
+   gather.set_finisher(new FunctionContext(
+-    [=](int) {
+-      get_parent()->send_message_osd_cluster(reply, conn.get());
++    [=](int r) {
++      if (r != -EAGAIN) {
++	get_parent()->send_message_osd_cluster(reply, conn.get());
++      }
+     }));
+   gather.activate();
+ }
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index ef2b8b9..0622a77 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -9540,8 +9540,11 @@ void ReplicatedPG::remove_missing_object(const hobject_t &soid,
+ 	 t2.register_on_complete(on_complete);
+ 	 int r = osd->store->queue_transaction(osr.get(), std::move(t2), nullptr);
+ 	 assert(r == 0);
++	 unlock();
++       } else {
++	 unlock();
++	 on_complete->complete(-EAGAIN);
+        }
+-       unlock();
+      }));
+   int r = osd->store->queue_transaction(osr.get(), std::move(t), nullptr);
+   assert(r == 0);

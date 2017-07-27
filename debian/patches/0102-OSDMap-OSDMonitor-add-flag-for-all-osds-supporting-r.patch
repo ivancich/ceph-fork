@@ -1,0 +1,130 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Wed, 5 Jul 2017 20:12:57 -0400
+Subject: OSDMap, OSDMonitor: add flag for all osds supporting recovery deletes
+
+Just like sortbitwise, this can only be toggled on, and once on osds
+that do not support it are not allowed to boot.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 1ccc3c3cf7fd6dee82c45127ef004c0f54030cd4)
+
+Resolves: rhbz#1452780
+---
+ src/common/config_opts.h |  1 +
+ src/include/rados.h      |  1 +
+ src/mon/MonCommands.h    |  2 +-
+ src/mon/OSDMonitor.cc    | 21 +++++++++++++++++++++
+ src/osd/OSDMap.cc        |  2 ++
+ src/osd/PG.h             |  3 +++
+ 6 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 73d957a..5d95847 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -334,6 +334,7 @@ OPTION(mon_keyvaluedb, OPT_STR, "leveldb")   // type of keyvaluedb backend
+ 
+ // UNSAFE -- TESTING ONLY! Allows addition of a cache tier with preexisting snaps
+ OPTION(mon_debug_unsafe_allow_tier_with_nonempty_snaps, OPT_BOOL, false)
++OPTION(mon_debug_init_recovery_deletes, OPT_BOOL, true) // whether to initialize a new cluster with the recovery_deletes osdmap flag
+ 
+ OPTION(paxos_stash_full_interval, OPT_INT, 25)   // how often (in commits) to stash a full copy of the PaxosService state
+ OPTION(paxos_max_join_drift, OPT_INT, 10) // max paxos iterations before we must first sync the monitor stores
+diff --git a/src/include/rados.h b/src/include/rados.h
+index c58277f..fa1712d 100644
+--- a/src/include/rados.h
++++ b/src/include/rados.h
+@@ -145,6 +145,7 @@ extern const char *ceph_osd_state_name(int s);
+ #define CEPH_OSDMAP_NOREBALANCE (1<<14) /* block osd backfill unless pg is degraded */
+ #define CEPH_OSDMAP_SORTBITWISE (1<<15) /* use bitwise hobject_t sort */
+ #define CEPH_OSDMAP_REQUIRE_JEWEL (1<<16) /* require jewel for booting osds */
++#define CEPH_OSDMAP_RECOVERY_DELETES (1<<19) /* deletes performed during recovery instead of peering */
+ 
+ /*
+  * The error code to return when an OSD can't handle a write
+diff --git a/src/mon/MonCommands.h b/src/mon/MonCommands.h
+index 5d2604a..3636eea 100644
+--- a/src/mon/MonCommands.h
++++ b/src/mon/MonCommands.h
+@@ -628,7 +628,7 @@ COMMAND("osd erasure-code-profile ls", \
+ 	"list all erasure code profiles", \
+ 	"osd", "r", "cli,rest")
+ COMMAND("osd set " \
+-	"name=key,type=CephChoices,strings=full|pause|noup|nodown|noout|noin|nobackfill|norebalance|norecover|noscrub|nodeep-scrub|notieragent|sortbitwise|require_jewel_osds", \
++	"name=key,type=CephChoices,strings=full|pause|noup|nodown|noout|noin|nobackfill|norebalance|norecover|noscrub|nodeep-scrub|notieragent|sortbitwise|recovery_deletes|require_jewel_osds", \
+ 	"set <key>", "osd", "rw", "cli,rest")
+ COMMAND("osd unset " \
+ 	"name=key,type=CephChoices,strings=full|pause|noup|nodown|noout|noin|nobackfill|norebalance|norecover|noscrub|nodeep-scrub|notieragent|sortbitwise", \
+diff --git a/src/mon/OSDMonitor.cc b/src/mon/OSDMonitor.cc
+index aa0296c..c4349df 100644
+--- a/src/mon/OSDMonitor.cc
++++ b/src/mon/OSDMonitor.cc
+@@ -125,6 +125,11 @@ void OSDMonitor::create_initial()
+   // new clusters should sort bitwise by default.
+   newmap.set_flag(CEPH_OSDMAP_SORTBITWISE);
+ 
++  if (!g_conf->mon_debug_init_recovery_deletes) {
++    // new clusters should set recovery deletes by default.
++    newmap.set_flag(CEPH_OSDMAP_RECOVERY_DELETES);
++  }
++
+   // new cluster should require jewel by default
+   newmap.set_flag(CEPH_OSDMAP_REQUIRE_JEWEL);
+ 
+@@ -1998,6 +2003,14 @@ bool OSDMonitor::preprocess_boot(MonOpRequestRef op)
+     goto ignore;
+   }
+ 
++  if (osdmap.test_flag(CEPH_OSDMAP_RECOVERY_DELETES) &&
++      !(m->osd_features & CEPH_FEATURE_OSD_RECOVERY_DELETES)) {
++    mon->clog->info() << "disallowing boot of OSD "
++		      << m->get_orig_source_inst()
++		      << " because 'recovery_deletes' osdmap flag is set and OSD lacks the OSD_RECOVERY_DELETES feature";
++    goto ignore;
++  }
++
+   if (any_of(osdmap.get_pools().begin(),
+ 	     osdmap.get_pools().end(),
+ 	     [](const std::pair<int64_t,pg_pool_t>& pool)
+@@ -6372,6 +6385,14 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
+ 	ss << "not all up OSDs have OSD_BITWISE_HOBJ_SORT feature";
+ 	err = -EPERM;
+       }
++    } else if (key == "recovery_deletes") {
++      if (osdmap.get_up_osd_features() & CEPH_FEATURE_OSD_RECOVERY_DELETES) {
++	return prepare_set_flag(op, CEPH_OSDMAP_RECOVERY_DELETES);
++      } else {
++	ss << "not all up OSDs have OSD_RECOVERY_DELETES feature";
++	err = -EPERM;
++	goto reply;
++      }
+     } else if (key == "require_jewel_osds") {
+       if (osdmap.get_up_osd_features() & CEPH_FEATURE_SERVER_JEWEL) {
+ 	return prepare_set_flag(op, CEPH_OSDMAP_REQUIRE_JEWEL);
+diff --git a/src/osd/OSDMap.cc b/src/osd/OSDMap.cc
+index d2fb34f..2f0ca97 100644
+--- a/src/osd/OSDMap.cc
++++ b/src/osd/OSDMap.cc
+@@ -2387,6 +2387,8 @@ string OSDMap::get_flag_string(unsigned f)
+     s += ",sortbitwise";
+   if (f & CEPH_OSDMAP_REQUIRE_JEWEL)
+     s += ",require_jewel_osds";
++  if (f & CEPH_OSDMAP_RECOVERY_DELETES)
++    s += ",recovery_deletes";
+   if (s.length())
+     s.erase(0, 1);
+   return s;
+diff --git a/src/osd/PG.h b/src/osd/PG.h
+index e1e0188..7f176f2 100644
+--- a/src/osd/PG.h
++++ b/src/osd/PG.h
+@@ -2157,6 +2157,9 @@ public:
+ 
+   uint64_t get_min_acting_features() const { return acting_features; }
+   uint64_t get_min_upacting_features() const { return upacting_features; }
++  bool perform_deletes_during_peering() const {
++    return !(get_osdmap()->test_flag(CEPH_OSDMAP_RECOVERY_DELETES));
++  }
+ 
+   /// true if we will sort hobjects bitwise for this pg interval
+   bool get_sort_bitwise() const {

@@ -1,0 +1,108 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Mon, 26 Jun 2017 18:14:02 -0400
+Subject: osd/PG: handle deletes in MissingLoc
+
+There's no source needed for deleting an object, so don't keep track
+of this. Update is_readable_with_acting/is_unfound, and add an
+is_deleted() method to be used later.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 3a9d056d843bcafd26d78950b84e2844f8a3a9a1)
+
+Conflicts: find() vs count()
+
+Resolves: rhbz#1452780
+---
+ src/osd/PG.cc | 18 ++++++++++++++++--
+ src/osd/PG.h  | 13 ++++++++++++-
+ 2 files changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index 5427e2c..6b6d4c2 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -491,8 +491,13 @@ bool PG::search_for_missing(
+ bool PG::MissingLoc::readable_with_acting(
+   const hobject_t &hoid,
+   const set<pg_shard_t> &acting) const {
+-  if (!needs_recovery(hoid)) return true;
+-  if (!missing_loc.count(hoid)) return false;
++  if (!needs_recovery(hoid))
++    return true;
++  if (is_deleted(hoid))
++    return false;
++  auto missing_loc_entry = missing_loc.find(hoid);
++  if (missing_loc_entry == missing_loc.end())
++    return false;
+   const set<pg_shard_t> &locs = missing_loc.find(hoid)->second;
+   dout(10) << __func__ << ": locs:" << locs << dendl;
+   set<pg_shard_t> have_acting;
+@@ -517,6 +522,8 @@ void PG::MissingLoc::add_batch_sources_info(
+       handle->reset_tp_timeout();
+       loop = 0;
+     }
++    if (i->second.is_delete())
++      continue;
+     missing_loc[i->first].insert(sources.begin(), sources.end());
+     missing_loc_sources.insert(sources.begin(), sources.end());
+   }
+@@ -541,6 +548,12 @@ bool PG::MissingLoc::add_source_info(
+       handle->reset_tp_timeout();
+       loop = 0;
+     }
++    if (p->second.is_delete()) {
++      ldout(pg->cct, 10) << __func__ << " " << soid
++			 << " delete, ignoring source" << dendl;
++      found_missing = true;
++      continue;
++    }
+     if (oinfo.last_update < need) {
+       dout(10) << "search_for_missing " << soid << " " << need
+ 	       << " also missing on osd." << fromosd
+@@ -1788,6 +1801,7 @@ void PG::activate(ObjectStore::Transaction& t,
+     for (set<pg_shard_t>::iterator i = actingbackfill.begin();
+ 	 i != actingbackfill.end();
+ 	 ++i) {
++      dout(20) << __func__ << " setting up missing_loc from shard " << *i << " " << dendl;
+       if (*i == get_primary()) {
+ 	missing_loc.add_active_missing(missing);
+         if (!missing.have_missing())
+diff --git a/src/osd/PG.h b/src/osd/PG.h
+index f24554a..e1e0188 100644
+--- a/src/osd/PG.h
++++ b/src/osd/PG.h
+@@ -353,8 +353,14 @@ public:
+ 	*v = i->second.need;
+       return true;
+     }
++    bool is_deleted(const hobject_t &hoid) const {
++      auto i = needs_recovery_map.find(hoid);
++      if (i == needs_recovery_map.end())
++	return false;
++      return i->second.is_delete();
++    }
+     bool is_unfound(const hobject_t &hoid) const {
+-      return needs_recovery(hoid) && (
++      return needs_recovery(hoid) && !is_deleted(hoid) && (
+ 	!missing_loc.count(hoid) ||
+ 	!(*is_recoverable)(missing_loc.find(hoid)->second));
+     }
+@@ -395,6 +401,9 @@ public:
+ 	if (j == needs_recovery_map.end()) {
+ 	  needs_recovery_map.insert(*i);
+ 	} else {
++	  lgeneric_dout(pg->cct, 0) << this << " " << pg->info.pgid << " unexpected need for "
++				    << i->first << " have " << j->second
++				    << " tried to add " << i->second << dendl;
+ 	  assert(i->second.need == j->second.need);
+ 	}
+       }
+@@ -465,6 +474,8 @@ public:
+ 	return; // recovered!
+ 
+       needs_recovery_map[hoid] = *item;
++      if (item->is_delete())
++	return;
+       auto mliter =
+ 	missing_loc.insert(make_pair(hoid, set<pg_shard_t>())).first;
+       assert(info.last_backfill.is_max());

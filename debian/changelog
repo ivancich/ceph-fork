@@ -1,3 +1,40 @@
+ceph (10.2.7-31redhat1) stable; urgency=medium
+
+  * message, osd: add request/response messages for deletes during
+    recovery (rhbz#1452780)
+  * osd: add a 'delete' flag to missing items and related functions
+    (rhbz#1452780)
+  * osd/PG: handle deletes in MissingLoc (rhbz#1452780)
+  * osd/PrimaryLogPG,PGBackend: handle deletes during recovery
+    (rhbz#1452780)
+  * osd/PrimaryLogPG: check whether clones missing from the cache are
+    recovering (rhbz#1452780)
+  * osd/PGLog: client deletes are now part of the missing set
+    (rhbz#1452780)
+  * osd/PGLog.h: handle lost+delete entries the same as client deletes
+    (rhbz#1452780)
+  * osd/PGLog: reset complete_to when appending lost_delete entries
+    (rhbz#1452780)
+  * include/ceph_features.h: add feature bit for handling deletes
+    during recovery (rhbz#1452780)
+  * OSDMap, OSDMonitor: add flag for all osds supporting recovery
+    deletes (rhbz#1452780)
+  * osd_types, Objecter: make recovery_deletes feature create a new
+    interval (rhbz#1452780)
+  * osd_types, PGLog: encode missing based on features (rhbz#1452780)
+  * PGLog, PrimaryLogPG: rebuild the missing set when the OSDMap flag
+    is set (rhbz#1452780)
+  * osd/ReplicatedPG: explicitly remove objects when deleting them
+    (rhbz#1452780)
+  * osd/PrimaryLogPG: skip deleted missing objects in pg[n]ls
+    (rhbz#1452780)
+  * osd/PG: downgrade warning about obsolete rollback to debug output
+    (rhbz#1452780)
+  * osd: PrimaryLogPG, PGBackend: complete callback even if interval
+    changes (rhbz#1452780)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Thu, 27 Jul 2017 13:46:57 -0400
+
 ceph (10.2.7-30redhat1) stable; urgency=medium
 
   * rgw: add a field to store generic user data in the bucket index,

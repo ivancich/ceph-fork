@@ -1,0 +1,53 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Tue, 20 Jun 2017 20:29:04 -0400
+Subject: osd/PrimaryLogPG: check whether clones missing from the cache are
+ recovering
+
+This appears now that deletes are not processed inline from the PG log
+- a clone that is missing only on a peer (due to being deleted) would
+not stop rollback from promoting the clone, resulting in hitting an
+assert on the replica when the promotion tried to write to the missing
+object on the replica.
+
+This only affects cache tiering due to the dependence on the
+MAP_SNAP_CLONE flag in find_object_context() - missing_oid was not being checked for being
+recovered, unlike the target oid for the op (in do_op()).
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit b41fa997261658003bd6bdd9ccd2665acae4cb7c)
+
+Resolves: rhbz#1452780
+---
+ src/osd/ReplicatedPG.cc | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index af472be..ee067bb 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -6112,8 +6112,8 @@ int ReplicatedPG::_rollback_to(OpContext *ctx, ceph_osd_op& op)
+     &rollback_to, false, false, &missing_oid);
+   if (ret == -EAGAIN) {
+     /* clone must be missing */
+-    assert(is_missing_object(missing_oid));
+-    dout(20) << "_rollback_to attempted to roll back to a missing object "
++    assert(is_degraded_or_backfilling_object(missing_oid));
++    dout(20) << "_rollback_to attempted to roll back to a missing or backfilling clone "
+ 	     << missing_oid << " (requested snapid: ) " << snapid << dendl;
+     block_write_on_degraded_snap(missing_oid, ctx->op);
+     return ret;
+@@ -9203,7 +9203,13 @@ int ReplicatedPG::find_object_context(const hobject_t& oid,
+     if (pmissing)
+       *pmissing = soid;
+     put_snapset_context(ssc);
+-    return -ENOENT;
++    if (is_degraded_or_backfilling_object(soid)) {
++      dout(20) << __func__ << " clone is degraded or backfilling " << soid << dendl;
++      return -EAGAIN;
++    } else {
++      dout(20) << __func__ << " missing clone " << soid << dendl;
++      return -ENOENT;
++    }
+   }
+ 
+   if (!obc->ssc) {

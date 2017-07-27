@@ -1,0 +1,616 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Mon, 3 Jul 2017 21:06:23 -0400
+Subject: osd_types, PGLog: encode missing based on features
+
+Store whether the missing set should contain deletes, so that
+persisted versions can be rebuilt if needed. Make missing_item
+versioned, since it's persisted by the pg_log as an individual omap
+value.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit a51d5fd9a11e852361df5e3e90d04710a8f19cb4)
+
+Resolves: rhbz#1452780
+---
+ src/include/encoding.h    |  10 +++
+ src/osd/PG.cc             |  15 +++--
+ src/osd/PGLog.cc          |  24 ++++++-
+ src/osd/PGLog.h           |   4 ++
+ src/osd/osd_types.cc      |  29 ++++-----
+ src/osd/osd_types.h       |  59 +++++++++++------
+ src/test/encoding/types.h |   2 +-
+ src/test/osd/TestPGLog.cc | 161 +++++++++++++++++++++++++++++++++++++++++++++-
+ 8 files changed, 256 insertions(+), 48 deletions(-)
+
+diff --git a/src/include/encoding.h b/src/include/encoding.h
+index 2657c62..5dc8038 100644
+--- a/src/include/encoding.h
++++ b/src/include/encoding.h
+@@ -636,6 +636,16 @@ inline void encode(const std::map<T,U>& m, bufferlist& bl, uint64_t features)
+     encode(p->second, bl, features);
+   }
+ }
++template<class T, class U, class C>
++inline void encode(const std::map<T,U,C>& m, bufferlist& bl, uint64_t features)
++{
++  __u32 n = (__u32)(m.size());
++  encode(n, bl);
++  for (typename std::map<T,U,C>::const_iterator p = m.begin(); p != m.end(); ++p) {
++    encode(p->first, bl, features);
++    encode(p->second, bl, features);
++  }
++}
+ template<class T, class U>
+ inline void decode(std::map<T,U>& m, bufferlist::iterator& p)
+ {
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index 6b6d4c2..12e20ad 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -1773,11 +1773,17 @@ void PG::activate(ObjectStore::Transaction& t,
+       if (m && pi.last_backfill != hobject_t()) {
+         for (list<pg_log_entry_t>::iterator p = m->log.log.begin();
+              p != m->log.log.end();
+-             ++p)
+-	  if (cmp(p->soid, pi.last_backfill, get_sort_bitwise()) <= 0)
+-	    pm.add_next_event(*p);
++             ++p) {
++	  if (cmp(p->soid, pi.last_backfill, get_sort_bitwise()) <= 0) {
++	    if (perform_deletes_during_peering() && p->is_delete()) {
++	      pm.rm(p->soid, p->version);
++	    } else {
++	      pm.add_next_event(*p);
++	    }
++	  }
++	}
+       }
+-      
++
+       if (m) {
+ 	dout(10) << "activate peer osd." << peer << " sending " << m->log << dendl;
+ 	//m->log.print(cout);
+@@ -3190,6 +3196,7 @@ void PG::read_state(ObjectStore *store, bufferlist &bl)
+ 		    info_struct_v);
+   assert(r >= 0);
+ 
++  pg_log.set_may_include_deletes(!perform_deletes_during_peering());
+   ostringstream oss;
+   pg_log.read_log(store,
+ 		  coll,
+diff --git a/src/osd/PGLog.cc b/src/osd/PGLog.cc
+index 67e9369..475eeb2 100644
+--- a/src/osd/PGLog.cc
++++ b/src/osd/PGLog.cc
+@@ -397,7 +397,8 @@ void PGLog::_merge_object_divergent_entries(
+ 		       << *objiter->second << ", already merged" << dendl;
+ 
+     // ensure missing has been updated appropriately
+-    if (objiter->second->is_update() || objiter->second->is_delete()) {
++    if (objiter->second->is_update() ||
++	(missing.may_include_deletes && objiter->second->is_delete())) {
+       assert(missing.is_missing(hoid) &&
+ 	     missing.missing[hoid].need == objiter->second->version);
+     } else {
+@@ -594,7 +595,23 @@ void PGLog::append_log_entries_update_missing(
+       log->index(ne);
+     }
+     if (cmp(p->soid, last_backfill, last_backfill_bitwise) <= 0) {
+-      missing.add_next_event(*p);
++      if (missing.may_include_deletes) {
++	missing.add_next_event(*p);
++      } else {
++	if (p->is_delete()) {
++	  missing.rm(p->soid, p->version);
++	} else {
++	  missing.add_next_event(*p);
++	}
++	if (rollbacker) {
++	  // hack to match PG::mark_all_unfound_lost
++	  if (p->is_lost_delete() && p->mod_desc.can_rollback()) {
++	    rollbacker->try_stash(p->soid, p->version.version);
++	  } else if (p->is_delete()) {
++	    rollbacker->remove(p->soid);
++	  }
++	}
++      }
+     }
+   }
+   if (log)
+@@ -993,6 +1010,9 @@ void PGLog::read_log(ObjectStore *store, coll_t pg_coll,
+       if (did.count(i->soid)) continue;
+       did.insert(i->soid);
+ 
++      if (!missing.may_include_deletes && i->is_delete())
++	continue;
++
+       bufferlist bv;
+       int r = store->getattr(
+ 	pg_coll,
+diff --git a/src/osd/PGLog.h b/src/osd/PGLog.h
+index 37b155c..c214bc7 100644
+--- a/src/osd/PGLog.h
++++ b/src/osd/PGLog.h
+@@ -542,6 +542,10 @@ public:
+     missing.add_next_event(e);
+   }
+ 
++  void set_may_include_deletes(bool inc) {
++    missing.may_include_deletes = inc;
++  }
++
+   //////////////////// get or set log ////////////////////
+ 
+   const IndexedLog &get_log() const { return log; }
+diff --git a/src/osd/osd_types.cc b/src/osd/osd_types.cc
+index 8e22872..e5640fd 100644
+--- a/src/osd/osd_types.cc
++++ b/src/osd/osd_types.cc
+@@ -3803,17 +3803,8 @@ void pg_missing_t::resort(bool sort_bitwise)
+ void pg_missing_t::encode(bufferlist &bl) const
+ {
+   ENCODE_START(4, 2, bl);
+-  ::encode(missing, bl);
+-  // since pg_missing_t::item was not versioned, we encode the new flags
+-  // field here explicitly
+-  map<hobject_t, uint8_t, hobject_t::ComparatorWithDefault> missing_flags;
+-  for (const auto &p : missing) {
+-    if (p.second.flags != pg_missing_t::item::FLAG_NONE) {
+-      missing_flags.insert(make_pair(p.first,
+-				     static_cast<uint8_t>(p.second.flags)));
+-    }
+-  }
+-  ::encode(missing_flags, bl);
++  ::encode(missing, bl, may_include_deletes ? CEPH_FEATURE_OSD_RECOVERY_DELETES : (uint64_t)0);
++  ::encode(may_include_deletes, bl);
+   ENCODE_FINISH(bl);
+ }
+ 
+@@ -3822,12 +3813,7 @@ void pg_missing_t::decode(bufferlist::iterator &bl, int64_t pool)
+   DECODE_START_LEGACY_COMPAT_LEN(4, 2, 2, bl);
+   ::decode(missing, bl);
+   if (struct_v >= 4) {
+-    map<hobject_t, uint8_t, hobject_t::ComparatorWithDefault> missing_flags;
+-    ::decode(missing_flags, bl);
+-    for (const auto &p : missing_flags) {
+-      assert(missing.find(p.first) != missing.end());
+-      missing[p.first].flags = static_cast<pg_missing_t::item::missing_flags_t>(p.second);
+-    }
++    ::decode(may_include_deletes, bl);
+   }
+   DECODE_FINISH(bl);
+ 
+@@ -3865,6 +3851,7 @@ void pg_missing_t::dump(Formatter *f) const
+     f->close_section();
+   }
+   f->close_section();
++  f->dump_bool("may_include_deletes", may_include_deletes);
+ }
+ 
+ void pg_missing_t::generate_test_instances(list<pg_missing_t*>& o)
+@@ -3880,12 +3867,14 @@ ostream& operator<<(ostream& out, const pg_missing_t::item& i)
+   out << i.need;
+   if (i.have != eversion_t())
+     out << "(" << i.have << ")";
++  out << " flags = " << i.flag_str();
+   return out;
+ }
+ 
+ ostream& operator<<(ostream& out, const pg_missing_t& missing) 
+ {
+-  out << "missing(" << missing.num_missing();
++  out << "missing(" << missing.num_missing()
++      << " may_include_deletes = " << missing.may_include_deletes;
+   //if (missing.num_lost()) out << ", " << missing.num_lost() << " lost";
+   out << ")";
+   return out;
+@@ -3906,6 +3895,9 @@ void pg_missing_t::swap(pg_missing_t& o)
+ {
+   missing.swap(o.missing);
+   rmissing.swap(o.rmissing);
++  bool tmp_may_include_deletes = o.may_include_deletes;
++  o.may_include_deletes = may_include_deletes;
++  may_include_deletes = tmp_may_include_deletes;
+ }
+ 
+ bool pg_missing_t::is_missing(const hobject_t& oid) const
+@@ -4023,6 +4015,7 @@ void pg_missing_t::split_into(
+   unsigned split_bits,
+   pg_missing_t *omissing)
+ {
++  omissing->may_include_deletes = may_include_deletes;
+   unsigned mask = ~((~0)<<split_bits);
+   for (map<hobject_t, item, hobject_t::ComparatorWithDefault>::iterator i = missing.begin();
+        i != missing.end();
+diff --git a/src/osd/osd_types.h b/src/osd/osd_types.h
+index 254881b..8a60a81 100644
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -2776,13 +2776,37 @@ struct pg_missing_t {
+       set_delete(is_delete);
+     }
+ 
+-    void encode(bufferlist& bl) const {
+-      ::encode(need, bl);
+-      ::encode(have, bl);
++    void encode(bufferlist& bl, uint64_t features) const {
++      if ((features & CEPH_FEATURE_OSD_RECOVERY_DELETES) == CEPH_FEATURE_OSD_RECOVERY_DELETES) {
++	// encoding a zeroed eversion_t to differentiate between this and
++	// legacy unversioned encoding - a need value of 0'0 is not
++	// possible. This can be replaced with the legacy encoding
++	// macros post-luminous.
++	eversion_t e;
++	::encode(e, bl);
++	::encode(need, bl);
++	::encode(have, bl);
++	::encode(static_cast<uint8_t>(flags), bl);
++      } else {
++	// legacy unversioned encoding
++	::encode(need, bl);
++	::encode(have, bl);
++      }
+     }
+     void decode(bufferlist::iterator& bl) {
+-      ::decode(need, bl);
+-      ::decode(have, bl);
++      eversion_t e;
++      ::decode(e, bl);
++      if (e != eversion_t()) {
++	// legacy encoding, this is the need value
++	need = e;
++	::decode(have, bl);
++      } else {
++	::decode(need, bl);
++	::decode(have, bl);
++	uint8_t f;
++	::decode(f, bl);
++	flags = static_cast<missing_flags_t>(f);
++      }
+     }
+ 
+     void set_delete(bool is_delete) {
+@@ -2793,26 +2817,18 @@ struct pg_missing_t {
+       return (flags & FLAG_DELETE) == FLAG_DELETE;
+     }
+ 
+-    void encode_with_flags(bufferlist& bl) const {
+-      encode(bl);
+-      ::encode(static_cast<uint8_t>(flags), bl);
+-    }
+-
+-    void decode_with_flags(bufferlist::iterator& bl) {
+-      decode(bl);
+-      // no versioning on this, but it's stored in a single omap value,
+-      // so just check for the end of the bufferlist
+-      if (!bl.end()) {
+-	uint8_t f;
+-	::decode(f, bl);
+-	flags = static_cast<missing_flags_t>(f);
++    string flag_str() const {
++      if (flags == FLAG_NONE) {
++	return "none";
++      } else {
++	return "delete";
+       }
+     }
+ 
+     void dump(Formatter *f) const {
+       f->dump_stream("need") << need;
+       f->dump_stream("have") << have;
+-      f->dump_stream("flags") << (flags == FLAG_NONE ? "none" : "delete");
++      f->dump_stream("flags") << flag_str();
+     }
+     static void generate_test_instances(list<item*>& o) {
+       o.push_back(new item);
+@@ -2825,10 +2841,11 @@ struct pg_missing_t {
+       o.back()->flags = FLAG_DELETE;
+     }
+   }; 
+-  WRITE_CLASS_ENCODER(item)
++  WRITE_CLASS_ENCODER_FEATURES(item)
+ 
+   map<hobject_t, item, hobject_t::ComparatorWithDefault> missing;  // oid -> (need v, have v)
+   map<version_t, hobject_t> rmissing;  // v -> oid
++  bool may_include_deletes = false;
+ 
+   unsigned int num_missing() const;
+   bool have_missing() const;
+@@ -2858,7 +2875,7 @@ struct pg_missing_t {
+   void dump(Formatter *f) const;
+   static void generate_test_instances(list<pg_missing_t*>& o);
+ };
+-WRITE_CLASS_ENCODER(pg_missing_t::item)
++WRITE_CLASS_ENCODER_FEATURES(pg_missing_t::item)
+ WRITE_CLASS_ENCODER(pg_missing_t)
+ 
+ ostream& operator<<(ostream& out, const pg_missing_t::item& i);
+diff --git a/src/test/encoding/types.h b/src/test/encoding/types.h
+index 1d84f9e..be64a70 100644
+--- a/src/test/encoding/types.h
++++ b/src/test/encoding/types.h
+@@ -69,7 +69,7 @@ TYPE(pg_interval_t)
+ TYPE_FEATUREFUL(pg_query_t)
+ TYPE(pg_log_entry_t)
+ TYPE(pg_log_t)
+-TYPE(pg_missing_t::item)
++TYPE_FEATUREFUL(pg_missing_t::item)
+ TYPE(pg_missing_t)
+ TYPE(pg_ls_response_t)
+ TYPE(pg_nls_response_t)
+diff --git a/src/test/osd/TestPGLog.cc b/src/test/osd/TestPGLog.cc
+index 9c329e9..aa97e51 100644
+--- a/src/test/osd/TestPGLog.cc
++++ b/src/test/osd/TestPGLog.cc
+@@ -30,7 +30,9 @@
+ class PGLogTest : public ::testing::Test, protected PGLog {
+ public:
+   PGLogTest() : PGLog(g_ceph_context) {}
+-  virtual void SetUp() { }
++  virtual void SetUp() {
++    missing.may_include_deletes = true;
++  }
+ 
+   virtual void TearDown() {
+     clear();
+@@ -96,6 +98,7 @@ public:
+ 
+     set<hobject_t, hobject_t::BitwiseComparator> toremove;
+     list<pg_log_entry_t> torollback;
++    bool deletes_during_peering;
+ 
+   private:
+     IndexedLog fullauth;
+@@ -103,7 +106,10 @@ public:
+     pg_info_t authinfo;
+     pg_info_t divinfo;
+   public:
++    TestCase() : deletes_during_peering(false) {}
+     void setup() {
++      init.may_include_deletes = !deletes_during_peering;
++      final.may_include_deletes = !deletes_during_peering;
+       fullauth.log.insert(fullauth.log.end(), base.begin(), base.end());
+       fullauth.log.insert(fullauth.log.end(), auth.begin(), auth.end());
+       fulldiv.log.insert(fulldiv.log.end(), base.begin(), base.end());
+@@ -257,7 +263,13 @@ public:
+     for (list<pg_log_entry_t>::const_iterator i = tcase.auth.begin();
+ 	 i != tcase.auth.end();
+ 	 ++i) {
+-      omissing.add_next_event(*i);
++      if (i->version > oinfo.last_update) {
++	if (i->is_delete() && tcase.deletes_during_peering) {
++	  omissing.rm(i->soid, i->version);
++	} else {
++	  omissing.add_next_event(*i);
++	}
++      }
+     }
+     verify_missing(tcase, omissing);
+   }
+@@ -874,6 +886,7 @@ TEST_F(PGLogTest, merge_log) {
+     oinfo.stats.reported_epoch = 1;
+     log.tail = olog.tail = eversion_t(1, 1);
+     log.head = olog.head = eversion_t(2, 1);
++    missing.may_include_deletes = false;
+ 
+     EXPECT_FALSE(missing.have_missing());
+     EXPECT_EQ(0U, log.log.size());
+@@ -952,6 +965,7 @@ TEST_F(PGLogTest, merge_log) {
+     list<hobject_t> remove_snap;
+     bool dirty_info = false;
+     bool dirty_big_info = false;
++    missing.may_include_deletes = false;
+ 
+     {
+       pg_log_entry_t e;
+@@ -1049,6 +1063,7 @@ TEST_F(PGLogTest, merge_log) {
+     bool dirty_big_info = false;
+ 
+     hobject_t divergent_object;
++    missing.may_include_deletes = true;
+ 
+     {
+       pg_log_entry_t e;
+@@ -1139,6 +1154,127 @@ TEST_F(PGLogTest, merge_log) {
+        tail > (1,1)  |  x5   |  (1,1)  < tail
+             |        |       |         |
+             |        |       |         |
++            | (1,2)  |  x3   |  (1,2)  < lower_bound
++            |        |       |         |
++            |        |       |         |
++       head > (1,3)  |  x9   |         |
++            | DELETE |       |         |
++            |        |       |         |
++            |        |  x9   |  (2,3)  |
++            |        |       |  MODIFY |
++            |        |       |         |
++            |        |  x7   |  (2,4)  < head
++            |        |       |  DELETE |
++            +--------+-------+---------+
++
++      The log entry (1,3) deletes the object x9 but the olog entry (2,3) modifies
++      it and is authoritative : the log entry (1,3) is divergent.
++
++  */
++  {
++    clear();
++
++    ObjectStore::Transaction t;
++    pg_log_t olog;
++    pg_info_t oinfo;
++    pg_shard_t fromosd;
++    pg_info_t info;
++    list<hobject_t> remove_snap;
++    bool dirty_info = false;
++    bool dirty_big_info = false;
++
++    hobject_t divergent_object;
++
++    {
++      pg_log_entry_t e;
++      e.mod_desc.mark_unrollbackable();
++
++      e.version = eversion_t(1, 1);
++      e.soid.set_hash(0x5);
++      log.tail = e.version;
++      log.log.push_back(e);
++      e.version = eversion_t(1, 2);
++      e.soid.set_hash(0x3);
++      log.log.push_back(e);
++      e.version = eversion_t(1,3);
++      e.soid.set_hash(0x9);
++      divergent_object = e.soid;
++      e.op = pg_log_entry_t::DELETE;
++      log.log.push_back(e);
++      log.head = e.version;
++      log.index();
++
++      info.last_update = log.head;
++
++      e.version = eversion_t(1, 1);
++      e.soid.set_hash(0x5);
++      olog.tail = e.version;
++      olog.log.push_back(e);
++      e.version = eversion_t(1, 2);
++      e.soid.set_hash(0x3);
++      olog.log.push_back(e);
++      e.version = eversion_t(2, 3);
++      e.soid.set_hash(0x9);
++      e.op = pg_log_entry_t::MODIFY;
++      olog.log.push_back(e);
++      e.version = eversion_t(2, 4);
++      e.soid.set_hash(0x7);
++      e.op = pg_log_entry_t::DELETE;
++      olog.log.push_back(e);
++      olog.head = e.version;
++    }
++
++    snapid_t purged_snap(1);
++    {
++      oinfo.last_update = olog.head;
++      oinfo.purged_snaps.insert(purged_snap);
++    }
++
++    EXPECT_FALSE(missing.have_missing());
++    EXPECT_EQ(1U, log.objects.count(divergent_object));
++    EXPECT_EQ(3U, log.log.size());
++    EXPECT_TRUE(remove_snap.empty());
++    EXPECT_EQ(log.head, info.last_update);
++    EXPECT_TRUE(info.purged_snaps.empty());
++    EXPECT_FALSE(is_dirty());
++    EXPECT_FALSE(dirty_info);
++    EXPECT_FALSE(dirty_big_info);
++
++    TestHandler h(remove_snap);
++    missing.may_include_deletes = false;
++    merge_log(t, oinfo, olog, fromosd, info, &h,
++              dirty_info, dirty_big_info);
++
++    /* When the divergent entry is a DELETE and the authoritative
++       entry is a MODIFY, the object will be added to missing : it is
++       a verifiable side effect proving the entry was identified
++       to be divergent.
++    */
++    EXPECT_TRUE(missing.is_missing(divergent_object));
++    EXPECT_EQ(1U, log.objects.count(divergent_object));
++    EXPECT_EQ(4U, log.log.size());
++    /* DELETE entries from olog that are appended to the hed of the
++       log, and the divergent version of the object is removed (added
++       to remove_snap). When peering handles deletes, it is the earlier
++       version that is in the removed list.
++     */
++    EXPECT_EQ(0x7U, remove_snap.front().get_hash());
++    EXPECT_EQ(log.head, info.last_update);
++    EXPECT_TRUE(info.purged_snaps.contains(purged_snap));
++    EXPECT_TRUE(is_dirty());
++    EXPECT_TRUE(dirty_info);
++    EXPECT_TRUE(dirty_big_info);
++  }
++
++  /*        +--------------------------+
++            |  log              olog   |
++            +--------+-------+---------+
++            |        |object |         |
++            |version | hash  | version |
++            |        |       |         |
++       tail > (1,1)  |  x5   |  (1,1)  < tail
++            |        |       |         |
++            |        |       |         |
+             | (1,4)  |  x7   |  (1,4)  < head
+             |        |       |         |
+             |        |       |         |
+@@ -1209,6 +1345,7 @@ TEST_F(PGLogTest, merge_log) {
+     EXPECT_FALSE(dirty_big_info);
+ 
+     TestHandler h(remove_snap);
++    missing.may_include_deletes = false;
+     merge_log(t, oinfo, olog, fromosd, info, &h,
+               dirty_info, dirty_big_info);
+ 
+@@ -1330,6 +1467,7 @@ TEST_F(PGLogTest, proc_replica_log) {
+     EXPECT_EQ(last_update, oinfo.last_update);
+     EXPECT_EQ(last_complete, oinfo.last_complete);
+ 
++    missing.may_include_deletes = false;
+     proc_replica_log(t, oinfo, olog, omissing, from);
+ 
+     EXPECT_TRUE(t.empty());
+@@ -1406,6 +1544,7 @@ TEST_F(PGLogTest, proc_replica_log) {
+     EXPECT_EQ(olog.head, oinfo.last_update);
+     EXPECT_EQ(olog.head, oinfo.last_complete);
+ 
++    missing.may_include_deletes = false;
+     proc_replica_log(t, oinfo, olog, omissing, from);
+ 
+     EXPECT_TRUE(t.empty());
+@@ -1510,6 +1649,7 @@ TEST_F(PGLogTest, proc_replica_log) {
+     EXPECT_EQ(olog.head, oinfo.last_update);
+     EXPECT_EQ(olog.head, oinfo.last_complete);
+ 
++    missing.may_include_deletes = false;
+     proc_replica_log(t, oinfo, olog, omissing, from);
+ 
+     EXPECT_TRUE(t.empty());
+@@ -1599,6 +1739,7 @@ TEST_F(PGLogTest, proc_replica_log) {
+     EXPECT_EQ(olog.head, oinfo.last_update);
+     EXPECT_EQ(olog.head, oinfo.last_complete);
+ 
++    missing.may_include_deletes = false;
+     proc_replica_log(t, oinfo, olog, omissing, from);
+ 
+     EXPECT_TRUE(t.empty());
+@@ -1691,6 +1832,7 @@ TEST_F(PGLogTest, proc_replica_log) {
+     EXPECT_EQ(olog.head, oinfo.last_update);
+     EXPECT_EQ(olog.head, oinfo.last_complete);
+ 
++    missing.may_include_deletes = false;
+     proc_replica_log(t, oinfo, olog, omissing, from);
+ 
+     EXPECT_TRUE(t.empty());
+@@ -1787,6 +1929,7 @@ TEST_F(PGLogTest, proc_replica_log) {
+     EXPECT_EQ(olog.head, oinfo.last_update);
+     EXPECT_EQ(olog.head, oinfo.last_complete);
+ 
++    missing.may_include_deletes = false;
+     proc_replica_log(t, oinfo, olog, omissing, from);
+ 
+     EXPECT_TRUE(t.empty());
+@@ -1910,6 +2053,20 @@ TEST_F(PGLogTest, merge_log_8) {
+   run_test_case(t);
+ }
+ 
++TEST_F(PGLogTest, merge_log_9) {
++  TestCase t;
++  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
++
++  t.auth.push_back(mk_ple_dt(mk_obj(1), mk_evt(11, 101), mk_evt(10, 100)));
++
++  t.init.add(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80), false);
++  t.toremove.insert(mk_obj(1));
++  t.deletes_during_peering = true;
++
++  t.setup();
++  run_test_case(t);
++}
++
+ TEST_F(PGLogTest, merge_log_prior_version_have) {
+   TestCase t;
+   t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));

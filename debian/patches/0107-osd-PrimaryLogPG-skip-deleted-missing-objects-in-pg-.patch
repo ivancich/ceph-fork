@@ -1,0 +1,37 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Fri, 21 Jul 2017 15:02:53 -0400
+Subject: osd/PrimaryLogPG: skip deleted missing objects in pg[n]ls
+
+Fixes: http://tracker.ceph.com/issues/20739
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 561760455663831d6145f17c014b902ede7d1840)
+
+Resolves: rhbz#1452780
+---
+ src/osd/ReplicatedPG.cc | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index 6470fe9..ef2b8b9 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -1040,6 +1040,9 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
+ 	  if (candidate.snap < snapid)
+ 	    continue;
+ 
++	  if (missing_loc.is_deleted(candidate))
++	    continue;
++
+ 	  if (snapid != CEPH_NOSNAP) {
+ 	    bufferlist bl;
+ 	    if (candidate.snap == CEPH_NOSNAP) {
+@@ -1224,6 +1227,9 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
+ 	  if (candidate.snap < snapid)
+ 	    continue;
+ 
++	  if (missing_loc.is_deleted(candidate))
++	    continue;
++
+ 	  if (snapid != CEPH_NOSNAP) {
+ 	    bufferlist bl;
+ 	    if (candidate.snap == CEPH_NOSNAP) {
