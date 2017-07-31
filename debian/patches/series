@@ -107,3 +107,5 @@
 0107-osd-PrimaryLogPG-skip-deleted-missing-objects-in-pg-.patch
 0108-osd-PG-downgrade-warning-about-obsolete-rollback-to-.patch
 0109-osd-PrimaryLogPG-PGBackend-complete-callback-even-if.patch
+0110-PGLog-store-extra-duplicate-ops-beyond-the-normal-lo.patch
+0111-PGLog-continuation-store-extra-duplicate-ops-beyond-.patch

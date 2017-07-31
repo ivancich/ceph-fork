@@ -1,3 +1,12 @@
+ceph (10.2.7-32redhat1) stable; urgency=medium
+
+  * PGLog: store extra duplicate ops beyond the normal log entries
+    (rhbz#1461527)
+  * PGLog: continuation, store extra duplicate ops beyond the normal
+    log entries (rhbz#1461527)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Mon, 31 Jul 2017 14:45:19 -0400
+
 ceph (10.2.7-31redhat1) stable; urgency=medium
 
   * message, osd: add request/response messages for deletes during

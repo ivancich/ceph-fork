@@ -1,0 +1,418 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Tue, 18 Apr 2017 15:49:21 -0700
+Subject: PGLog: store extra duplicate ops beyond the normal log entries
+
+This helps us avoid replaying non-idempotent client operations when
+the pg log is very short, e.g. in an effort to force OSDs to use
+backfill rather than regular recovery. This can be advantageous to
+avoid blocking i/o to objects, at the cost of longer total time to
+become clean (since backfill requires scanning the objects to see what
+is missing).
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 2c856473990fceaa4f75f50b75f2b99f4492c86b)
+
+Resolves: rhbz#1461527
+---
+ src/osd/PGLog.cc     | 58 +++++++++++++++++++++++++++++++++++++---
+ src/osd/PGLog.h      | 11 +++++++-
+ src/osd/osd_types.cc | 74 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ src/osd/osd_types.h  | 27 ++++++++++++++++++-
+ 4 files changed, 160 insertions(+), 10 deletions(-)
+
+diff --git a/src/osd/PGLog.cc b/src/osd/PGLog.cc
+index 6dac09e..b17b526 100644
+--- a/src/osd/PGLog.cc
++++ b/src/osd/PGLog.cc
+@@ -84,6 +84,10 @@ void PGLog::IndexedLog::split_into(
+     oldlog.erase(i++);
+   }
+ 
++  // osd_reqid is unique, so it doesn't matter if there are extra
++  // dup entries in each pg. To avoid storing oid with the dup
++  // entries, just copy the whole list.
++  olog->dups = dups;
+ 
+   olog->can_rollback_to = can_rollback_to;
+ 
+@@ -94,7 +98,8 @@ void PGLog::IndexedLog::split_into(
+ void PGLog::IndexedLog::trim(
+   LogEntryHandler *handler,
+   eversion_t s,
+-  set<eversion_t> *trimmed)
++  set<eversion_t> *trimmed,
++  set<string> *trimmed_dups)
+ {
+   if (complete_to != log.end() &&
+       complete_to->version <= s) {
+@@ -117,6 +122,18 @@ void PGLog::IndexedLog::trim(
+ 
+     unindex(e);         // remove from index,
+ 
++    // add to dup list
++    if (e.version.version + 1000 > s.version) {
++      dirty_dups = true;
++      dups.push_back(pg_log_dup_t(e));
++      dup_index[e.reqid] = &(dups.back());
++      for (const auto& extra : e.extra_reqids) {
++	dups.push_back(pg_log_dup_t(e.version, extra.second,
++				    extra.first, e.return_code));
++	dup_index[extra->first] = &(dups.back());
++      }
++    }
++
+     if (rollback_info_trimmed_to_riter == log.rend() ||
+ 	e.version == rollback_info_trimmed_to_riter->version) {
+       log.pop_front();
+@@ -126,6 +143,17 @@ void PGLog::IndexedLog::trim(
+     }
+   }
+ 
++  while (!dups.empty()) {
++    auto &e = *dups.begin();
++    if (e.version.version + 1000 > s.version)
++      break;
++    generic_dout(20) << "trim dup " << e << dendl;
++    if (trimmed_dups)
++      trimmed_dups->insert(e.get_key_name());
++    dup_index.erase(e.reqid);
++    dups.pop_front();
++  }
++
+   // raise tail?
+   if (tail < s)
+     tail = s;
+@@ -185,7 +213,7 @@ void PGLog::trim(
+     assert(trim_to <= info.last_complete);
+ 
+     dout(10) << "trim " << log << " to " << trim_to << dendl;
+-    log.trim(handler, trim_to, &trimmed);
++    log.trim(handler, trim_to, &trimmed, &trimmed_dups);
+     info.log_tail = log.tail;
+   }
+ }
+@@ -815,6 +843,7 @@ void PGLog::write_log(
+ 	     << ", divergent_priors: " << divergent_priors.size()
+ 	     << ", writeout_from: " << writeout_from
+ 	     << ", trimmed: " << trimmed
++	     << ", trimmed_dups: " << trimmed_dups
+ 	     << dendl;
+     _write_log(
+       t, km, log, coll, log_oid, divergent_priors,
+@@ -823,6 +852,7 @@ void PGLog::write_log(
+       writeout_from,
+       trimmed,
+       dirty_divergent_priors,
++      trimmed_dups,
+       !touched_log,
+       require_rollback,
+       (pg_log_debug ? &log_keys_debug : 0));
+@@ -843,7 +873,7 @@ void PGLog::write_log(
+   _write_log(
+     t, km, log, coll, log_oid,
+     divergent_priors, eversion_t::max(), eversion_t(), eversion_t(),
+-    set<eversion_t>(),
++    set<eversion_t>(), set<string>(),
+     true, true, require_rollback, 0);
+ }
+ 
+@@ -857,13 +887,14 @@ void PGLog::_write_log(
+   eversion_t dirty_from,
+   eversion_t writeout_from,
+   const set<eversion_t> &trimmed,
++  const set<string> &trimmed_dups,
+   bool dirty_divergent_priors,
+   bool touch_log,
+   bool require_rollback,
+   set<string> *log_keys_debug
+   )
+ {
+-  set<string> to_remove;
++  set<string> to_remove(trimmed_dups);
+   for (set<eversion_t>::const_iterator i = trimmed.begin();
+        i != trimmed.end();
+        ++i) {
+@@ -909,6 +940,18 @@ void PGLog::_write_log(
+     (*km)[p->get_key_name()].claim(bl);
+   }
+ 
++  if (dirty_dups) {
++    pg_log_dup_t min;
++    t.omap_rmkeyrange(
++      coll, log_oid,
++      min.get_key_name(), log.dups.begin()->get_key_name());
++    for (const auto& entry : log.dups) {
++      bufferlist bl;
++      ::encode(entry, bl);
++      (*km)[entry.get_key_name()].claim(bl);
++    }
++  }
++
+   if (log_keys_debug) {
+     for (map<string, bufferlist>::iterator i = (*km).begin();
+ 	 i != (*km).end();
+@@ -975,6 +1018,13 @@ void PGLog::read_log(ObjectStore *store, coll_t pg_coll,
+         ::decode(log.can_rollback_to, bp);
+       } else if (p->key() == "rollback_info_trimmed_to") {
+         ::decode(log.rollback_info_trimmed_to, bp);
++      } else if (p->key().substr(0, 4) == string("dup_")) {
++	pg_log_dup_t dup;
++	::decode(dup, bp);
++	if (!log.dups.empty()) {
++	  assert(log.dups.back().version < dup.version);
++	}
++	log.dups.push_back(dup);
+       } else {
+ 	pg_log_entry_t e;
+ 	e.decode_with_checksum(bp);
+diff --git a/src/osd/PGLog.h b/src/osd/PGLog.h
+index 33a1689..74c580e 100644
+--- a/src/osd/PGLog.h
++++ b/src/osd/PGLog.h
+@@ -78,6 +78,7 @@ struct PGLog : DoutPrefixProvider {
+     mutable ceph::unordered_map<hobject_t,pg_log_entry_t*> objects;  // ptrs into log.  be careful!
+     mutable ceph::unordered_map<osd_reqid_t,pg_log_entry_t*> caller_ops;
+     mutable ceph::unordered_multimap<osd_reqid_t,pg_log_entry_t*> extra_caller_ops;
++    mutable ceph::unordered_map<osd_reqid_t, pg_log_dup_t*> dup_index;
+ 
+     // recovery pointers
+     list<pg_log_entry_t>::iterator complete_to;  // not inclusive of referenced item
+@@ -339,6 +340,7 @@ struct PGLog : DoutPrefixProvider {
+       objects.clear();
+       caller_ops.clear();
+       extra_caller_ops.clear();
++      dup_index.clear();
+       indexed_data = 0;
+     }
+     void unindex(pg_log_entry_t& e) {
+@@ -414,7 +416,8 @@ struct PGLog : DoutPrefixProvider {
+     void trim(
+       LogEntryHandler *handler,
+       eversion_t s,
+-      set<eversion_t> *trimmed);
++      set<eversion_t> *trimmed,
++      set<string> *trimmed_dups);
+ 
+     ostream& print(ostream& out) const;
+ 
+@@ -433,11 +436,13 @@ protected:
+   eversion_t dirty_from;       ///< must clear/writeout all keys >= dirty_from
+   eversion_t writeout_from;    ///< must writout keys >= writeout_from
+   set<eversion_t> trimmed;     ///< must clear keys in trimmed
++  set<string> trimmed_dups; ///< must clear keys in trimmed_dups
+   CephContext *cct;
+   bool pg_log_debug;
+   /// Log is clean on [dirty_to, dirty_from)
+   bool touched_log;
+   bool dirty_divergent_priors;
++  bool dirty_dups; /// log.dups is updated
+ 
+   bool is_dirty() const {
+     return !touched_log ||
+@@ -445,6 +450,7 @@ protected:
+       (dirty_from != eversion_t::max()) ||
+       dirty_divergent_priors ||
+       (writeout_from != eversion_t::max()) ||
++      !(trimmed_dups.empty()) ||
+       !(trimmed.empty());
+   }
+   void mark_dirty_to(eversion_t to) {
+@@ -495,8 +501,10 @@ protected:
+     dirty_divergent_priors = false;
+     touched_log = true;
+     trimmed.clear();
++    trimmed_dups.clear();
+     writeout_from = eversion_t::max();
+     check();
++    dirty_dups = false;
+   }
+ public:
+   // cppcheck-suppress noExplicitConstructor
+@@ -846,6 +854,7 @@ public:
+     eversion_t dirty_from,
+     eversion_t writeout_from,
+     const set<eversion_t> &trimmed,
++    const set<string> &trimmed_dups,
+     bool dirty_divergent_priors,
+     bool touch_log,
+     bool require_rollback,
+diff --git a/src/osd/osd_types.cc b/src/osd/osd_types.cc
+index e5640fd..15e9d5e 100644
+--- a/src/osd/osd_types.cc
++++ b/src/osd/osd_types.cc
+@@ -3614,6 +3614,57 @@ ostream& operator<<(ostream& out, const pg_log_entry_t& e)
+   return out;
+ }
+ 
++// -- pg_log_dup_t --
++
++string pg_log_dup_t::get_key_name() const
++{
++  return "dup_" + version.get_key_name();
++}
++
++void pg_log_dup_t::encode(bufferlist &bl) const
++{
++  ENCODE_START(1, 1, bl);
++  ::encode(reqid, bl);
++  ::encode(version, bl);
++  ::encode(user_version, bl);
++  ::encode(return_code, bl);
++  ENCODE_FINISH(bl);
++}
++
++void pg_log_dup_t::decode(bufferlist::iterator &bl)
++{
++  DECODE_START(1, bl);
++  ::decode(reqid, bl);
++  ::decode(version, bl);
++  ::decode(user_version, bl);
++  ::decode(return_code, bl);
++  DECODE_FINISH(bl);
++}
++
++void pg_log_dup_t::dump(Formatter *f) const
++{
++  f->dump_stream("reqid") << reqid;
++  f->dump_stream("version") << version;
++  f->dump_stream("user_version") << user_version;
++  f->dump_stream("return_code") << return_code;
++}
++
++void pg_log_dup_t::generate_test_instances(list<pg_log_dup_t*>& o)
++{
++  o.push_back(new pg_log_dup_t());
++  o.push_back(new pg_log_dup_t(osd_reqid_t(entity_name_t::CLIENT(777), 8, 999),
++			       eversion_t(1,2), 1, 0);
++  o.push_back(new pg_log_dup_t(osd_reqid_t(entity_name_t::CLIENT(777), 8, 999),
++			       eversion_t(1,2), 2, -ENOENT);
++}
++
++ostream& operator<<(ostream& out, const pg_log_dup_t& e)
++{
++  out << e.reqid << " v" << e.version << " uv" << e.user_version
++      << " rc=" << e.return_code;
++  return out;
++}
++
+ 
+ // -- pg_log_t --
+ 
+@@ -3655,18 +3706,19 @@ void pg_log_t::filter_log(spg_t import_pgid, const OSDMap &curmap,
+ 
+ void pg_log_t::encode(bufferlist& bl) const
+ {
+-  ENCODE_START(6, 3, bl);
++  ENCODE_START(7, 3, bl);
+   ::encode(head, bl);
+   ::encode(tail, bl);
+   ::encode(log, bl);
+   ::encode(can_rollback_to, bl);
+   ::encode(rollback_info_trimmed_to, bl);
++  ::encode(dups, bl);
+   ENCODE_FINISH(bl);
+ }
+  
+ void pg_log_t::decode(bufferlist::iterator &bl, int64_t pool)
+ {
+-  DECODE_START_LEGACY_COMPAT_LEN(6, 3, 3, bl);
++  DECODE_START_LEGACY_COMPAT_LEN(7, 3, 3, bl);
+   ::decode(head, bl);
+   ::decode(tail, bl);
+   if (struct_v < 2) {
+@@ -3681,6 +3733,10 @@ void pg_log_t::decode(bufferlist::iterator &bl, int64_t pool)
+     ::decode(rollback_info_trimmed_to, bl);
+   else
+     rollback_info_trimmed_to = tail;
++
++  if (struct_v >= 7)
++    ::decode(dups, bl);
++
+   DECODE_FINISH(bl);
+ 
+   // handle hobject_t format change
+@@ -3705,6 +3761,13 @@ void pg_log_t::dump(Formatter *f) const
+     f->close_section();
+   }
+   f->close_section();
++  f->open_array_section("dups");
++  for (const auto& entry : dups) {
++    f->open_object_section("entry");
++    entry.dump(f);
++    f->close_section();
++  }
++  f->close_section();
+ }
+ 
+ void pg_log_t::generate_test_instances(list<pg_log_t*>& o)
+@@ -3776,13 +3839,16 @@ void pg_log_t::copy_up_to(const pg_log_t &other, int max)
+   }
+ }
+ 
+-ostream& pg_log_t::print(ostream& out) const 
++ostream& pg_log_t::print(ostream& out) const
+ {
+   out << *this << std::endl;
+   for (list<pg_log_entry_t>::const_iterator p = log.begin();
+        p != log.end();
+-       ++p) 
++       ++p)
+     out << *p << std::endl;
++  for (const auto& entry : dups) {
++    out << " dup entry: " << entry << std::endl;
++  }
+   return out;
+ }
+ 
+diff --git a/src/osd/osd_types.h b/src/osd/osd_types.h
+index 8a60a81..f27ae98 100644
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -2629,7 +2629,30 @@ WRITE_CLASS_ENCODER(pg_log_entry_t)
+ 
+ ostream& operator<<(ostream& out, const pg_log_entry_t& e);
+ 
++struct pg_log_dup_t {
++  osd_reqid_t reqid;  // caller+tid to uniquely identify request
++  eversion_t version;
++  version_t user_version; // the user version for this entry
++  int32_t return_code; // only stored for ERRORs for dup detection
+ 
++  pg_log_dup_t()
++   : user_version(0), return_code(0) {}
++  explicit pg_log_dup_t(const pg_log_entry_t &entry)
++    : reqid(entry.reqid), version(entry.version),
++      user_version(entry.user_version), return_code(0)
++  {}
++  pg_log_dup_t(const eversion_t& v, version_t uv,
++	       const osd_reqid_t& rid, int return_code)
++    : reqid(rid), version(v), user_version(uv),
++      return_code(return_code)
++  {}
++  string get_key_name() const;
++  void encode(bufferlist &bl) const;
++  void decode(bufferlist::iterator &bl);
++  void dump(Formatter *f) const;
++  static void generate_test_instances(list<pg_log_dup_t*>& o);
++};
++WRITE_CLASS_ENCODER(pg_log_dup_t)
+ 
+ /**
+  * pg_log_t - incremental log of recent pg changes.
+@@ -2654,13 +2677,15 @@ struct pg_log_t {
+   eversion_t rollback_info_trimmed_to;
+ 
+   list<pg_log_entry_t> log;  // the actual log.
+-  
++  list<pg_log_dup_t> dups;  // entries just for dup op detection
++
+   pg_log_t() {}
+ 
+   void clear() {
+     eversion_t z;
+     can_rollback_to = head = tail = z;
+     log.clear();
++    dups.clear();
+   }
+ 
+   bool empty() const {
