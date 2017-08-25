@@ -1,0 +1,747 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Thu, 24 Aug 2017 18:42:08 -0400
+Subject: osd/PGLog: write only changed dup entries
+
+Writing all of the dup entries whenever one is changed causes a large
+regression in performance.
+
+Instead, keep track of ranges that need to be cleared and written
+after log merging (dirty_{to,from}_dups) and the earliest dup entry we
+haven't written yet during normal operation (write_from_dups). This
+parallels the way we track unpersisted log entries.
+
+Check that the correct set of dups is persisted by adding a roundtrip
+through memstore to each merge_log unit test.
+
+Fixes: http://tracker.ceph.com/issues/21026
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 75af72f758aacc1260b8d828d0b8bb7786597fdf)
+
+Resolves: rhbz#1484127
+---
+ src/osd/PGLog.cc                           |  74 +++++++++++++----
+ src/osd/PGLog.h                            |  42 +++++++---
+ src/osd/osd_types.h                        |  10 +++
+ src/test/Makefile-server.am                |   2 +-
+ src/test/objectstore/store_test_fixture.cc |  55 ++++++++++++
+ src/test/objectstore/store_test_fixture.h  |  19 +++++
+ src/test/osd/TestPGLog.cc                  | 129 ++++++++++++++++-------------
+ src/tools/ceph_objectstore_tool.cc         |   2 +-
+ 8 files changed, 244 insertions(+), 89 deletions(-)
+ create mode 100644 src/test/objectstore/store_test_fixture.cc
+ create mode 100644 src/test/objectstore/store_test_fixture.h
+
+diff --git a/src/osd/PGLog.cc b/src/osd/PGLog.cc
+index 1900fc7..95a0bd7 100644
+--- a/src/osd/PGLog.cc
++++ b/src/osd/PGLog.cc
+@@ -103,7 +103,7 @@ void PGLog::IndexedLog::trim(
+   eversion_t s,
+   set<eversion_t> *trimmed,
+   set<string>* trimmed_dups,
+-  bool* dirty_dups)
++  eversion_t *write_from_dups)
+ {
+   if (complete_to != log.end() &&
+       complete_to->version <= s) {
+@@ -132,8 +132,12 @@ void PGLog::IndexedLog::trim(
+     unindex(e);         // remove from index,
+ 
+     // add to dup list
++    generic_dout(20) << "earliest_dup_version = " << earliest_dup_version << dendl;
+     if (e.version.version >= earliest_dup_version) {
+-      if (dirty_dups) *dirty_dups = true;
++      if (write_from_dups != nullptr && *write_from_dups > e.version) {
++	generic_dout(20) << "updating write_from_dups from " << *write_from_dups << " to " << e.version << dendl;
++	*write_from_dups = e.version;
++      }
+       dups.push_back(pg_log_dup_t(e));
+       index(dups.back());
+       for (const auto& extra : e.extra_reqids) {
+@@ -234,7 +238,7 @@ void PGLog::trim(
+     assert(trim_to <= info.last_complete);
+ 
+     dout(10) << "trim " << log << " to " << trim_to << dendl;
+-    log.trim(cct, handler, trim_to, &trimmed, &trimmed_dups, &dirty_dups);
++    log.trim(cct, handler, trim_to, &trimmed, &trimmed_dups, &write_from_dups);
+     info.log_tail = log.tail;
+   }
+ }
+@@ -817,7 +821,6 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
+ 
+   // now handle dups
+   if (merge_log_dups(olog)) {
+-    dirty_dups = true;
+     changed = true;
+   }
+ 
+@@ -841,6 +844,8 @@ bool PGLog::merge_log_dups(const pg_log_t& olog) {
+ 	olog.dups.front().version << " to " <<
+ 	olog.dups.back().version << dendl;
+       changed = true;
++      dirty_from_dups = eversion_t();
++      dirty_to_dups = eversion_t::max();
+       // since our log.dups is empty just copy them
+       for (const auto& i : olog.dups) {
+ 	log.dups.push_back(i);
+@@ -858,9 +863,11 @@ bool PGLog::merge_log_dups(const pg_log_t& olog) {
+ 	auto log_tail_version = log.dups.back().version;
+ 
+ 	auto insert_cursor = log.dups.end();
++	eversion_t last_shared = eversion_t::max();
+ 	for (auto i = olog.dups.crbegin(); i != olog.dups.crend(); ++i) {
+ 	  if (i->version <= log_tail_version) break;
+ 	  log.dups.insert(insert_cursor, *i);
++	  last_shared = i->version;
+ 
+ 	  auto prev = insert_cursor;
+ 	  --prev;
+@@ -869,6 +876,7 @@ bool PGLog::merge_log_dups(const pg_log_t& olog) {
+ 
+ 	  --insert_cursor; // make sure we insert in reverse order
+ 	}
++	mark_dirty_from_dups(last_shared);
+       }
+ 
+       if (olog.dups.front().version < log.dups.front().version) {
+@@ -877,15 +885,18 @@ bool PGLog::merge_log_dups(const pg_log_t& olog) {
+ 	  olog.dups.front().version << dendl;
+ 	changed = true;
+ 
++	eversion_t last;
+ 	auto insert_cursor = log.dups.begin();
+ 	for (auto i = olog.dups.cbegin(); i != olog.dups.cend(); ++i) {
+ 	  if (i->version >= insert_cursor->version) break;
+ 	  log.dups.insert(insert_cursor, *i);
++	  last = i->version;
+ 	  auto prev = insert_cursor;
+ 	  --prev;
+ 	  // be sure to pass address of copy in log.dups
+ 	  log.index(*prev);
+ 	}
++	mark_dirty_to_dups(last);
+       }
+     }
+   }
+@@ -898,6 +909,7 @@ bool PGLog::merge_log_dups(const pg_log_t& olog) {
+ 
+     while (!log.dups.empty() && log.dups.back().version >= log.tail) {
+       log.unindex(log.dups.back());
++      mark_dirty_from_dups(log.dups.back().version);
+       log.dups.pop_back();
+     }
+   }
+@@ -959,7 +971,9 @@ void PGLog::write_log(
+       dirty_divergent_priors,
+       !touched_log,
+       require_rollback,
+-      dirty_dups,
++      dirty_to_dups,
++      dirty_from_dups,
++      write_from_dups,
+       (pg_log_debug ? &log_keys_debug : 0));
+     undirty();
+   } else {
+@@ -973,14 +987,14 @@ void PGLog::write_log(
+     pg_log_t &log,
+     const coll_t& coll, const ghobject_t &log_oid,
+     map<eversion_t, hobject_t> &divergent_priors,
+-    bool require_rollback,
+-    bool dirty_dups)
++    bool require_rollback
++    )
+ {
+   _write_log(
+     t, km, log, coll, log_oid,
+     divergent_priors, eversion_t::max(), eversion_t(), eversion_t(),
+     set<eversion_t>(), set<string>(),
+-    true, true, require_rollback, true, nullptr);
++    true, true, require_rollback, eversion_t::max(), eversion_t(), eversion_t(), nullptr);
+ }
+ 
+ void PGLog::_write_log(
+@@ -997,7 +1011,9 @@ void PGLog::_write_log(
+   bool dirty_divergent_priors,
+   bool touch_log,
+   bool require_rollback,
+-  bool dirty_dups,
++  eversion_t dirty_to_dups,
++  eversion_t dirty_from_dups,
++  eversion_t write_from_dups,
+   set<string> *log_keys_debug
+   )
+ {
+@@ -1058,18 +1074,40 @@ void PGLog::_write_log(
+     }
+   }
+ 
+-  // process dirty_dups after log_keys_debug is filled, so dups do not
++  // process dups after log_keys_debug is filled, so dups do not
+   // end up in that set
+-  if (dirty_dups) {
+-    pg_log_dup_t min;
++  if (dirty_to_dups != eversion_t()) {
++    pg_log_dup_t min, dirty_to_dup;
++    dirty_to_dup.version = dirty_to_dups;
+     t.omap_rmkeyrange(
+       coll, log_oid,
+-      min.get_key_name(), log.dups.begin()->get_key_name());
+-    for (const auto& entry : log.dups) {
+-      bufferlist bl;
+-      ::encode(entry, bl);
+-      (*km)[entry.get_key_name()].claim(bl);
+-    }
++      min.get_key_name(), dirty_to_dup.get_key_name());
++  }
++  if (dirty_to_dups != eversion_t::max() && dirty_from_dups != eversion_t::max()) {
++    pg_log_dup_t max, dirty_from_dup;
++    max.version = eversion_t::max();
++    dirty_from_dup.version = dirty_from_dups;
++    t.omap_rmkeyrange(
++      coll, log_oid,
++      dirty_from_dup.get_key_name(), max.get_key_name());
++  }
++
++  for (const auto& entry : log.dups) {
++    if (entry.version > dirty_to_dups)
++      break;
++    bufferlist bl;
++    ::encode(entry, bl);
++    (*km)[entry.get_key_name()].claim(bl);
++  }
++
++  for (list<pg_log_dup_t>::reverse_iterator p = log.dups.rbegin();
++       p != log.dups.rend() &&
++	 (p->version >= dirty_from_dups || p->version >= write_from_dups) &&
++	 p->version >= dirty_to_dups;
++       ++p) {
++    bufferlist bl;
++    ::encode(*p, bl);
++    (*km)[p->get_key_name()].claim(bl);
+   }
+ 
+   if (dirty_divergent_priors) {
+diff --git a/src/osd/PGLog.h b/src/osd/PGLog.h
+index 7769f2b..387cd74 100644
+--- a/src/osd/PGLog.h
++++ b/src/osd/PGLog.h
+@@ -464,7 +464,7 @@ struct PGLog : DoutPrefixProvider {
+       eversion_t s,
+       set<eversion_t> *trimmed,
+       set<string>* trimmed_dups,
+-      bool* dirty_dups);
++      eversion_t *write_from_dups);
+ 
+     ostream& print(ostream& out) const;
+ 
+@@ -483,13 +483,15 @@ protected:
+   eversion_t dirty_from;       ///< must clear/writeout all keys >= dirty_from
+   eversion_t writeout_from;    ///< must writout keys >= writeout_from
+   set<eversion_t> trimmed;     ///< must clear keys in trimmed
++  eversion_t dirty_to_dups;    ///< must clear/writeout all dups <= dirty_to_dups
++  eversion_t dirty_from_dups;  ///< must clear/writeout all dups >= dirty_from_dups
++  eversion_t write_from_dups;  ///< must write keys >= write_from_dups
+   set<string> trimmed_dups;    ///< must clear keys in trimmed_dups
+   CephContext *cct;
+   bool pg_log_debug;
+   /// Log is clean on [dirty_to, dirty_from)
+   bool touched_log;
+   bool dirty_divergent_priors;
+-  bool dirty_dups; /// log.dups is updated
+ 
+   bool is_dirty() const {
+     return !touched_log ||
+@@ -498,7 +500,9 @@ protected:
+       dirty_divergent_priors ||
+       (writeout_from != eversion_t::max()) ||
+       !(trimmed_dups.empty()) ||
+-      dirty_dups ||
++      (dirty_to_dups != eversion_t()) ||
++      (dirty_from_dups != eversion_t::max()) ||
++      (write_from_dups != eversion_t::max()) ||
+       !(trimmed.empty());
+   }
+   void mark_dirty_to(eversion_t to) {
+@@ -513,6 +517,14 @@ protected:
+     if (from < writeout_from)
+       writeout_from = from;
+   }
++  void mark_dirty_to_dups(eversion_t to) {
++    if (to > dirty_to_dups)
++      dirty_to_dups = to;
++  }
++  void mark_dirty_from_dups(eversion_t from) {
++    if (from < dirty_from_dups)
++      dirty_from_dups = from;
++  }
+   void add_divergent_prior(eversion_t version, hobject_t obj) {
+     divergent_priors.insert(make_pair(version, obj));
+     dirty_divergent_priors = true;
+@@ -521,6 +533,8 @@ public:
+   void mark_log_for_rewrite() {
+     mark_dirty_to(eversion_t::max());
+     mark_dirty_from(eversion_t());
++    mark_dirty_to_dups(eversion_t::max());
++    mark_dirty_from_dups(eversion_t());
+     touched_log = false;
+   }
+ protected:
+@@ -552,7 +566,9 @@ protected:
+     trimmed_dups.clear();
+     writeout_from = eversion_t::max();
+     check();
+-    dirty_dups = false;
++    dirty_to_dups = eversion_t();
++    dirty_from_dups = eversion_t::max();
++    write_from_dups = eversion_t::max();
+   }
+ public:
+ 
+@@ -560,10 +576,12 @@ public:
+   PGLog(CephContext *cct, DoutPrefixProvider *dpp = nullptr) :
+     prefix_provider(dpp),
+     dirty_from(eversion_t::max()),
+-    writeout_from(eversion_t::max()), 
+-    cct(cct), 
++    writeout_from(eversion_t::max()),
++    dirty_from_dups(eversion_t::max()),
++    write_from_dups(eversion_t::max()),
++    cct(cct),
+     pg_log_debug(!(cct && !(cct->_conf->osd_debug_pg_log_writeout))),
+-    touched_log(false), dirty_divergent_priors(false), dirty_dups(false) {}
++    touched_log(false), dirty_divergent_priors(false) {}
+ 
+   void reset_backfill();
+ 
+@@ -667,6 +685,7 @@ public:
+     log.claim_log_and_clear_rollback_info(o);
+     missing.clear();
+     mark_dirty_to(eversion_t::max());
++    mark_dirty_to_dups(eversion_t::max());
+   }
+ 
+   void split_into(
+@@ -676,7 +695,9 @@ public:
+     log.split_into(child_pgid, split_bits, &(opg_log->log));
+     missing.split_into(child_pgid, split_bits, &(opg_log->missing));
+     opg_log->mark_dirty_to(eversion_t::max());
++    opg_log->mark_dirty_to_dups(eversion_t::max());
+     mark_dirty_to(eversion_t::max());
++    mark_dirty_to_dups(eversion_t::max());
+ 
+     unsigned mask = ~((~0)<<split_bits);
+     for (map<eversion_t, hobject_t>::iterator i = divergent_priors.begin();
+@@ -893,8 +914,7 @@ public:
+     pg_log_t &log,
+     const coll_t& coll,
+     const ghobject_t &log_oid, map<eversion_t, hobject_t> &divergent_priors,
+-    bool require_rollback,
+-    bool dirty_dups);
++    bool require_rollback);
+ 
+   static void _write_log(
+     ObjectStore::Transaction& t,
+@@ -910,7 +930,9 @@ public:
+     bool dirty_divergent_priors,
+     bool touch_log,
+     bool require_rollback,
+-    bool dirty_dups,
++    eversion_t dirty_to_dups,
++    eversion_t dirty_from_dups,
++    eversion_t write_from_dups,
+     set<string> *log_keys_debug
+     );
+ 
+diff --git a/src/osd/osd_types.h b/src/osd/osd_types.h
+index a40f1fc..5c7ea47 100644
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -2653,6 +2653,16 @@ struct pg_log_dup_t {
+   void dump(Formatter *f) const;
+   static void generate_test_instances(list<pg_log_dup_t*>& o);
+ 
++  bool operator==(const pg_log_dup_t &rhs) const {
++    return reqid == rhs.reqid &&
++      version == rhs.version &&
++      user_version == rhs.user_version &&
++      return_code == rhs.return_code;
++  }
++  bool operator!=(const pg_log_dup_t &rhs) const {
++    return !(*this == rhs);
++  }
++
+   friend std::ostream& operator<<(std::ostream& out, const pg_log_dup_t& e);
+ };
+ WRITE_CLASS_ENCODER(pg_log_dup_t)
+diff --git a/src/test/Makefile-server.am b/src/test/Makefile-server.am
+index fbb42e4..77e00c8 100644
+--- a/src/test/Makefile-server.am
++++ b/src/test/Makefile-server.am
+@@ -194,7 +194,7 @@ if LINUX
+ unittest_osdscrub_LDADD += -ldl
+ endif # LINUX
+ 
+-unittest_pglog_SOURCES = test/osd/TestPGLog.cc
++unittest_pglog_SOURCES = test/osd/TestPGLog.cc test/objectstore/store_test_fixture.cc
+ unittest_pglog_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+ unittest_pglog_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
+ check_TESTPROGRAMS += unittest_pglog
+diff --git a/src/test/objectstore/store_test_fixture.cc b/src/test/objectstore/store_test_fixture.cc
+new file mode 100644
+index 0000000..b6c9687
+--- /dev/null
++++ b/src/test/objectstore/store_test_fixture.cc
+@@ -0,0 +1,55 @@
++#include <stdlib.h>
++#include <string>
++#include <iostream>
++#include <gtest/gtest.h>
++
++#include "common/errno.h"
++#include "os/ObjectStore.h"
++#if defined(HAVE_LIBAIO)
++#include "os/bluestore/BlueStore.h"
++#endif
++#include "store_test_fixture.h"
++
++static void rm_r(const string& path) {
++  string cmd = string("rm -r ") + path;
++  cout << "==> " << cmd << std::endl;
++  int r = ::system(cmd.c_str());
++  if (r) {
++    if (r == -1) {
++      r = errno;
++      cerr << "system() failed to fork() " << cpp_strerror(r)
++           << ", continuing anyway" << std::endl;
++    } else {
++      cerr << "failed with exit code " << r
++           << ", continuing anyway" << std::endl;
++    }
++  }
++}
++
++void StoreTestFixture::SetUp() {
++  int r = ::mkdir(data_dir.c_str(), 0777);
++  if (r < 0) {
++    r = -errno;
++    cerr << __func__ << ": unable to create " << data_dir << ": " << cpp_strerror(r) << std::endl;
++  }
++  ASSERT_EQ(0, r);
++
++  store.reset(ObjectStore::create(g_ceph_context,
++                                  type,
++                                  data_dir,
++                                  string("store_test_temp_journal")));
++  if (!store) {
++    cerr << __func__ << ": objectstore type " << type << " doesn't exist yet!" << std::endl;
++  }
++  ASSERT_FALSE(!store);
++  ASSERT_EQ(0, store->mkfs());
++  ASSERT_EQ(0, store->mount());
++}
++
++void StoreTestFixture::TearDown() {
++  if (store) {
++    int r = store->umount();
++    EXPECT_EQ(0, r);
++    rm_r(data_dir);
++  }
++}
+diff --git a/src/test/objectstore/store_test_fixture.h b/src/test/objectstore/store_test_fixture.h
+new file mode 100644
+index 0000000..e90943a
+--- /dev/null
++++ b/src/test/objectstore/store_test_fixture.h
+@@ -0,0 +1,19 @@
++#include <string>
++#include <boost/scoped_ptr.hpp>
++#include <gtest/gtest.h>
++
++class ObjectStore;
++
++class StoreTestFixture : virtual public ::testing::Test {
++  const std::string type;
++  const std::string data_dir;
++
++public:
++  boost::scoped_ptr<ObjectStore> store;
++
++  StoreTestFixture(const std::string& type)
++    : type(type), data_dir(type + ".test_temp_dir")
++  {}
++  void SetUp() override;
++  void TearDown() override;
++};
+diff --git a/src/test/osd/TestPGLog.cc b/src/test/osd/TestPGLog.cc
+index 6e6a63e..68786f1 100644
+--- a/src/test/osd/TestPGLog.cc
++++ b/src/test/osd/TestPGLog.cc
+@@ -25,6 +25,7 @@
+ #include "osd/OSDMap.h"
+ #include "common/ceph_argparse.h"
+ #include "global/global_init.h"
++#include "../objectstore/store_test_fixture.h"
+ #include <gtest/gtest.h>
+ 
+ 
+@@ -2244,17 +2245,25 @@ int main(int argc, char **argv) {
+   return RUN_ALL_TESTS();
+ }
+ 
+-
+-class PGLogMergeDupsTest : public ::testing::Test, protected PGLog {
++class PGLogMergeDupsTest : protected PGLog, public StoreTestFixture {
+ 
+ public:
+ 
+-  PGLogMergeDupsTest() : PGLog(g_ceph_context) { }
++  PGLogMergeDupsTest() : PGLog(g_ceph_context), StoreTestFixture("memstore") { }
+ 
+-  void SetUp() override { }
++  void SetUp() override {
++    StoreTestFixture::SetUp();
++    ObjectStore::Sequencer osr(__func__);
++    ObjectStore::Transaction t;
++    test_coll = coll_t(spg_t(pg_t(1, 1)));
++    t.create_collection(test_coll, 0);
++    store->apply_transaction(&osr, std::move(t));
++  }
+ 
+   void TearDown() override {
++    test_disk_roundtrip();
+     clear();
++    StoreTestFixture::TearDown();
+   }
+ 
+   static pg_log_dup_t create_dup_entry(uint a, uint b) {
+@@ -2290,11 +2299,13 @@ public:
+ 
+   void add_dups(uint a, uint b) {
+     log.dups.push_back(create_dup_entry(a, b));
++    write_from_dups = MIN(write_from_dups, log.dups.back().version);
+   }
+ 
+   void add_dups(const std::vector<pg_log_dup_t>& l) {
+     for (auto& i : l) {
+       log.dups.push_back(i);
++      write_from_dups = MIN(write_from_dups, log.dups.back().version);
+     }
+   }
+ 
+@@ -2319,6 +2330,36 @@ public:
+       EXPECT_EQ(1u, log.dup_index.count(i.reqid));
+     }
+   }
++
++  void test_disk_roundtrip() {
++    ObjectStore::Sequencer osr(__func__);
++    ObjectStore::Transaction t;
++    hobject_t hoid;
++    hoid.pool = 1;
++    hoid.oid = "log";
++    ghobject_t log_oid(hoid);
++    map<string, bufferlist> km;
++    write_log(t, &km, test_coll, log_oid, false);
++    if (!km.empty()) {
++      t.omap_setkeys(test_coll, log_oid, km);
++    }
++    ASSERT_EQ(0u, store->apply_transaction(&osr, std::move(t)));
++
++    auto orig_dups = log.dups;
++    clear();
++    ostringstream err;
++    read_log(store.get(), test_coll, test_coll, log_oid,
++	     pg_info_t(), err, false);
++    ASSERT_EQ(orig_dups.size(), log.dups.size());
++    ASSERT_EQ(orig_dups, log.dups);
++    auto dups_it = log.dups.begin();
++    for (auto orig_dup : orig_dups) {
++      ASSERT_EQ(orig_dup, *dups_it);
++      ++dups_it;
++    }
++  }
++
++  coll_t test_coll;
+ };
+ 
+ TEST_F(PGLogMergeDupsTest, OtherEmpty) {
+@@ -2510,14 +2551,7 @@ struct PGLogTrimTest :
+   public PGLogTestBase,
+   public PGLog::IndexedLog
+ {
+-  std::list<hobject_t*> test_hobjects;
+-  CephContext *cct;
+-
+-  void SetUp() override {
+-    cct = (new CephContext(CEPH_ENTITY_TYPE_OSD))->get();
+-
+-    hobject_t::generate_test_instances(test_hobjects);
+-  }
++  CephContext *cct = g_ceph_context;
+ 
+   void SetUp(unsigned min_entries, unsigned max_entries, unsigned dup_track) {
+     constexpr size_t size = 10;
+@@ -2533,35 +2567,10 @@ struct PGLogTrimTest :
+     cct->_conf->set_val_or_die("osd_min_pg_log_entries", min_entries_s);
+     cct->_conf->set_val_or_die("osd_max_pg_log_entries", max_entries_s);
+     cct->_conf->set_val_or_die("osd_pg_log_dups_tracked", dup_track_s);
+-}
+-
+-  void TearDown() override {
+-    while (!test_hobjects.empty()) {
+-      delete test_hobjects.front();
+-      test_hobjects.pop_front();
+-    }
+-
+-    cct->put();
+   }
+ }; // struct PGLogTrimTest
+ 
+ 
+-# if 0
+-TEST_F(PGLogTest, Trim1) {
+-  TestCase t;
+-
+-  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(10, 100), mk_evt(8, 70)));
+-  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(15, 150), mk_evt(10, 100)));
+-  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(15, 155), mk_evt(15, 150)));
+-  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(20, 160), mk_evt(25, 152)));
+-  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(21, 165), mk_evt(26, 160)));
+-  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(21, 165), mk_evt(31, 171)));
+-
+-  t.setup();
+-}
+-#endif
+-
+-
+ TEST_F(PGLogTrimTest, TestMakingCephContext)
+ {
+   SetUp(1, 2, 5);
+@@ -2589,11 +2598,11 @@ TEST_F(PGLogTrimTest, TestPartialTrim)
+ 
+   std::set<eversion_t> trimmed;
+   std::set<std::string> trimmed_dups;
+-  bool dirty_dups = false;
++  eversion_t write_from_dups = eversion_t::max();
+ 
+-  log.trim(cct, nullptr, mk_evt(19, 157), &trimmed, &trimmed_dups, &dirty_dups);
++  log.trim(cct, nullptr, mk_evt(19, 157), &trimmed, &trimmed_dups, &write_from_dups);
+ 
+-  EXPECT_TRUE(dirty_dups);
++  EXPECT_EQ(eversion_t(15, 150), write_from_dups);
+   EXPECT_EQ(3u, log.log.size());
+   EXPECT_EQ(3u, trimmed.size());
+   EXPECT_EQ(2u, log.dups.size());
+@@ -2603,11 +2612,11 @@ TEST_F(PGLogTrimTest, TestPartialTrim)
+ 
+   std::set<eversion_t> trimmed2;
+   std::set<std::string> trimmed_dups2;
+-  bool dirty_dups2 = false;
+-  
+-  log.trim(cct, nullptr, mk_evt(20, 164), &trimmed2, &trimmed_dups2, &dirty_dups2);
++  eversion_t write_from_dups2 = eversion_t::max();
++
++  log.trim(cct, nullptr, mk_evt(20, 164), &trimmed2, &trimmed_dups2, &write_from_dups2);
+ 
+-  EXPECT_TRUE(dirty_dups2);
++  EXPECT_EQ(eversion_t(19, 160), write_from_dups2);
+   EXPECT_EQ(2u, log.log.size());
+   EXPECT_EQ(1u, trimmed2.size());
+   EXPECT_EQ(2u, log.dups.size());
+@@ -2629,11 +2638,11 @@ TEST_F(PGLogTrimTest, TestTrimNoTrimmed) {
+   log.add(mk_ple_mod(mk_obj(4), mk_evt(21, 165), mk_evt(26, 160)));
+   log.add(mk_ple_dt_rb(mk_obj(5), mk_evt(21, 167), mk_evt(31, 166)));
+ 
+-  bool dirty_dups = false;
++  eversion_t write_from_dups = eversion_t::max();
+ 
+-  log.trim(cct, nullptr, mk_evt(19, 157), nullptr, nullptr, &dirty_dups);
++  log.trim(cct, nullptr, mk_evt(19, 157), nullptr, nullptr, &write_from_dups);
+ 
+-  EXPECT_TRUE(dirty_dups);
++  EXPECT_EQ(eversion_t(15, 150), write_from_dups);
+   EXPECT_EQ(3u, log.log.size());
+   EXPECT_EQ(2u, log.dups.size());
+ }
+@@ -2656,11 +2665,11 @@ TEST_F(PGLogTrimTest, TestTrimNoDups)
+ 
+   std::set<eversion_t> trimmed;
+   std::set<std::string> trimmed_dups;
+-  bool dirty_dups = false;
++  eversion_t write_from_dups = eversion_t::max();
+ 
+-  log.trim(cct, nullptr, mk_evt(19, 157), &trimmed, &trimmed_dups, &dirty_dups);
++  log.trim(cct, nullptr, mk_evt(19, 157), &trimmed, &trimmed_dups, &write_from_dups);
+ 
+-  EXPECT_FALSE(dirty_dups);
++  EXPECT_EQ(eversion_t::max(), write_from_dups);
+   EXPECT_EQ(3u, log.log.size());
+   EXPECT_EQ(3u, trimmed.size());
+   EXPECT_EQ(0u, log.dups.size());
+@@ -2684,11 +2693,11 @@ TEST_F(PGLogTrimTest, TestNoTrim)
+ 
+   std::set<eversion_t> trimmed;
+   std::set<std::string> trimmed_dups;
+-  bool dirty_dups = false;
++  eversion_t write_from_dups = eversion_t::max();
+ 
+-  log.trim(cct, nullptr, mk_evt(9, 99), &trimmed, &trimmed_dups, &dirty_dups);
++  log.trim(cct, nullptr, mk_evt(9, 99), &trimmed, &trimmed_dups, &write_from_dups);
+ 
+-  EXPECT_FALSE(dirty_dups);
++  EXPECT_EQ(eversion_t::max(), write_from_dups);
+   EXPECT_EQ(6u, log.log.size());
+   EXPECT_EQ(0u, trimmed.size());
+   EXPECT_EQ(0u, log.dups.size());
+@@ -2712,11 +2721,11 @@ TEST_F(PGLogTrimTest, TestTrimAll)
+ 
+   std::set<eversion_t> trimmed;
+   std::set<std::string> trimmed_dups;
+-  bool dirty_dups = false;
++  eversion_t write_from_dups = eversion_t::max();
+ 
+-  log.trim(cct, nullptr, mk_evt(22, 180), &trimmed, &trimmed_dups, &dirty_dups);
++  log.trim(cct, nullptr, mk_evt(22, 180), &trimmed, &trimmed_dups, &write_from_dups);
+ 
+-  EXPECT_TRUE(dirty_dups);
++  EXPECT_EQ(eversion_t(15, 150), write_from_dups);
+   EXPECT_EQ(0u, log.log.size());
+   EXPECT_EQ(6u, trimmed.size());
+   EXPECT_EQ(5u, log.dups.size());
+@@ -2746,11 +2755,11 @@ TEST_F(PGLogTrimTest, TestGetRequest) {
+   log.add(mk_ple_dt_rb(mk_obj(5), mk_evt(21, 167), mk_evt(31, 166),
+ 		       osd_reqid_t(client, 8, 6)));
+ 
+-  bool dirty_dups = false;
++  eversion_t write_from_dups = eversion_t::max();
+ 
+-  log.trim(cct, nullptr, mk_evt(19, 157), nullptr, nullptr, &dirty_dups);
++  log.trim(cct, nullptr, mk_evt(19, 157), nullptr, nullptr, &write_from_dups);
+ 
+-  EXPECT_TRUE(dirty_dups);
++  EXPECT_EQ(eversion_t(15, 150), write_from_dups);
+   EXPECT_EQ(3u, log.log.size());
+   EXPECT_EQ(2u, log.dups.size());
+ 
+@@ -2776,6 +2785,8 @@ TEST_F(PGLogTrimTest, TestGetRequest) {
+ }
+ 
+ 
++
++
+ // Local Variables:
+ // compile-command: "cd ../.. ; make unittest_pglog ; ./unittest_pglog --log-to-stderr=true  --debug-osd=20 # --gtest_filter=*.* "
+ // End:
+diff --git a/src/tools/ceph_objectstore_tool.cc b/src/tools/ceph_objectstore_tool.cc
+index 2019e8e..ed78500 100644
+--- a/src/tools/ceph_objectstore_tool.cc
++++ b/src/tools/ceph_objectstore_tool.cc
+@@ -495,7 +495,7 @@ int write_pg(ObjectStore::Transaction &t, epoch_t epoch, pg_info_t &info,
+     return ret;
+   coll_t coll(info.pgid);
+   map<string,bufferlist> km;
+-  PGLog::write_log(t, &km, log, coll, info.pgid.make_pgmeta_oid(), divergent_priors, true, true);
++  PGLog::write_log(t, &km, log, coll, info.pgid.make_pgmeta_oid(), divergent_priors, true);
+   t.omap_setkeys(coll, info.pgid.make_pgmeta_oid(), km);
+   return 0;
+ }

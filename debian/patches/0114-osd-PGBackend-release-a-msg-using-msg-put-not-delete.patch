@@ -1,0 +1,28 @@
+From: Kefu Chai <kchai@redhat.com>
+Date: Fri, 25 Aug 2017 10:36:56 +0800
+Subject: osd/PGBackend: release a msg using msg->put() not delete
+
+fix the regression introduced by 1c18b5cb
+
+Fixes: http://tracker.ceph.com/issues/20913
+Signed-off-by: Kefu Chai <kchai@redhat.com>
+(cherry picked from commit d2d941dd19b9dd6e41429d92cdab8390f9c3084d)
+
+Resolves: rhbz#1452780
+---
+ src/osd/PGBackend.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/osd/PGBackend.cc b/src/osd/PGBackend.cc
+index df27e83..689e653 100644
+--- a/src/osd/PGBackend.cc
++++ b/src/osd/PGBackend.cc
+@@ -134,7 +134,7 @@ void PGBackend::handle_recovery_delete(OpRequestRef op)
+       if (r != -EAGAIN) {
+ 	get_parent()->send_message_osd_cluster(reply, conn.get());
+       } else {
+-	delete reply;
++	reply->put();
+       }
+     }));
+   gather.activate();

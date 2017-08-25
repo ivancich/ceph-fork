@@ -1,0 +1,42 @@
+From: Loic Dachary <ldachary@redhat.com>
+Date: Thu, 3 Aug 2017 10:56:24 +0200
+Subject: ceph-disk: dmcrypt cluster must default to ceph
+
+If ceph_fsid is not found, which is the case for legacy dmcrypted OSD,
+the cluster must default to ceph, as it was before support for non
+standard cluster names was introduced.
+
+Fixes: http://tracker.ceph.com/issues/20893
+
+Signed-off-by: Loic Dachary <loic@dachary.org>
+(cherry picked from commit ed22159fdd7071a110e81cd7b63d7e0f2296761b)
+
+Resolves: rhbz#1477775
+---
+ src/ceph-disk/ceph_disk/main.py | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index 1b4afcd..a9ddc7f 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -1173,11 +1173,14 @@ def get_dmcrypt_key(
+         osd_uuid = get_oneliner(path, 'osd-uuid')
+         ceph_fsid = read_one_line(path, 'ceph_fsid')
+         if ceph_fsid is None:
+-            raise Error('No cluster uuid assigned.')
+-        cluster = find_cluster_by_uuid(ceph_fsid)
+-        if cluster is None:
+-            raise Error('No cluster conf found in ' + SYSCONFDIR +
+-                        ' with fsid %s' % ceph_fsid)
++            LOG.warning("no `ceph_fsid` found falling back to 'ceph' "
++                        "for cluster name")
++            cluster = 'ceph'
++        else:
++            cluster = find_cluster_by_uuid(ceph_fsid)
++            if cluster is None:
++                raise Error('No cluster conf found in ' + SYSCONFDIR +
++                            ' with fsid %s' % ceph_fsid)
+ 
+         if mode == KEY_MANAGEMENT_MODE_V1:
+             key, stderr, ret = command(

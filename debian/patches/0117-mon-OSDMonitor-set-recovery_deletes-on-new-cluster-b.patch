@@ -1,0 +1,24 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Fri, 25 Aug 2017 14:53:18 -0700
+Subject: mon/OSDMonitor: set recovery_deletes on new cluster by default
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+
+Resolves: rhbz#1484121
+---
+ src/mon/OSDMonitor.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/mon/OSDMonitor.cc b/src/mon/OSDMonitor.cc
+index c4349df..39b77fc 100644
+--- a/src/mon/OSDMonitor.cc
++++ b/src/mon/OSDMonitor.cc
+@@ -125,7 +125,7 @@ void OSDMonitor::create_initial()
+   // new clusters should sort bitwise by default.
+   newmap.set_flag(CEPH_OSDMAP_SORTBITWISE);
+ 
+-  if (!g_conf->mon_debug_init_recovery_deletes) {
++  if (g_conf->mon_debug_init_recovery_deletes) {
+     // new clusters should set recovery deletes by default.
+     newmap.set_flag(CEPH_OSDMAP_RECOVERY_DELETES);
+   }

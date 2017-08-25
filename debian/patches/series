@@ -109,3 +109,9 @@
 0109-osd-PrimaryLogPG-PGBackend-complete-callback-even-if.patch
 0110-PGLog-store-extra-duplicate-ops-beyond-the-normal-lo.patch
 0111-PGLog-continuation-store-extra-duplicate-ops-beyond-.patch
+0112-osd-PG-fix-lost-unfound-delete-when-there-are-no-mis.patch
+0113-osd-PGBackend-delete-reply-if-fails-to-complete-dele.patch
+0114-osd-PGBackend-release-a-msg-using-msg-put-not-delete.patch
+0115-ceph-disk-dmcrypt-cluster-must-default-to-ceph.patch
+0116-osd-PGLog-write-only-changed-dup-entries.patch
+0117-mon-OSDMonitor-set-recovery_deletes-on-new-cluster-b.patch

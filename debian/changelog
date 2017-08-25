@@ -1,3 +1,18 @@
+ceph (10.2.7-33redhat1) stable; urgency=medium
+
+  * osd/PG: fix lost unfound + delete when there are no missing
+    objects (rhbz#1452780)
+  * osd/PGBackend: delete reply if fails to complete delete request
+    (rhbz#1452780)
+  * osd/PGBackend: release a msg using msg->put() not delete
+    (rhbz#1452780)
+  * ceph-disk: dmcrypt cluster must default to ceph (rhbz#1477775)
+  * osd/PGLog: write only changed dup entries (rhbz#1484127)
+  * mon/OSDMonitor: set recovery_deletes on new cluster by default
+    (rhbz#1484121)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Fri, 25 Aug 2017 16:28:18 -0600
+
 ceph (10.2.7-32redhat1) stable; urgency=medium
 
   * PGLog: store extra duplicate ops beyond the normal log entries
