@@ -1,3 +1,22 @@
+ceph (10.2.7-34redhat1) stable; urgency=medium
+
+  * rgw: meta sync thread crash at RGWMetaSyncShardCR (rhbz#1476888)
+  * rgw: lease_stack: use reset method instead of assignment
+    (rhbz#1476888)
+  * rgw : fix race in RGWCompleteMultipart (rhbz#1477754)
+  * rgw: bucket index check in radosgw-admin removes valid index.
+    (rhbz#1479949)
+  * cls/refcount: store and use list of retired tags (rhbz#1476865)
+  * rgw: Fix up to 1000 entries at a time in check_bad_index_multipart
+    (rhbz#1463969)
+  * rgw: multipart copy-part remove '/' for s3 java sdk request
+    header. (rhbz#1470301)
+  * rgw: Do not decrement stats cache when the cache values are zero
+    (rhbz#1472868)
+  * rgw: Prevent overflow of stats cached values (rhbz#1472868)
+
+ --  <ceph-jenkins@redhat.com>  Thu, 14 Sep 2017 17:29:51 +0000
+
 ceph (10.2.7-33redhat1) stable; urgency=medium
 
   * osd/PG: fix lost unfound + delete when there are no missing

@@ -1,0 +1,30 @@
+From: Nathan Cutler <ncutler@suse.com>
+Date: Thu, 6 Jul 2017 20:17:49 +0200
+Subject: rgw: lease_stack: use reset method instead of assignment
+
+It seems that the intent of 45877d38fd9a385b2f8b13e90be94d784898b0b3 was to
+change all instances of "lease_stack = ..." to "lease_stack.reset(...)", but
+this one was missed.
+
+Signed-off-by: Nathan Cutler <ncutler@suse.com>
+(cherry picked from commit fc425afeb2e2a6ba3c98c612b3977aea619c9f73)
+(cherry picked from commit 314952c58993e6ea6a3fa1bb3b6f9a7118c52ea4)
+
+Resolves: rhbz#1476888
+---
+ src/rgw/rgw_sync.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_sync.cc b/src/rgw/rgw_sync.cc
+index 48640ff..de6ad57 100644
+--- a/src/rgw/rgw_sync.cc
++++ b/src/rgw/rgw_sync.cc
+@@ -829,7 +829,7 @@ public:
+         string lock_name = "sync_lock";
+ 	lease_cr.reset(new RGWContinuousLeaseCR(sync_env->async_rados, sync_env->store, sync_env->store->get_zone_params().log_pool, sync_env->status_oid(),
+                                                 lock_name, lock_duration, this));
+-        lease_stack = spawn(lease_cr.get(), false);
++        lease_stack.reset(spawn(lease_cr.get(), false));
+       }
+       while (!lease_cr->is_locked()) {
+         if (lease_cr->is_done()) {

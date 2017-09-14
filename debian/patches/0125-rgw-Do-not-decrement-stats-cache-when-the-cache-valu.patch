@@ -1,0 +1,54 @@
+From: Pavan Rallabhandi <PRallabhandi@walmartlabs.com>
+Date: Tue, 18 Jul 2017 14:40:04 +0530
+Subject: rgw: Do not decrement stats cache when the cache values are zero
+
+With RGWs configured in a load balancer, there is a possibility of
+having the cached values going unbound, when PUT/DELETE operations
+do not land up on the same RGW. To avoid such cases, make sure the
+decrement of stats happen only when the cached values are sane.
+
+Fixes: http://tracker.ceph.com/issues/20661
+Signed-off-by: Pavan Rallabhandi <PRallabhandi@walmartlabs.com>
+(cherry picked from commit 3903e213c7ac7624e3452f5f3b1ca1c339bf2ca2)
+
+Conflicts:
+	src/rgw/rgw_quota.cc
+
+(cherry picked from commit 59854a158e8df803013ba1266d414af67feebac1)
+
+Resolves: rhbz#1472868
+---
+ src/rgw/rgw_quota.cc | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_quota.cc b/src/rgw/rgw_quota.cc
+index 4abeb0c..1153639 100644
+--- a/src/rgw/rgw_quota.cc
++++ b/src/rgw/rgw_quota.cc
+@@ -221,9 +221,23 @@ public:
+     uint64_t rounded_kb_added = rgw_rounded_objsize_kb(added_bytes);
+     uint64_t rounded_kb_removed = rgw_rounded_objsize_kb(removed_bytes);
+ 
+-    entry->stats.num_kb_rounded += (rounded_kb_added - rounded_kb_removed);
+-    entry->stats.num_kb += (added_bytes - removed_bytes) / 1024;
+-    entry->stats.num_objects += objs_delta;
++    if ((entry->stats.num_kb_rounded + rounded_kb_added - rounded_kb_removed) >= 0) {
++      entry->stats.num_kb_rounded += (rounded_kb_added - rounded_kb_removed);
++    } else {
++      entry->stats.num_kb_rounded = 0;
++    }
++    
++    if ((entry->stats.num_kb + ((added_bytes - removed_bytes) / 1024)) >= 0) {
++      entry->stats.num_kb += (added_bytes - removed_bytes) / 1024;
++    } else {
++      entry->stats.num_kb = 0;
++    }
++    
++    if ((entry->stats.num_objects + objs_delta) >= 0) {
++      entry->stats.num_objects += objs_delta;
++    } else {
++      entry->stats.num_objects = 0;
++    }
+ 
+     return true;
+   }

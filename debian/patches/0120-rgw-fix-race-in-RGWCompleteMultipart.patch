@@ -1,0 +1,105 @@
+From: Abhishek Varshney <abhishek.varshney@flipkart.com>
+Date: Tue, 1 Aug 2017 14:46:52 +0000
+Subject: rgw : fix race in RGWCompleteMultipart
+
+Fixes : http://tracker.ceph.com/issues/20861
+
+Signed-off-by: Abhishek Varshney <abhishek.varshney@flipkart.com>
+(cherry picked from commit dd7dc62eaddb47447c01c03c87ad56cd7690693e)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 5a7ea2790c391544a3a8ea4369ac8e46a0b3c4ec)
+
+Resolves: rhbz#1477754
+---
+ src/common/config_opts.h |  2 ++
+ src/rgw/rgw_op.cc        | 37 +++++++++++++++++++++++++++++++++++++
+ src/rgw/rgw_rados.h      |  1 +
+ 3 files changed, 40 insertions(+)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 230c591..be2c13b 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1428,6 +1428,8 @@ OPTION(rgw_user_default_quota_max_size, OPT_LONGLONG, -1) // Max size of object
+ OPTION(rgw_multipart_min_part_size, OPT_INT, 5 * 1024 * 1024) // min size for each part (except for last one) in multipart upload
+ OPTION(rgw_multipart_part_upload_limit, OPT_INT, 10000) // parts limit in multipart upload
+ 
++OPTION(rgw_mp_lock_max_time, OPT_INT, 600) // multipart-upload xlock timeout in seconds
++
+ OPTION(rgw_max_slo_entries, OPT_INT, 1000) // default number of max entries in slo
+ 
+ OPTION(rgw_olh_pending_timeout_sec, OPT_INT, 3600) // time until we retire a pending olh change
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 2933db0..6a14e71 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -29,6 +29,7 @@
+ #include "rgw_rest_conn.h"
+ #include "rgw_rest_s3.h"
+ #include "rgw_client_io.h"
++#include "cls/lock/cls_lock_client.h"
+ 
+ #include "include/assert.h"
+ 
+@@ -4182,6 +4183,38 @@ void RGWCompleteMultipart::execute()
+   meta_obj.set_in_extra_data(true);
+   meta_obj.index_hash_source = s->object.name;
+ 
++  auto raw_oid = meta_obj.bucket.bucket_id + "_" + meta_obj.get_object();
++
++  /*take a cls lock on meta_obj to prevent racing completions (or retries)
++    from deleting the parts*/
++  librados::IoCtx ioctx;
++
++  op_ret = store->get_obj_ioctx(meta_obj, &ioctx);
++  if (op_ret < 0) {
++    ldout(s->cct, 0) << "ERROR: failed to open extra_dat_ctx, obj="
++		     << raw_oid
++		     << " ret=" << op_ret << dendl;
++    return;
++  }
++
++  librados::ObjectWriteOperation op;
++  rados::cls::lock::Lock l("RGWCompleteMultipart");
++  int max_lock_secs_mp = s->cct->_conf->rgw_mp_lock_max_time;
++  utime_t time(max_lock_secs_mp, 0);
++
++  op.assert_exists();
++  l.set_duration(time);
++  l.lock_exclusive(&op);
++
++  op_ret = ioctx.operate(raw_oid, &op);
++  if (op_ret < 0) {
++    dout(0) << "RGWCompleteMultipart::execute() failed to acquire lock "
++	    << dendl;
++    op_ret = -ERR_INTERNAL_ERROR;
++    s->err.message = "This multipart completion is already in progress";
++    return;
++  }
++
+   op_ret = get_obj_attrs(store, s, meta_obj, attrs);
+   if (op_ret < 0) {
+     ldout(s->cct, 0) << "ERROR: failed to get obj attrs, obj=" << meta_obj
+@@ -4296,6 +4329,10 @@ void RGWCompleteMultipart::execute()
+ 			    s->bucket_info, meta_obj, 0);
+   if (r < 0) {
+     ldout(store->ctx(), 0) << "WARNING: failed to remove object " << meta_obj << dendl;
++    r = l.unlock(&ioctx, meta_oid);
++    if (r < 0) {
++      ldout(store->ctx(), 0) << "WARNING: failed to unlock " << meta_oid << dendl;
++    }
+   }
+ }
+ 
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index 439c895..7653ad9 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -1780,6 +1780,7 @@ class RGWRados
+   friend class RGWDataSyncProcessorThread;
+   friend class RGWStateLog;
+   friend class RGWReplicaLogger;
++  friend class RGWCompleteMultipart;
+ 
+   /** Open the pool used as root for this gateway */
+   int open_root_pool_ctx();

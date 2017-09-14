@@ -1,0 +1,26 @@
+From: root <root@dlp-dev01.novalocal>
+Date: Tue, 23 May 2017 13:56:59 +0800
+Subject: rgw: multipart copy-part remove '/' for s3 java sdk request header.
+
+Fixes: http://tracker.ceph.com/issues/20075
+Signed-off-by: donglinpeng@cmss.chinamobile.com
+(cherry picked from commit d60ddddfaf6964364faed40f45b18eb88a841023)
+(cherry picked from commit f16fa4b252b1601b00149f17ed1516bc90cbedf3)
+
+Resolves: rhbz#1470301
+---
+ src/rgw/rgw_rest_s3.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index d34d8d5..430cfbf 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -1073,6 +1073,7 @@ int RGWPutObj_ObjStore_S3::get_params()
+   /* handle x-amz-copy-source */
+ 
+   if (copy_source) {
++    if (*copy_source == '/') ++copy_source;
+     copy_source_bucket_name = copy_source;
+     pos = copy_source_bucket_name.find("/");
+     if (pos == std::string::npos) {

@@ -115,3 +115,12 @@
 0115-ceph-disk-dmcrypt-cluster-must-default-to-ceph.patch
 0116-osd-PGLog-write-only-changed-dup-entries.patch
 0117-mon-OSDMonitor-set-recovery_deletes-on-new-cluster-b.patch
+0118-rgw-meta-sync-thread-crash-at-RGWMetaSyncShardCR.patch
+0119-rgw-lease_stack-use-reset-method-instead-of-assignme.patch
+0120-rgw-fix-race-in-RGWCompleteMultipart.patch
+0121-rgw-bucket-index-check-in-radosgw-admin-removes-vali.patch
+0122-cls-refcount-store-and-use-list-of-retired-tags.patch
+0123-rgw-Fix-up-to-1000-entries-at-a-time-in-check_bad_in.patch
+0124-rgw-multipart-copy-part-remove-for-s3-java-sdk-reque.patch
+0125-rgw-Do-not-decrement-stats-cache-when-the-cache-valu.patch
+0126-rgw-Prevent-overflow-of-stats-cached-values.patch

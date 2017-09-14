@@ -1,0 +1,47 @@
+From: Aleksei Gutikov <aleksey.gutikov@synesis.ru>
+Date: Mon, 21 Aug 2017 17:04:45 +0300
+Subject: rgw: Prevent overflow of stats cached values
+
+Signed-off-by: Pavan Rallabhandi <PRallabhandi@walmartlabs.com>
+Fixes: http://tracker.ceph.com/issues/20934
+Signed-off-by: Aleksei Gutikov <aleksey.gutikov@synesis.ru>
+(cherry picked from commit 634215eea1ddd4e4f5dc0066c4a2e745cfc20475)
+
+Conflicts:
+	src/rgw/rgw_quota.cc
+		       Have the quota stats structures to reflect rounded values in KB and honor the signed integer values
+
+(cherry picked from commit 187e9eaa30514c93cd8e982ff67ddb6502810af9)
+
+Resolves: rhbz#1472868
+---
+ src/rgw/rgw_quota.cc | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_quota.cc b/src/rgw/rgw_quota.cc
+index 1153639..dc880b4 100644
+--- a/src/rgw/rgw_quota.cc
++++ b/src/rgw/rgw_quota.cc
+@@ -221,19 +221,19 @@ public:
+     uint64_t rounded_kb_added = rgw_rounded_objsize_kb(added_bytes);
+     uint64_t rounded_kb_removed = rgw_rounded_objsize_kb(removed_bytes);
+ 
+-    if ((entry->stats.num_kb_rounded + rounded_kb_added - rounded_kb_removed) >= 0) {
++    if (((int64_t)(entry->stats.num_kb_rounded + rounded_kb_added - rounded_kb_removed)) >= 0) {
+       entry->stats.num_kb_rounded += (rounded_kb_added - rounded_kb_removed);
+     } else {
+       entry->stats.num_kb_rounded = 0;
+     }
+     
+-    if ((entry->stats.num_kb + ((added_bytes - removed_bytes) / 1024)) >= 0) {
++    if (((int64_t)(entry->stats.num_kb + ((added_bytes - removed_bytes) / 1024))) >= 0) {
+       entry->stats.num_kb += (added_bytes - removed_bytes) / 1024;
+     } else {
+       entry->stats.num_kb = 0;
+     }
+     
+-    if ((entry->stats.num_objects + objs_delta) >= 0) {
++    if (((int64_t)(entry->stats.num_objects + objs_delta)) >= 0) {
+       entry->stats.num_objects += objs_delta;
+     } else {
+       entry->stats.num_objects = 0;

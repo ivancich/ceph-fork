@@ -1,0 +1,214 @@
+From: Yehuda Sadeh <yehuda@redhat.com>
+Date: Tue, 13 Jun 2017 11:23:37 -0700
+Subject: cls/refcount: store and use list of retired tags
+
+Fixes: http://tracker.ceph.com/issues/20107
+
+Keep around the list of retired tags, make sure we don't
+drop a refcount using the same tag.
+
+Signed-off-by: Yehuda Sadeh <yehuda@redhat.com>
+(cherry picked from commit 2c4fb020a13333bba6d3c29318c8a87099d915db)
+(cherry picked from commit 1516e24c8583237bc75c4185b416cd3fd4ec3df1)
+
+Resolves: rhbz#1476865
+---
+ src/cls/refcount/cls_refcount.cc           |  24 ++++---
+ src/test/cls_refcount/test_cls_refcount.cc | 101 +++++++++++++++++++++++++++++
+ 2 files changed, 115 insertions(+), 10 deletions(-)
+
+diff --git a/src/cls/refcount/cls_refcount.cc b/src/cls/refcount/cls_refcount.cc
+index f5598ae..99051f1 100644
+--- a/src/cls/refcount/cls_refcount.cc
++++ b/src/cls/refcount/cls_refcount.cc
+@@ -30,18 +30,23 @@ cls_method_handle_t h_refcount_read;
+ 
+ struct obj_refcount {
+   map<string, bool> refs;
++  set<string> retired_refs;
+ 
+   obj_refcount() {}
+ 
+   void encode(bufferlist& bl) const {
+-    ENCODE_START(1, 1, bl);
++    ENCODE_START(2, 1, bl);
+     ::encode(refs, bl);
++    ::encode(retired_refs, bl);
+     ENCODE_FINISH(bl);
+   }
+ 
+   void decode(bufferlist::iterator& bl) {
+-    DECODE_START(1, bl);
++    DECODE_START(2, bl);
+     ::decode(refs, bl);
++    if (struct_v >= 2) {
++      ::decode(retired_refs, bl);
++    }
+     DECODE_FINISH(bl);
+   }
+ };
+@@ -74,12 +79,9 @@ static int read_refcount(cls_method_context_t hctx, bool implicit_ref, obj_refco
+   return 0;
+ }
+ 
+-static int set_refcount(cls_method_context_t hctx, map<string, bool>& refs)
++static int set_refcount(cls_method_context_t hctx, const struct obj_refcount& objr)
+ {
+   bufferlist bl;
+-  struct obj_refcount objr;
+-
+-  objr.refs = refs;
+ 
+   ::encode(objr, bl);
+ 
+@@ -111,7 +113,7 @@ static int cls_rc_refcount_get(cls_method_context_t hctx, bufferlist *in, buffer
+ 
+   objr.refs[op.tag] = true;
+ 
+-  ret = set_refcount(hctx, objr.refs);
++  ret = set_refcount(hctx, objr);
+   if (ret < 0)
+     return ret;
+ 
+@@ -153,16 +155,18 @@ static int cls_rc_refcount_put(cls_method_context_t hctx, bufferlist *in, buffer
+     }
+   }
+ 
+-  if (!found)
++  if (!found ||
++      objr.retired_refs.find(op.tag) != objr.retired_refs.end())
+     return 0;
+ 
++  objr.retired_refs.insert(op.tag);
+   objr.refs.erase(iter);
+ 
+   if (objr.refs.empty()) {
+     return cls_cxx_remove(hctx);
+   }
+ 
+-  ret = set_refcount(hctx, objr.refs);
++  ret = set_refcount(hctx, objr);
+   if (ret < 0)
+     return ret;
+ 
+@@ -191,7 +195,7 @@ static int cls_rc_refcount_set(cls_method_context_t hctx, bufferlist *in, buffer
+     objr.refs[*iter] = true;
+   }
+ 
+-  int ret = set_refcount(hctx, objr.refs);
++  int ret = set_refcount(hctx, objr);
+   if (ret < 0)
+     return ret;
+ 
+diff --git a/src/test/cls_refcount/test_cls_refcount.cc b/src/test/cls_refcount/test_cls_refcount.cc
+index a585b9a..c0e748b 100644
+--- a/src/test/cls_refcount/test_cls_refcount.cc
++++ b/src/test/cls_refcount/test_cls_refcount.cc
+@@ -112,6 +112,107 @@ TEST(cls_rgw, test_implicit) /* test refcount using implicit referencing of newl
+   ASSERT_EQ(0, destroy_one_pool_pp(pool_name, rados));
+ }
+ 
++/*
++ * similar to test_implicit, just changes the order of the tags removal
++ * see issue #20107
++ */
++TEST(cls_rgw, test_implicit_idempotent) /* test refcount using implicit referencing of newly created objects */
++{
++  librados::Rados rados;
++  librados::IoCtx ioctx;
++  string pool_name = get_temp_pool_name();
++
++  /* create pool */
++  ASSERT_EQ("", create_one_pool_pp(pool_name, rados));
++  ASSERT_EQ(0, rados.ioctx_create(pool_name.c_str(), ioctx));
++
++  /* add chains */
++  string oid = "obj";
++  string oldtag = "oldtag";
++  string newtag = "newtag";
++
++
++  /* get on a missing object will fail */
++  librados::ObjectWriteOperation *op = new_op();
++  cls_refcount_get(*op, newtag, true);
++  ASSERT_EQ(-ENOENT, ioctx.operate(oid, op));
++  delete op;
++
++  /* create object */
++  ASSERT_EQ(0, ioctx.create(oid, true));
++
++  /* read reference, should return a single wildcard entry */
++
++  list<string> refs;
++
++  ASSERT_EQ(0, cls_refcount_read(ioctx, oid, &refs, true));
++  ASSERT_EQ(1, (int)refs.size());
++
++  string wildcard_tag;
++  string tag = refs.front();
++
++  ASSERT_EQ(wildcard_tag, tag);
++
++  /* take another reference, verify */
++  op = new_op();
++  cls_refcount_get(*op, newtag, true);
++  ASSERT_EQ(0, ioctx.operate(oid, op));
++
++  ASSERT_EQ(0, cls_refcount_read(ioctx, oid, &refs, true));
++  ASSERT_EQ(2, (int)refs.size());
++
++  map<string, bool> refs_map;
++  for (list<string>::iterator iter = refs.begin(); iter != refs.end(); ++iter) {
++    refs_map[*iter] = true;
++  }
++
++  ASSERT_EQ(1, (int)refs_map.count(wildcard_tag));
++  ASSERT_EQ(1, (int)refs_map.count(newtag));
++
++  delete op;
++
++  /* drop reference to newtag */
++
++  op = new_op();
++  cls_refcount_put(*op, newtag, true);
++  ASSERT_EQ(0, ioctx.operate(oid, op));
++
++  ASSERT_EQ(0, cls_refcount_read(ioctx, oid, &refs, true));
++  ASSERT_EQ(1, (int)refs.size());
++
++  tag = refs.front();
++  ASSERT_EQ(string(), tag);
++
++  delete op;
++
++  /* drop newtag reference again, op should return success, wouldn't do anything */
++
++  op = new_op();
++  cls_refcount_put(*op, newtag, true);
++  ASSERT_EQ(0, ioctx.operate(oid, op));
++
++  ASSERT_EQ(0, cls_refcount_read(ioctx, oid, &refs, true));
++  ASSERT_EQ(1, (int)refs.size());
++
++  tag = refs.front();
++  ASSERT_EQ(string(), tag);
++
++  delete op;
++
++  /* drop oldtag reference, make sure object removed */
++  op = new_op();
++  cls_refcount_put(*op, oldtag, true);
++  ASSERT_EQ(0, ioctx.operate(oid, op));
++
++  ASSERT_EQ(-ENOENT, ioctx.stat(oid, NULL, NULL));
++
++  delete op;
++
++  /* remove pool */
++  ioctx.close();
++  ASSERT_EQ(0, destroy_one_pool_pp(pool_name, rados));
++}
++
+ 
+ TEST(cls_rgw, test_put_snap) {
+   librados::Rados rados;
