@@ -1,3 +1,14 @@
+ceph (10.2.7-35redhat1) stable; urgency=medium
+
+  * ceph-disk: Reporting /sys directory in get_partition_dev()
+    (rhbz#1491780)
+  * ceph-disk: Adding retry loop in get_partition_dev() (rhbz#1491780)
+  * rgw: replace '+' with "%20" in canonical query string for s3 v4
+    auth. (rhbz#1456060)
+  * rgw: fix marker encoding problem. (rhbz#1470836)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Mon, 18 Sep 2017 13:37:54 -0400
+
 ceph (10.2.7-34redhat1) stable; urgency=medium
 
   * rgw: meta sync thread crash at RGWMetaSyncShardCR (rhbz#1476888)

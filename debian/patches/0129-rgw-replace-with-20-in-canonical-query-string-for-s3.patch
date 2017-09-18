@@ -1,0 +1,29 @@
+From: Zhang Shaowen <zhangshaowen@cmss.chinamobile.com>
+Date: Wed, 9 Aug 2017 13:51:40 -0400
+Subject: rgw: replace '+' with "%20" in canonical query string for s3 v4 auth.
+
+Fixes: http://tracker.ceph.com/issues/20501
+
+Signed-off-by: Zhang Shaowen <zhangshaowen@cmss.chinamobile.com>
+(cherry picked from commit 416bc51101b4ae5da569c9bc3d8d738eeadc25a6)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 6bd2dae1934f5f2a752b2c0edaa937b5a4163c36)
+
+Resolves: rhbz#1456060
+---
+ src/rgw/rgw_rest_s3.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index 430cfbf..83f879c 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -3692,6 +3692,8 @@ int RGW_Auth_S3::authorize_v4(RGWRados *store, struct req_state *s)
+ 
+   if (!s->aws4_auth->canonical_qs.empty()) {
+ 
++    boost::replace_all(s->aws4_auth->canonical_qs, "+", "%20");
++
+     /* handle case when query string exists. Step 3 in
+      * http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html */
+ 

@@ -124,3 +124,7 @@
 0124-rgw-multipart-copy-part-remove-for-s3-java-sdk-reque.patch
 0125-rgw-Do-not-decrement-stats-cache-when-the-cache-valu.patch
 0126-rgw-Prevent-overflow-of-stats-cached-values.patch
+0127-ceph-disk-Reporting-sys-directory-in-get_partition_d.patch
+0128-ceph-disk-Adding-retry-loop-in-get_partition_dev.patch
+0129-rgw-replace-with-20-in-canonical-query-string-for-s3.patch
+0130-rgw-fix-marker-encoding-problem.patch

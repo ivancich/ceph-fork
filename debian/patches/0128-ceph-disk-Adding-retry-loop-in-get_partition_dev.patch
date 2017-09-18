@@ -1,0 +1,98 @@
+From: Erwan Velu <erwan@redhat.com>
+Date: Fri, 31 Mar 2017 14:54:33 +0200
+Subject: ceph-disk: Adding retry loop in get_partition_dev()
+
+There is very rare cases where get_partition_dev() is called before the actual partition is available in /sys/block/<device>.
+
+It appear that waiting a very short is usually enough to get the partition beein populated.
+
+Analysis:
+update_partition() is supposed to be enough to avoid any racing between events sent by parted/sgdisk/partprobe and
+the actual creation on the /sys/block/<device>/* entrypoint.
+On our CI that race occurs pretty often but trying to reproduce it locally never been possible.
+
+This patch is almost a workaround rather than a fix to the real problem.
+It offer retrying after a very short to be make a chance the device to appear.
+This approach have been succesful on the CI.
+
+Note his patch is not changing the timing when the device is perfectly created on time and just differ by a 1/5th up to 2 seconds when the bug occurs.
+
+A typical output from the build running on a CI with that code.
+	command_check_call: Running command: /usr/bin/udevadm settle --timeout=600
+	get_dm_uuid: get_dm_uuid /dev/sda uuid path is /sys/dev/block/8:0/dm/uuid
+	get_partition_dev: Try 1/10 : partition 2 for /dev/sda does not in /sys/block/sda
+	get_partition_dev: Found partition 2 for /dev/sda after 1 tries
+        get_dm_uuid: get_dm_uuid /dev/sda uuid path is /sys/dev/block/8:0/dm/uuid
+	get_dm_uuid: get_dm_uuid /dev/sda2 uuid path is /sys/dev/block/8:2/dm/uuid
+
+Fixes: http://tracker.ceph.com/issues/19428
+
+Signed-off-by: Erwan Velu <erwan@redhat.com>
+(cherry picked from commit 93e7b95ed8b4c78daebf7866bb1f0826d7199075)
+(cherry picked from commit a20d2b89ee13e311cf1038c54ecadae79b68abd5)
+
+Resolves: rhbz#1491780
+---
+ src/ceph-disk/ceph_disk/main.py | 49 +++++++++++++++++++++++++----------------
+ 1 file changed, 30 insertions(+), 19 deletions(-)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index 5c60da2..85af56e 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -652,25 +652,36 @@ def get_partition_dev(dev, pnum):
+        sda 1 -> sda1
+        cciss/c0d1 1 -> cciss!c0d1p1
+     """
+-    partname = None
+-    error_msg = ""
+-    if is_mpath(dev):
+-        partname = get_partition_mpath(dev, pnum)
+-    else:
+-        name = get_dev_name(os.path.realpath(dev))
+-        sys_entry = os.path.join('/sys/block', name)
+-        error_msg = " in %s" % sys_entry
+-        for f in os.listdir(sys_entry):
+-            if f.startswith(name) and f.endswith(str(pnum)):
+-                # we want the shortest name that starts with the base name
+-                # and ends with the partition number
+-                if not partname or len(f) < len(partname):
+-                    partname = f
+-    if partname:
+-        return get_dev_path(partname)
+-    else:
+-        raise Error('partition %d for %s does not appear to exist%s' %
+-                    (pnum, dev, error_msg))
++    max_retry = 10
++    for retry in range(0, max_retry + 1):
++        partname = None
++        error_msg = ""
++        if is_mpath(dev):
++            partname = get_partition_mpath(dev, pnum)
++        else:
++            name = get_dev_name(os.path.realpath(dev))
++            sys_entry = os.path.join('/sys/block', name)
++            error_msg = " in %s" % sys_entry
++            for f in os.listdir(sys_entry):
++                if f.startswith(name) and f.endswith(str(pnum)):
++                    # we want the shortest name that starts with the base name
++                    # and ends with the partition number
++                    if not partname or len(f) < len(partname):
++                        partname = f
++        if partname:
++            if retry:
++                LOG.info('Found partition %d for %s after %d tries' %
++                         (pnum, dev, retry))
++            return get_dev_path(partname)
++        else:
++            if retry < max_retry:
++                LOG.info('Try %d/%d : partition %d for %s does not exist%s' %
++                         (retry + 1, max_retry, pnum, dev, error_msg))
++                time.sleep(.2)
++                continue
++            else:
++                raise Error('partition %d for %s does not appear to exist%s' %
++                            (pnum, dev, error_msg))
+ 
+ 
+ def list_all_partitions():

@@ -1,0 +1,59 @@
+From: Marcus Watts <mwatts@redhat.com>
+Date: Wed, 28 Jun 2017 17:36:08 -0400
+Subject: rgw: fix marker encoding problem.
+
+For object names that contain / and %, it is possible in
+some circumstances (at least with boto) for "listobjects"
+operations to attempt to fetch additional objects using
+'marker=' and a value containing both / and %.  When this
+happens, when using AWSv4, radosgw returns a signature
+validation error.  It's possible to artifically do this
+in boto on any bucket (regardless of content) with
+sometihng like s=bucket.get_all_keys(marker='level1/8e%25%25FAH3')
+this fails because "recoder" assumes the query string
+was already encoded if any value is encoded, and fails
+to take into account that the string might be partially
+encoded, as in this case.
+
+The fix here is to always decode the value, then always encode.
+
+Fixes: http://tracker.ceph.com/issues/20463
+Signed-off-by: Marcus Watts <mwatts@redhat.com>
+(cherry picked from commit f1ed74534191c7191e707b7115f06bd7d070816e)
+Signed-off-by: Orit Wasserman <owasserm@redhat.com>
+
+Conflicts:
+	src/rgw/rgw_auth_s3.cc
+
+(cherry picked from commit 34cf013914a0d3778b2487344c453c04ee41c54a)
+
+Resolves: rhbz#1470836
+---
+ src/rgw/rgw_rest_s3.cc | 12 ++----------
+ 1 file changed, 2 insertions(+), 10 deletions(-)
+
+diff --git a/src/rgw/rgw_rest_s3.cc b/src/rgw/rgw_rest_s3.cc
+index 83f879c..767cc4d 100644
+--- a/src/rgw/rgw_rest_s3.cc
++++ b/src/rgw/rgw_rest_s3.cc
+@@ -3712,18 +3712,10 @@ int RGW_Auth_S3::authorize_v4(RGWRados *store, struct req_state *s)
+         if (key != "X-Amz-Credential") {
+           string key_decoded;
+           url_decode(key, key_decoded);
+-          if (key.length() != key_decoded.length()) {
+-            encoded_key = key;
+-          } else {
+-            aws4_uri_encode(key, encoded_key);
+-          }
++          aws4_uri_encode(key_decoded, encoded_key);
+           string val_decoded;
+           url_decode(val, val_decoded);
+-          if (val.length() != val_decoded.length()) {
+-            encoded_val = val;
+-          } else {
+-            aws4_uri_encode(val, encoded_val);
+-          }
++          aws4_uri_encode(val_decoded, encoded_val);
+         } else {
+           encoded_key = key;
+           encoded_val = val;

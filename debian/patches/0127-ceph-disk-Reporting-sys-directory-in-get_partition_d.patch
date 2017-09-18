@@ -1,0 +1,52 @@
+From: Erwan Velu <erwan@redhat.com>
+Date: Wed, 22 Mar 2017 10:11:44 +0100
+Subject: ceph-disk: Reporting /sys directory in get_partition_dev()
+
+When get_partition_dev() fails, it reports the following message :
+    ceph_disk.main.Error: Error: partition 2 for /dev/sdb does not appear to exist
+The code search for a directory inside the /sys/block/get_dev_name(os.path.realpath(dev)).
+
+The issue here is the error message doesn't report that path when failing while it might be involved in.
+
+This patch is about reporting where the code was looking at when trying to estimate if the partition was available.
+
+Signed-off-by: Erwan Velu <erwan@redhat.com>
+(cherry picked from commit 413c9fcfbe8e6ab33d73b8428090ccacc33c5d15)
+(cherry picked from commit 2d5d0aec60ec9689d44a53233268e9b9dd25df95)
+
+Resolves: rhbz#1491780
+---
+ src/ceph-disk/ceph_disk/main.py | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index a9ddc7f..5c60da2 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -653,11 +653,14 @@ def get_partition_dev(dev, pnum):
+        cciss/c0d1 1 -> cciss!c0d1p1
+     """
+     partname = None
++    error_msg = ""
+     if is_mpath(dev):
+         partname = get_partition_mpath(dev, pnum)
+     else:
+         name = get_dev_name(os.path.realpath(dev))
+-        for f in os.listdir(os.path.join('/sys/block', name)):
++        sys_entry = os.path.join('/sys/block', name)
++        error_msg = " in %s" % sys_entry
++        for f in os.listdir(sys_entry):
+             if f.startswith(name) and f.endswith(str(pnum)):
+                 # we want the shortest name that starts with the base name
+                 # and ends with the partition number
+@@ -666,8 +669,8 @@ def get_partition_dev(dev, pnum):
+     if partname:
+         return get_dev_path(partname)
+     else:
+-        raise Error('partition %d for %s does not appear to exist' %
+-                    (pnum, dev))
++        raise Error('partition %d for %s does not appear to exist%s' %
++                    (pnum, dev, error_msg))
+ 
+ 
+ def list_all_partitions():
