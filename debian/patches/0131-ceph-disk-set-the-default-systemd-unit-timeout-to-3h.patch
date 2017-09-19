@@ -1,0 +1,40 @@
+From: Loic Dachary <ldachary@redhat.com>
+Date: Thu, 8 Jun 2017 22:29:48 +0200
+Subject: ceph-disk: set the default systemd unit timeout to 3h
+
+There needs to be a timeout to prevent ceph-disk from hanging
+forever. But there is no good reason to set it to a value that is less
+than a few hours.
+
+Each OSD activation needs to happen in sequence and not in parallel,
+reason why there is a global activation lock.
+
+It would be possible, when an OSD is using a device that is not
+otherwise used by another OSD (i.e. they do not share an SSD journal
+device etc.), to run all activations in parallel. It would however
+require a more extensive modification of ceph-disk to avoid any chances
+of races.
+
+Fixes: http://tracker.ceph.com/issues/20229
+
+Signed-off-by: Loic Dachary <loic@dachary.org>
+(cherry picked from commit a9eb52e0a4c06a80e5dbfaac394aac940edf4c68)
+(cherry picked from commit 53e97da166c6e36c6808063f90c4a2cef2d52a77)
+
+Resolves: rhbz#1472409
+---
+ systemd/ceph-disk@.service | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/systemd/ceph-disk@.service b/systemd/ceph-disk@.service
+index e85f0df..1fdf2af 100644
+--- a/systemd/ceph-disk@.service
++++ b/systemd/ceph-disk@.service
+@@ -6,5 +6,6 @@ Wants=local-fs.target
+ [Service]
+ Type=oneshot
+ KillMode=none
+-ExecStart=/bin/sh -c 'timeout 120 flock /var/lock/ceph-disk-$(basename %f) /usr/sbin/ceph-disk --verbose --log-stdout trigger --sync %f'
++Environment=CEPH_DISK_TIMEOUT=10000
++ExecStart=/bin/sh -c 'timeout $CEPH_DISK_TIMEOUT flock /var/lock/ceph-disk-$(basename %f) /usr/sbin/ceph-disk --verbose --log-stdout trigger --sync %f'
+ TimeoutSec=0

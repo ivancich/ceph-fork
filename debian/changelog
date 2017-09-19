@@ -1,3 +1,10 @@
+ceph (10.2.7-36redhat1) stable; urgency=medium
+
+  * ceph-disk: set the default systemd unit timeout to 3h
+    (rhbz#1472409)
+
+ --  <ceph-jenkins@redhat.com>  Tue, 19 Sep 2017 17:27:09 +0000
+
 ceph (10.2.7-35redhat1) stable; urgency=medium
 
   * ceph-disk: Reporting /sys directory in get_partition_dev()
