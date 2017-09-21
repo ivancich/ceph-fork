@@ -1,0 +1,118 @@
+From: liuchang0812 <liuchang0812@gmail.com>
+Date: Fri, 30 Jun 2017 20:56:04 +0800
+Subject: osd: new command compact via tell/daemon
+
+user could manual compact OSD's omap as following:
+1. ceph tell osd.id compact
+2. ceph daemon osd.id compact
+user's requests will be impacted during compaction.
+
+Fixes: http://tracker.ceph.com/issues/19592
+
+Signed-off-by: liuchang0812 <liuchang0812@gmail.com>
+(cherry picked from commit b4ad4297652df2f6ebfadcdededc7a47607ab534)
+
+ Conflicts:
+	src/osd/OSD.cc
+         Removed all admin socket register and unregister commands
+         which are not part of this backport
+         Changed admin_command to command variable because in jewel
+         we use command variable.
+
+(cherry picked from commit 9c48ab71098782df58453b96c7d654e06167b4b4)
+
+Resolves: rhbz#1483224
+---
+ src/osd/OSD.cc | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index 120a581..f103291 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -40,6 +40,7 @@
+ #include "osdc/Objecter.h"
+ 
+ #include "common/ceph_argparse.h"
++#include "common/ceph_time.h"
+ #include "common/version.h"
+ #include "common/io_priority.h"
+ 
+@@ -155,6 +156,7 @@
+ #undef dout_prefix
+ #define dout_prefix _prefix(_dout, whoami, get_osdmap_epoch())
+ 
++
+ const double OSD::OSD_TICK_INTERVAL = 1.0;
+ 
+ static ostream& _prefix(std::ostream* _dout, int whoami, epoch_t epoch) {
+@@ -1935,6 +1937,18 @@ bool OSD::asok_command(string command, cmdmap_t& cmdmap, string format,
+     f->dump_bool("success", success);
+     f->dump_int("value", value);
+     f->close_section();
++  } else if (command == "compact") {
++    dout(1) << "triggering manual compaction" << dendl;
++    auto start = ceph::coarse_mono_clock::now();
++    store->compact();
++    auto end = ceph::coarse_mono_clock::now();
++    auto time_span = chrono::duration_cast<chrono::duration<double>>(end - start);
++    dout(1) << "finished manual compaction in " 
++            << time_span.count()
++            << " seconds" << dendl;
++    f->open_object_section("compact_result");
++    f->dump_float("elapsed_time", time_span.count());
++    f->close_section();
+   } else {
+     assert(0 == "broken asok registration");
+   }
+@@ -2329,6 +2343,12 @@ void OSD::final_init()
+   assert(r == 0);
+ 
+ 
++  r = admin_socket->register_command("compact", "compact",
++				     asok_hook,
++				     "Commpact object store's omap."
++                                     " WARNING: Compaction probably slows your requests");
++  assert(r == 0);
++
+   test_ops_hook = new TestOpsSocketHook(&(this->service), this->store);
+   // Note: pools are CephString instead of CephPoolname because
+   // these commands traditionally support both pool names and numbers
+@@ -2649,6 +2669,7 @@ int OSD::shutdown()
+   cct->get_admin_socket()->unregister_command("get_latest_osdmap");
+   cct->get_admin_socket()->unregister_command("set_heap_property");
+   cct->get_admin_socket()->unregister_command("get_heap_property");
++  cct->get_admin_socket()->unregister_command("compact");
+   delete asok_hook;
+   asok_hook = NULL;
+ 
+@@ -5332,6 +5353,10 @@ COMMAND("dump_pg_recovery_stats", "dump pg recovery statistics",
+ 	"osd", "r", "cli,rest")
+ COMMAND("reset_pg_recovery_stats", "reset pg recovery statistics",
+ 	"osd", "rw", "cli,rest")
++COMMAND("compact",
++        "compact object store's omap. "
++        "WARNING: Compaction probably slows your requests",
++        "osd", "rw", "cli,rest")
+ };
+ 
+ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data)
+@@ -5741,6 +5766,18 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
+     pg_recovery_stats.reset();
+   }
+ 
++  else if (prefix == "compact") {
++    dout(1) << "triggering manual compaction" << dendl;
++    auto start = ceph::coarse_mono_clock::now();
++    store->compact();
++    auto end = ceph::coarse_mono_clock::now();
++    auto time_span = chrono::duration_cast<chrono::duration<double>>(end - start);
++    dout(1) << "finished manual compaction in "
++            << time_span.count()
++            << " seconds" << dendl;
++    ss << "compacted omap in " << time_span.count() << " seconds";
++  }
++
+   else {
+     ss << "unrecognized command! " << cmd;
+     r = -EINVAL;

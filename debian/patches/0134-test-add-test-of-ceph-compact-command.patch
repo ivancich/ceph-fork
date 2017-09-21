@@ -1,0 +1,43 @@
+From: liuchang0812 <liuchang0812@gmail.com>
+Date: Mon, 3 Jul 2017 16:31:31 +0800
+Subject: test: add test of ceph compact command
+
+Signed-off-by: liuchang0812 <liuchang0812@gmail.com>
+(cherry picked from commit d1f24d053f367511cf12a43350bad246c5f28c9f)
+
+ Conflicts:
+	qa/workunits/cephtool/test.sh
+         Removed all tests which are not part of this backport
+
+(cherry picked from commit 9ef35e8bbb56ddd97f6487382f96ca8e3d7a9527)
+
+Resolves: rhbz#1483224
+---
+ qa/workunits/cephtool/test.sh | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/qa/workunits/cephtool/test.sh b/qa/workunits/cephtool/test.sh
+index eceb64d..539756d 100755
+--- a/qa/workunits/cephtool/test.sh
++++ b/qa/workunits/cephtool/test.sh
+@@ -1837,6 +1837,12 @@ function test_mon_cephdf_commands()
+   expect_false test $cal_raw_used_size != $raw_used_size
+ }
+ 
++function test_osd_compact()
++{
++  ceph tell osd.1 compact
++  ceph daemon osd.1 compact
++}
++
+ #
+ # New tests should be added to the TESTS array below
+ #
+@@ -1878,6 +1884,7 @@ MON_TESTS+=" mon_caps"
+ OSD_TESTS+=" osd_bench"
+ OSD_TESTS+=" osd_negative_filestore_merge_threshold"
+ OSD_TESTS+=" tiering_agent"
++OSD_TESTS+=" osd_compact"
+ 
+ MDS_TESTS+=" mds_tell"
+ MDS_TESTS+=" mon_mds"

@@ -129,3 +129,6 @@
 0129-rgw-replace-with-20-in-canonical-query-string-for-s3.patch
 0130-rgw-fix-marker-encoding-problem.patch
 0131-ceph-disk-set-the-default-systemd-unit-timeout-to-3h.patch
+0132-os-export-compact-interface-in-ObjectStore-and-Objec.patch
+0133-osd-new-command-compact-via-tell-daemon.patch
+0134-test-add-test-of-ceph-compact-command.patch

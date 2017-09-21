@@ -1,3 +1,12 @@
+ceph (10.2.7-37redhat1) stable; urgency=medium
+
+  * os: export compact interface in ObjectStore and ObjectMap
+    (rhbz#1483224)
+  * osd: new command compact via tell/daemon (rhbz#1483224)
+  * test: add test of ceph compact command (rhbz#1483224)
+
+ --  <ceph-jenkins@redhat.com>  Thu, 21 Sep 2017 02:25:24 +0000
+
 ceph (10.2.7-36redhat1) stable; urgency=medium
 
   * ceph-disk: set the default systemd unit timeout to 3h
