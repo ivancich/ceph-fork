@@ -1,0 +1,33 @@
+From: Ilya Dryomov <idryomov@gmail.com>
+Date: Wed, 1 Mar 2017 17:19:04 +0100
+Subject: osd/OSDMap: don't set weight to IN when OSD is destroyed
+
+Since commit 4e28f9e63644 ("osd/OSDMap: clear osd_info, osd_xinfo on
+osd deletion"), weight is set to IN when OSD is deleted.  This changes
+the result of applying an incremental for clients, not just OSDs.
+Because CRUSH computations are obviously affected, pre-4e28f9e63644
+servers disagree with post-4e28f9e63644 clients on object placement,
+resulting in misdirected requests.
+
+Fixes: http://tracker.ceph.com/issues/19119
+Signed-off-by: Ilya Dryomov <idryomov@gmail.com>
+(cherry picked from commit a6009d1039a55e2c77f431662b3d6cc5a8e8e63f)
+(cherry picked from commit 043d70461c1eb874d9185f9bd671930fad05ff65)
+
+Resolves: rhbz#1471939
+---
+ src/osd/OSDMap.cc | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/osd/OSDMap.cc b/src/osd/OSDMap.cc
+index 2f0ca97..e4e4d84 100644
+--- a/src/osd/OSDMap.cc
++++ b/src/osd/OSDMap.cc
+@@ -1356,7 +1356,6 @@ int OSDMap::apply_incremental(const Incremental &inc)
+       (*osd_uuid)[i->first] = uuid_d();
+       osd_info[i->first] = osd_info_t();
+       osd_xinfo[i->first] = osd_xinfo_t();
+-      osd_weight[i->first] = CEPH_OSD_IN;
+       set_primary_affinity(i->first, CEPH_OSD_DEFAULT_PRIMARY_AFFINITY);
+       osd_addrs->client_addr[i->first].reset(new entity_addr_t());
+       osd_addrs->cluster_addr[i->first].reset(new entity_addr_t());

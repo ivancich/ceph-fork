@@ -1,0 +1,34 @@
+From: Sage Weil <sage@redhat.com>
+Date: Thu, 8 Dec 2016 19:25:06 -0600
+Subject: osd: default osd_scrub_during_recovery=false
+
+This is a more friendly behavior.  Tell users in the release notes how to
+get the old behavior.
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 8dca17c067b51050308c5f1cb5eddd400fd6f3f0)
+
+ Conflicts:
+	doc/release-notes.rst
+         - Removed Release notes which are not needed for this backport
+
+(cherry picked from commit 657cdeed9b1f122e99cac2b83c2f98c0c46b589a)
+
+Resolves: rhbz#1482749
+---
+ src/common/config_opts.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index be2c13b..cef6a05 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -759,7 +759,7 @@ OPTION(osd_max_push_cost, OPT_U64, 8<<20)  // max size of push message
+ OPTION(osd_max_push_objects, OPT_U64, 10)  // max objects in single push op
+ OPTION(osd_recovery_forget_lost_objects, OPT_BOOL, false)   // off for now
+ OPTION(osd_max_scrubs, OPT_INT, 1)
+-OPTION(osd_scrub_during_recovery, OPT_BOOL, true) // Allow new scrubs to start while recovery is active on the OSD
++OPTION(osd_scrub_during_recovery, OPT_BOOL, false) // Allow new scrubs to start while recovery is active on the OSD
+ OPTION(osd_scrub_begin_hour, OPT_INT, 0)
+ OPTION(osd_scrub_end_hour, OPT_INT, 24)
+ OPTION(osd_scrub_load_threshold, OPT_FLOAT, 0.5)

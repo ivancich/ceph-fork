@@ -132,3 +132,5 @@
 0132-os-export-compact-interface-in-ObjectStore-and-Objec.patch
 0133-osd-new-command-compact-via-tell-daemon.patch
 0134-test-add-test-of-ceph-compact-command.patch
+0135-osd-default-osd_scrub_during_recovery-false.patch
+0136-osd-OSDMap-don-t-set-weight-to-IN-when-OSD-is-destro.patch
