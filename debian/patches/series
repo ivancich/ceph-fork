@@ -134,4 +134,4 @@
 0134-test-add-test-of-ceph-compact-command.patch
 0135-osd-default-osd_scrub_during_recovery-false.patch
 0136-osd-OSDMap-don-t-set-weight-to-IN-when-OSD-is-destro.patch
-0137-client-set-client_try_dentry_invalidate-to-false-by-.patch
+0137-radosgw-fix-awsv4-header-line-sort-order.patch

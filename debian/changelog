@@ -1,3 +1,9 @@
+ceph (10.2.7-40redhat1) stable; urgency=medium
+
+  * radosgw: fix awsv4 header line sort order. (rhbz#1456060)
+
+ --  <ceph-jenkins@redhat.com>  Mon, 02 Oct 2017 17:22:57 +0000
+
 ceph (10.2.7-39redhat1) stable; urgency=medium
 
   * client: set client_try_dentry_invalidate to false by default
