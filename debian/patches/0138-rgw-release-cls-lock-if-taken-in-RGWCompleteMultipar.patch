@@ -1,0 +1,150 @@
+From: Matt Benjamin <mbenjamin@redhat.com>
+Date: Tue, 3 Oct 2017 17:48:29 -0400
+Subject: rgw: release cls lock if taken in RGWCompleteMultipart
+
+Follows Casey's proposal to conditionally release the lock in
+::complete(), in order to avoid duplicated code in various early
+return cases.
+
+Fixes: http://tracker.ceph.com/issues/21596
+Resolves: rhbz#1496847
+
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+(cherry picked from commit 704f793f08a02760d23eb5778b738bb07be0e7cf)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+---
+ src/rgw/rgw_op.cc | 53 +++++++++++++++++++++++++++++++++++++----------------
+ src/rgw/rgw_op.h  | 24 ++++++++++++++++++++++++
+ 2 files changed, 61 insertions(+), 16 deletions(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 6a14e71..9a0daab 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -4187,9 +4187,7 @@ void RGWCompleteMultipart::execute()
+ 
+   /*take a cls lock on meta_obj to prevent racing completions (or retries)
+     from deleting the parts*/
+-  librados::IoCtx ioctx;
+-
+-  op_ret = store->get_obj_ioctx(meta_obj, &ioctx);
++  op_ret = store->get_obj_ioctx(meta_obj, &serializer.ioctx);
+   if (op_ret < 0) {
+     ldout(s->cct, 0) << "ERROR: failed to open extra_dat_ctx, obj="
+ 		     << raw_oid
+@@ -4197,16 +4195,11 @@ void RGWCompleteMultipart::execute()
+     return;
+   }
+ 
+-  librados::ObjectWriteOperation op;
+-  rados::cls::lock::Lock l("RGWCompleteMultipart");
+-  int max_lock_secs_mp = s->cct->_conf->rgw_mp_lock_max_time;
+-  utime_t time(max_lock_secs_mp, 0);
+-
+-  op.assert_exists();
+-  l.set_duration(time);
+-  l.lock_exclusive(&op);
++  int max_lock_secs_mp =
++    s->cct->_conf->get_val<int64_t>("rgw_mp_lock_max_time");
++  utime_t dur(max_lock_secs_mp, 0);
+ 
+-  op_ret = ioctx.operate(raw_oid, &op);
++  op_ret = serializer.try_lock(raw_oid, dur);
+   if (op_ret < 0) {
+     dout(0) << "RGWCompleteMultipart::execute() failed to acquire lock "
+ 	    << dendl;
+@@ -4327,13 +4320,41 @@ void RGWCompleteMultipart::execute()
+   // remove the upload obj
+   int r = store->delete_obj(*static_cast<RGWObjectCtx *>(s->obj_ctx),
+ 			    s->bucket_info, meta_obj, 0);
+-  if (r < 0) {
+-    ldout(store->ctx(), 0) << "WARNING: failed to remove object " << meta_obj << dendl;
+-    r = l.unlock(&ioctx, meta_oid);
++  if (r >= 0)  {
++    /* serializer's exclusive lock is released */
++    serializer.clear_locked();
++  } else {
++      ldout(store->ctx(), 0) << "WARNING: failed to remove object "
++			     << meta_obj << dendl;
++  }
++}
++
++int RGWCompleteMultipart::MPSerializer::try_lock(
++  const std::string& _oid,
++  utime_t dur)
++{
++  oid = _oid;
++  op.assert_exists();
++  lock.set_duration(dur);
++  lock.lock_exclusive(&op);
++  int ret = ioctx.operate(oid, &op);
++  if (! ret) {
++    locked = true;
++  }
++  return ret;
++}
++
++void RGWCompleteMultipart::complete()
++{
++  /* release exclusive lock iff not already */
++  if (unlikely(serializer.locked)) {
++    int r = serializer.unlock();
+     if (r < 0) {
+-      ldout(store->ctx(), 0) << "WARNING: failed to unlock " << meta_oid << dendl;
++      ldout(store->ctx(), 0) << "WARNING: failed to unlock "
++			     << serializer.oid << dendl;
+     }
+   }
++  send_response();
+ }
+ 
+ int RGWAbortMultipart::verify_permission()
+diff --git a/src/rgw/rgw_op.h b/src/rgw/rgw_op.h
+index 45c39a4..caa50ad 100644
+--- a/src/rgw/rgw_op.h
++++ b/src/rgw/rgw_op.h
+@@ -34,6 +34,8 @@
+ #include "rgw_acl.h"
+ #include "rgw_cors.h"
+ #include "rgw_quota.h"
++#include "cls/lock/cls_lock_client.h"
++#include "cls/rgw/cls_rgw_client.h"
+ 
+ #include "include/assert.h"
+ 
+@@ -1148,6 +1150,27 @@ protected:
+   char *data;
+   int len;
+ 
++  struct MPSerializer {
++    librados::IoCtx ioctx;
++    rados::cls::lock::Lock lock;
++    librados::ObjectWriteOperation op;
++    std::string oid;
++    bool locked;
++
++    MPSerializer() : lock("RGWCompleteMultipart"), locked(false)
++      {}
++
++    int try_lock(const std::string& oid, utime_t dur);
++
++    int unlock() {
++      return lock.unlock(&ioctx, oid);
++    }
++
++    void clear_locked() {
++      locked = false;
++    }
++  } serializer;
++
+ public:
+   RGWCompleteMultipart() {
+     data = NULL;
+@@ -1160,6 +1183,7 @@ public:
+   int verify_permission();
+   void pre_exec();
+   void execute();
++  void complete();
+ 
+   virtual int get_params() = 0;
+   virtual void send_response() = 0;

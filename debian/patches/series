@@ -135,3 +135,4 @@
 0135-osd-default-osd_scrub_during_recovery-false.patch
 0136-osd-OSDMap-don-t-set-weight-to-IN-when-OSD-is-destro.patch
 0137-radosgw-fix-awsv4-header-line-sort-order.patch
+0138-rgw-release-cls-lock-if-taken-in-RGWCompleteMultipar.patch
