@@ -50,6 +50,8 @@ namespace ceph {
       std::bitset<rep_op_msg_bitset_size> rep_op_msg_bitset;
       void add_rep_op_msg(int message_code);
 
+      CephContext *cct;
+
     public:
 
       OpClassClientInfoMgr(CephContext *cct);

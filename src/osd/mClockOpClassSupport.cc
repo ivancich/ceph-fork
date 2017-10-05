@@ -40,7 +40,8 @@ namespace ceph {
 	    cct->_conf->osd_op_queue_mclock_recov_lim),
       scrub(cct->_conf->osd_op_queue_mclock_scrub_res,
 	    cct->_conf->osd_op_queue_mclock_scrub_wgt,
-	    cct->_conf->osd_op_queue_mclock_scrub_lim)
+	    cct->_conf->osd_op_queue_mclock_scrub_lim),
+      cct(cct)
     {
       static constexpr int rep_ops[] = {
 	MSG_OSD_REPOP,
@@ -89,8 +90,16 @@ namespace ceph {
 	__le16 mtype_le = op_ref->get_req()->get_header().type;
 	__u16 mtype = le16_to_cpu(mtype_le);
 	if (rep_op_msg_bitset.test(mtype)) {
+#if 1 // TEMPORARY
+	  assert(is_rep_op(mtype));
+	  lgeneric_subdout(cct, osd, 1) << "OSD_REP_OP: " <<
+	    *op_ref->get_req() << dendl;
+#endif
 	  return osd_op_type_t::osd_rep_op;
 	} else {
+#if 1 // TEMPORARY
+	  assert(! is_rep_op(mtype));
+#endif
 	  return osd_op_type_t::client_op;
 	}
       }
