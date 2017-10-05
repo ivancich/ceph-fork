@@ -1,0 +1,63 @@
+From: gaosibei <gaosb@inspur.com>
+Date: Tue, 26 Sep 2017 10:44:09 +0800
+Subject: RGW: Multipart upload may double the quota
+
+Fixes: http://tracker.ceph.com/issues/21586
+Resolves (with following): rhbz#1498280
+
+Signed-off-by: Sibei Gao <gaosb@inspur.com>
+(cherry picked from commit 97f95e457fb7f9e36031f41e0f2dd3955daedd87)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+---
+ src/rgw/rgw_op.cc    | 1 +
+ src/rgw/rgw_rados.cc | 6 +++++-
+ src/rgw/rgw_rados.h  | 3 ++-
+ 3 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 398f935..cc7ac0d7 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -4311,6 +4311,7 @@ void RGWCompleteMultipart::execute()
+   obj_op.meta.ptag = &s->req_id; /* use req_id as operation tag */
+   obj_op.meta.owner = s->owner.get_id();
+   obj_op.meta.flags = PUT_OBJ_CREATE;
++  obj_op.meta.completeMultipart = true;
+ 
+   op_ret = obj_op.write_meta(ofs, attrs);
+   if (op_ret < 0)
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index a8ebb3f..f5c654d 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -6495,7 +6495,11 @@ int RGWRados::Object::Write::write_meta(uint64_t size,
+   meta.canceled = false;
+ 
+   /* update quota cache */
+-  store->quota_handler->update_stats(meta.owner, bucket, (orig_exists ? 0 : 1), size, orig_size);
++  if (meta.completeMultipart) {
++	  store->quota_handler->update_stats(meta.owner, bucket, (orig_exists ? 0 : 1), 0, orig_size);
++  } else {
++	  store->quota_handler->update_stats(meta.owner, bucket, (orig_exists ? 0 : 1), size, orig_size);
++  }
+ 
+   return 0;
+ 
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index 7653ad9..bebfe80 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -2320,11 +2320,12 @@ public:
+         uint64_t olh_epoch;
+         ceph::real_time delete_at;
+         bool canceled;
++	bool completeMultipart;
+ 	const string *user_data;
+ 
+         MetaParams() : mtime(NULL), rmattrs(NULL), data(NULL), manifest(NULL), ptag(NULL),
+                  remove_objs(NULL), category(RGW_OBJ_CATEGORY_MAIN), flags(0),
+-		       if_match(NULL), if_nomatch(NULL), olh_epoch(0), canceled(false), user_data(nullptr) {}
++		       if_match(NULL), if_nomatch(NULL), olh_epoch(0), canceled(false), completeMultipart(false), user_data(nullptr) {}
+       } meta;
+ 
+       explicit Write(RGWRados::Object *_target) : target(_target) {}
