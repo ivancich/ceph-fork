@@ -12,13 +12,15 @@ Resolves: rhbz#1496847
 Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
 (cherry picked from commit 704f793f08a02760d23eb5778b738bb07be0e7cf)
 Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+
+Conflicts: rgw_op.cc (uses _conf->rgw_mp_lock_max_time directly)
 ---
- src/rgw/rgw_op.cc | 53 +++++++++++++++++++++++++++++++++++++----------------
+ src/rgw/rgw_op.cc | 50 +++++++++++++++++++++++++++++++++++---------------
  src/rgw/rgw_op.h  | 24 ++++++++++++++++++++++++
- 2 files changed, 61 insertions(+), 16 deletions(-)
+ 2 files changed, 59 insertions(+), 15 deletions(-)
 
 diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
-index 6a14e71..9a0daab 100644
+index 6a14e71..398f935 100644
 --- a/src/rgw/rgw_op.cc
 +++ b/src/rgw/rgw_op.cc
 @@ -4187,9 +4187,7 @@ void RGWCompleteMultipart::execute()
@@ -32,20 +34,18 @@ index 6a14e71..9a0daab 100644
    if (op_ret < 0) {
      ldout(s->cct, 0) << "ERROR: failed to open extra_dat_ctx, obj="
  		     << raw_oid
-@@ -4197,16 +4195,11 @@ void RGWCompleteMultipart::execute()
+@@ -4197,16 +4195,10 @@ void RGWCompleteMultipart::execute()
      return;
    }
  
 -  librados::ObjectWriteOperation op;
 -  rados::cls::lock::Lock l("RGWCompleteMultipart");
--  int max_lock_secs_mp = s->cct->_conf->rgw_mp_lock_max_time;
+   int max_lock_secs_mp = s->cct->_conf->rgw_mp_lock_max_time;
 -  utime_t time(max_lock_secs_mp, 0);
 -
 -  op.assert_exists();
 -  l.set_duration(time);
 -  l.lock_exclusive(&op);
-+  int max_lock_secs_mp =
-+    s->cct->_conf->get_val<int64_t>("rgw_mp_lock_max_time");
 +  utime_t dur(max_lock_secs_mp, 0);
  
 -  op_ret = ioctx.operate(raw_oid, &op);
@@ -53,7 +53,7 @@ index 6a14e71..9a0daab 100644
    if (op_ret < 0) {
      dout(0) << "RGWCompleteMultipart::execute() failed to acquire lock "
  	    << dendl;
-@@ -4327,13 +4320,41 @@ void RGWCompleteMultipart::execute()
+@@ -4327,13 +4319,41 @@ void RGWCompleteMultipart::execute()
    // remove the upload obj
    int r = store->delete_obj(*static_cast<RGWObjectCtx *>(s->obj_ctx),
  			    s->bucket_info, meta_obj, 0);
@@ -64,8 +64,8 @@ index 6a14e71..9a0daab 100644
 +    /* serializer's exclusive lock is released */
 +    serializer.clear_locked();
 +  } else {
-+      ldout(store->ctx(), 0) << "WARNING: failed to remove object "
-+			     << meta_obj << dendl;
++    ldout(store->ctx(), 0) << "WARNING: failed to remove object "
++                           << meta_obj << dendl;
 +  }
 +}
 +
