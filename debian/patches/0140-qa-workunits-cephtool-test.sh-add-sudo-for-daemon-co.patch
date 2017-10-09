@@ -1,0 +1,25 @@
+From: Sage Weil <sage@redhat.com>
+Date: Fri, 21 Jul 2017 23:18:03 -0400
+Subject: qa/workunits/cephtool/test.sh: add sudo for daemon compact
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 2f272ab4512bb2248ac2ef180ece6d122f8e7479)
+
+Resolves: rhbz#1483224
+---
+ qa/workunits/cephtool/test.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/qa/workunits/cephtool/test.sh b/qa/workunits/cephtool/test.sh
+index 539756d..182db95 100755
+--- a/qa/workunits/cephtool/test.sh
++++ b/qa/workunits/cephtool/test.sh
+@@ -1840,7 +1840,7 @@ function test_mon_cephdf_commands()
+ function test_osd_compact()
+ {
+   ceph tell osd.1 compact
+-  ceph daemon osd.1 compact
++  $SUDO ceph daemon osd.1 compact
+ }
+ 
+ #

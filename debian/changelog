@@ -1,3 +1,10 @@
+ceph (10.2.7-45redhat1) stable; urgency=medium
+
+  * qa/workunits/cephtool/test.sh: add sudo for daemon compact
+    (rhbz#1483224)
+
+ --  <ceph-jenkins@redhat.com>  Mon, 09 Oct 2017 15:31:45 +0000
+
 ceph (10.2.7-44redhat1) stable; urgency=medium
 
   * RGW: Multipart upload may double the quota (rhbz#1498280)
