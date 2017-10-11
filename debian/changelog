@@ -1,3 +1,9 @@
+ceph (10.2.7-47redhat1) stable; urgency=medium
+
+  * osd: Fixes for osd_scrub_during_recovery handling (rhbz#1481830)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 11 Oct 2017 12:49:29 -0600
+
 ceph (10.2.7-46redhat1) stable; urgency=medium
 
   * rgw: fix radosgw-admin data sync run crash (rhbz#1500206)

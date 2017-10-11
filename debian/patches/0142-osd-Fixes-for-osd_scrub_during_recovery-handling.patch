@@ -1,0 +1,311 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Tue, 15 Aug 2017 14:45:13 -0700
+Subject: osd: Fixes for osd_scrub_during_recovery handling
+
+Fixes: http://tracker.ceph.com/issues/18206
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit 367c32c69a512d2bea85a9b3860ec28bb4433750)
+
+Conflicts:
+	src/osd/OSD.cc (trivial)
+	src/osd/PG.cc (trivial)
+	src/test/osd/osd-recovery-scrub.sh (moved from qa/standalone/scrub/osd-recovery-scrub.sh)
+		Fixes to osd-recovery_scrub.sh for Jewel compatibility
+	src/osd/OSD.h (Jewel only - moved is_recovery_active() to OSDService)
+	src/test/Makefile.am (Jewel only - add test to make check)
+	src/test/osd/CMakeLists.txt (Jewel only - add test to make check)
+
+(cherry picked from commit 1bc91a1f7c0264577ef473ed43d90586463ce050)
+
+Resolves: rhbz#1481830
+---
+ src/common/AsyncReserver.h         |  10 +++
+ src/osd/OSD.cc                     |  16 ++---
+ src/osd/OSD.h                      |   2 +-
+ src/osd/PG.cc                      |  15 +++--
+ src/test/Makefile.am               |   1 +
+ src/test/osd/CMakeLists.txt        |   1 +
+ src/test/osd/osd-recovery-scrub.sh | 129 +++++++++++++++++++++++++++++++++++++
+ 7 files changed, 159 insertions(+), 15 deletions(-)
+ create mode 100755 src/test/osd/osd-recovery-scrub.sh
+
+diff --git a/src/common/AsyncReserver.h b/src/common/AsyncReserver.h
+index 467e257..61f5cb9 100644
+--- a/src/common/AsyncReserver.h
++++ b/src/common/AsyncReserver.h
+@@ -149,6 +149,16 @@ public:
+     }
+     do_queues();
+   }
++
++  /**
++   * Has reservations
++   *
++   * Return true if there are reservations in progress
++   */
++  bool has_reservation() {
++    Mutex::Locker l(lock);
++    return !in_progress.empty();
++  }
+   static const unsigned MAX_PRIORITY = (unsigned)-1;
+ };
+ 
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index f103291..d70ae69 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -6535,6 +6535,10 @@ void OSD::sched_scrub()
+   if (!service.can_inc_scrubs_pending()) {
+     return;
+   }
++  if (!cct->_conf->osd_scrub_during_recovery && service.is_recovery_active()) {
++    dout(20) << __func__ << " not scheduling scrubs due to active recovery" << dendl;
++    return;
++  }
+ 
+   utime_t now = ceph_clock_now(cct);
+   bool time_permit = scrub_time_permit(now);
+@@ -6553,11 +6557,6 @@ void OSD::sched_scrub()
+ 	break;
+       }
+ 
+-      if (!cct->_conf->osd_scrub_during_recovery && is_recovery_active()) {
+-        dout(10) << __func__ << "not scheduling scrub of " << scrub.pgid << " due to active recovery ops" << dendl;
+-        break;
+-      }
+-
+       PG *pg = _lookup_lock_pg(scrub.pgid);
+       if (!pg)
+ 	continue;
+@@ -8519,12 +8518,9 @@ void OSD::finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue)
+   recovery_wq.unlock();
+ }
+ 
+-bool OSD::is_recovery_active()
++bool OSDService::is_recovery_active()
+ {
+-  if (recovery_ops_active > 0)
+-    return true;
+-
+-  return false;
++  return local_reserver.has_reservation() || remote_reserver.has_reservation();
+ }
+ 
+ // =========================================================
+diff --git a/src/osd/OSD.h b/src/osd/OSD.h
+index b84d572..b7b548c 100644
+--- a/src/osd/OSD.h
++++ b/src/osd/OSD.h
+@@ -847,6 +847,7 @@ public:
+   void remove_want_pg_temp(pg_t pgid);
+   void requeue_pg_temp();
+   void send_pg_temp();
++  bool is_recovery_active();
+ 
+   void queue_for_peering(PG *pg);
+   bool queue_for_recovery(PG *pg);
+@@ -2288,7 +2289,6 @@ protected:
+ 
+   void start_recovery_op(PG *pg, const hobject_t& soid);
+   void finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue);
+-  bool is_recovery_active();
+   void do_recovery(PG *pg, ThreadPool::TPHandle &handle);
+   bool _recover_now();
+ 
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index e42f7a7..f74a3b8 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -3443,13 +3443,14 @@ bool PG::sched_scrub()
+   bool ret = true;
+   if (!scrubber.reserved) {
+     assert(scrubber.reserved_peers.empty());
+-    if (osd->inc_scrubs_pending()) {
+-      dout(20) << "sched_scrub: reserved locally, reserving replicas" << dendl;
++    if ((cct->_conf->osd_scrub_during_recovery || !osd->is_recovery_active()) &&
++         osd->inc_scrubs_pending()) {
++      dout(20) << __func__ << ": reserved locally, reserving replicas" << dendl;
+       scrubber.reserved = true;
+       scrubber.reserved_peers.insert(pg_whoami);
+       scrub_reserve_replicas();
+     } else {
+-      dout(20) << "sched_scrub: failed to reserve locally" << dendl;
++      dout(20) << __func__ << ": failed to reserve locally" << dendl;
+       ret = false;
+     }
+   }
+@@ -3599,7 +3600,13 @@ void PG::sub_op_scrub_reserve(OpRequestRef op)
+ 
+   op->mark_started();
+ 
+-  scrubber.reserved = osd->inc_scrubs_pending();
++  if ((cct->_conf->osd_scrub_during_recovery || !osd->is_recovery_active()) &&
++      osd->inc_scrubs_pending()) {
++    scrubber.reserved = true;
++  } else {
++    dout(20) << __func__ << ": failed to reserve remotely" << dendl;
++    scrubber.reserved = false;
++  }
+ 
+   MOSDSubOpReply *reply = new MOSDSubOpReply(
+     m, pg_whoami, 0, get_osdmap()->get_epoch(), CEPH_OSD_FLAG_ACK);
+diff --git a/src/test/Makefile.am b/src/test/Makefile.am
+index cea497d..11fbc92 100644
+--- a/src/test/Makefile.am
++++ b/src/test/Makefile.am
+@@ -121,6 +121,7 @@ check_SCRIPTS += \
+        test/mon/test_pool_quota.sh \
+ 	test/osd/osd-scrub-repair.sh \
+ 	test/osd/osd-scrub-snaps.sh \
++	test/osd/osd-recovery-scrub.sh \
+ 	test/osd/osd-config.sh \
+ 	test/osd/osd-reuse-id.sh \
+ 	test/osd/osd-bench.sh \
+diff --git a/src/test/osd/CMakeLists.txt b/src/test/osd/CMakeLists.txt
+index 841bab1..4dcc80c 100644
+--- a/src/test/osd/CMakeLists.txt
++++ b/src/test/osd/CMakeLists.txt
+@@ -22,6 +22,7 @@ add_ceph_test(osd-reactivate.sh ${CMAKE_CURRENT_SOURCE_DIR}/osd-reactivate.sh)
+ add_ceph_test(osd-reuse-id.sh ${CMAKE_CURRENT_SOURCE_DIR}/osd-reuse-id.sh)
+ add_ceph_test(osd-scrub-repair.sh ${CMAKE_CURRENT_SOURCE_DIR}/osd-scrub-repair.sh) 
+ add_ceph_test(osd-scrub-snaps.sh ${CMAKE_CURRENT_SOURCE_DIR}/osd-scrub-snaps.sh)
++add_ceph_test(osd-recovery-scrub.sh ${CMAKE_CURRENT_SOURCE_DIR}/osd-recovery-scrub.sh) 
+ 
+ #osd-copy-from.sh needs to be run out of ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+ add_test(NAME osd-copy-from.sh COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/osd-copy-from.sh WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+diff --git a/src/test/osd/osd-recovery-scrub.sh b/src/test/osd/osd-recovery-scrub.sh
+new file mode 100755
+index 0000000..f95b849
+--- /dev/null
++++ b/src/test/osd/osd-recovery-scrub.sh
+@@ -0,0 +1,129 @@
++#! /bin/bash
++#
++# Copyright (C) 2017 Red Hat <contact@redhat.com>
++#
++# Author: David Zafman <dzafman@redhat.com>
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU Library Public License as published by
++# the Free Software Foundation; either version 2, or (at your option)
++# any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU Library Public License for more details.
++#
++source $CEPH_ROOT/qa/workunits/ceph-helpers.sh
++
++function run() {
++    local dir=$1
++    shift
++
++    export CEPH_MON="127.0.0.1:7124" # git grep '\<7124\>' : there must be only one
++    export CEPH_ARGS
++    CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
++    CEPH_ARGS+="--mon-host=$CEPH_MON "
++
++    local funcs=${@:-$(set | sed -n -e 's/^\(TEST_[0-9a-z_]*\) .*/\1/p')}
++    for func in $funcs ; do
++        $func $dir || return 1
++    done
++}
++
++function TEST_recovery_scrub() {
++    local dir=$1
++    local poolname=test
++
++    TESTDATA="testdata.$$"
++    OSDS=8
++    PGS=32
++    OBJECTS=4
++
++    setup $dir || return 1
++    run_mon $dir a --osd_pool_default_size=1 || return 1
++    for osd in $(seq 0 $(expr $OSDS - 1))
++    do
++        run_osd $dir $osd --osd_scrub_during_recovery=false || return 1
++    done
++
++    # Create a pool with $PGS pgs
++    ceph osd pool create $poolname $PGS $PGS
++    sleep 1
++    wait_for_clean || return 1
++    poolid=$(ceph osd dump | grep "^pool.*[']test[']" | awk '{ print $2 }')
++
++    dd if=/dev/urandom of=$TESTDATA bs=1M count=50
++    for i in $(seq 1 $OBJECTS)
++    do
++        rados -p $poolname put obj${i} $TESTDATA
++    done
++    rm -f $TESTDATA
++
++    ceph osd pool set $poolname size 4
++
++    pids=""
++    for pg in $(seq 0 $(expr $PGS - 1))
++    do
++        run_in_background pids pg_scrub $poolid.$(echo "{ obase=16; $pg }" | bc | tr '[:upper:]' '[:lower:]')
++    done
++    ceph pg dump pgs
++    wait_background pids
++    return_code=$?
++    if [ $return_code -ne 0 ]; then return $return_code; fi
++
++    ERRORS=0
++    pidfile=$(find $dir 2>/dev/null | grep $name_prefix'[^/]*\.pid')
++    pid=$(cat $pidfile)
++    if ! kill -0 $pid
++    then
++        echo "OSD crash occurred"
++        tail -100 $dir/osd.0.log
++        ERRORS=$(expr $ERRORS + 1)
++    fi
++
++    kill_daemons $dir || return 1
++
++    declare -a err_strings
++    err_strings[0]="not scheduling scrubs due to active recovery"
++    # Test with these two strings after disabled check in OSD::sched_scrub()
++    #err_strings[0]="sub_op_scrub_reserve: failed to reserve remotely"
++    #err_strings[1]="sched_scrub: failed to reserve locally"
++
++    for osd in $(seq 0 $(expr $OSDS - 1))
++    do
++        grep "failed to reserve\|not scheduling scrubs" $dir/osd.${osd}.log
++    done
++    for err_string in "${err_strings[@]}"
++    do
++        found=false
++        for osd in $(seq 0 $(expr $OSDS - 1))
++        do
++            if grep "$err_string" $dir/osd.${osd}.log > /dev/null;
++            then
++                found=true
++            fi
++        done
++        if [ "$found" = "false" ]; then
++            echo "Missing log message '$err_string'"
++	    ERRORS=$(expr $ERRORS + 1)
++        fi
++    done
++
++    teardown $dir || return 1
++
++    if [ $ERRORS != "0" ];
++    then
++        echo "TEST FAILED WITH $ERRORS ERRORS"
++        return 1
++    fi
++
++    echo "TEST PASSED"
++    return 0
++}
++
++main osd-recovery-scrub "$@"
++
++# Local Variables:
++# compile-command: "cd build ; make -j4 && \
++#    ../qa/run-standalone.sh osd-recovery-scrub.sh"
