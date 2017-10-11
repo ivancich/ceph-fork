@@ -1,0 +1,44 @@
+From: "lu.shasha" <lu.shasha@eisoo.com>
+Date: Tue, 27 Jun 2017 10:53:30 +0800
+Subject: rgw: fix radosgw-admin data sync run crash
+
+If sync thread have run before, then run data sync init. sync_status is still remain in rados pool. so no matter sync_status exists or not, if state is StateInit, sync_status.sync_info.num_shards should be updated.
+
+Fixes: http://tracker.ceph.com/issues/20423
+
+Signed-off-by: Shasha Lu <lu.shasha@eisoo.com>
+(cherry picked from commit c307910d7131fc290f00bb8e33876e667afb72ec)
+
+Conflicts:
+    src/rgw/rgw_data_sync.cc (no data_sync_module or instance_id in jewel)
+
+(cherry picked from commit c47e5abd0f6583bb6cf2a676e6b1194d29a96780)
+
+Resolves: rhbz#1500206
+---
+ src/rgw/rgw_data_sync.cc | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_data_sync.cc b/src/rgw/rgw_data_sync.cc
+index 3cf358b..2139a05 100644
+--- a/src/rgw/rgw_data_sync.cc
++++ b/src/rgw/rgw_data_sync.cc
+@@ -1432,9 +1432,7 @@ public:
+       /* read sync status */
+       yield call(new RGWReadDataSyncStatusCoroutine(sync_env, &sync_status));
+ 
+-      if (retcode == -ENOENT) {
+-        sync_status.sync_info.num_shards = num_shards;
+-      } else if (retcode < 0 && retcode != -ENOENT) {
++      if (retcode < 0 && retcode != -ENOENT) {
+         ldout(sync_env->cct, 0) << "ERROR: failed to fetch sync status, retcode=" << retcode << dendl;
+         return set_cr_error(retcode);
+       }
+@@ -1442,6 +1440,7 @@ public:
+       /* state: init status */
+       if ((rgw_data_sync_info::SyncState)sync_status.sync_info.state == rgw_data_sync_info::StateInit) {
+         ldout(sync_env->cct, 20) << __func__ << "(): init" << dendl;
++        sync_status.sync_info.num_shards = num_shards;
+         yield call(new RGWInitDataSyncStatusCoroutine(sync_env, num_shards, &sync_status));
+         if (retcode < 0) {
+           ldout(sync_env->cct, 0) << "ERROR: failed to init sync, retcode=" << retcode << dendl;

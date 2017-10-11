@@ -138,3 +138,4 @@
 0138-rgw-release-cls-lock-if-taken-in-RGWCompleteMultipar.patch
 0139-RGW-Multipart-upload-may-double-the-quota.patch
 0140-qa-workunits-cephtool-test.sh-add-sudo-for-daemon-co.patch
+0141-rgw-fix-radosgw-admin-data-sync-run-crash.patch
