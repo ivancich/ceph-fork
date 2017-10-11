@@ -1,0 +1,30 @@
+From: Sage Weil <sage@redhat.com>
+Date: Thu, 6 Oct 2016 13:56:43 -0400
+Subject: rocksdb: remove experimental status
+
+We've been testing rocksdb on mons in QA for months now
+with no problems.  We've also observed no problems with
+its use in bluestore.
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 68138893648e052a6549fecf23b0b58af921dfc7)
+
+Resolves: rhbz#1462011
+---
+ src/kv/KeyValueDB.cc | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/kv/KeyValueDB.cc b/src/kv/KeyValueDB.cc
+index 9437958..63ac391 100644
+--- a/src/kv/KeyValueDB.cc
++++ b/src/kv/KeyValueDB.cc
+@@ -24,8 +24,7 @@ KeyValueDB *KeyValueDB::create(CephContext *cct, const string& type,
+   }
+ #endif
+ #ifdef HAVE_LIBROCKSDB
+-  if (type == "rocksdb" &&
+-      cct->check_experimental_feature_enabled("rocksdb")) {
++  if (type == "rocksdb") {
+     return new RocksDBStore(cct, dir, p);
+   }
+ #endif

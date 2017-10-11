@@ -1,0 +1,40 @@
+From: Jianjian Huo <jianjian.huo@ssi.samsung.com>
+Date: Wed, 25 May 2016 16:38:10 -0700
+Subject: kv/RocksDBStore: convert get() to use rocksdb Get() instead of
+ iterator
+
+For RocksDB, iterator will bypass row cache.
+We don't want this to happen for get(), after row cache is enabled.
+
+Signed-off-by: Jianjian Huo <jianjian.huo@ssi.samsung.com>
+(cherry picked from commit f6ac5579190549291f6385775070c305dc8fba8b)
+
+Conflicts:
+	src/kv/RocksDBStore.cc (trivial)
+
+Resolves: rhbz#1462011
+---
+ src/kv/RocksDBStore.cc | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/kv/RocksDBStore.cc b/src/kv/RocksDBStore.cc
+index 11818e4..2e5be4b 100644
+--- a/src/kv/RocksDBStore.cc
++++ b/src/kv/RocksDBStore.cc
+@@ -436,10 +436,12 @@ int RocksDBStore::get(
+   assert(out && (out->length() == 0));
+   utime_t start = ceph_clock_now(g_ceph_context);
+   int r = 0;
+-  KeyValueDB::Iterator it = get_iterator(prefix);
+-  it->lower_bound(key);
+-  if (it->valid() && it->key() == key) {
+-    out->append(it->value_as_ptr());
++  string value, k;
++  rocksdb::Status s;
++  k = combine_strings(prefix, key);
++  s = db->Get(rocksdb::ReadOptions(), rocksdb::Slice(k), &value);
++  if (s.ok()) {
++    out->append(value);
+   } else {
+     r = -ENOENT;
+   }

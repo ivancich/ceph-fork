@@ -1,0 +1,169 @@
+From: Varada Kari <varada.kari@sandisk.com>
+Date: Fri, 2 Dec 2016 13:19:48 -0500
+Subject: kv/RocksDBStore: dump extended stats
+
+Signed-off-by: Varada Kari <varada.kari@sandisk.com>
+Signed-off-by: Jianpeng Ma <jianpeng.ma@intel.com>
+(cherry picked from commit 9fda9ce0b0fbf795469b50f6e9ebcb9bd0bc32a4)
+
+Conflicts:
+	src/common/config_opts.h
+	src/kv/RocksDBStore.cc
+	src/kv/RocksDBStore.h
+(trivial resolution)
+
+Resolves: rhbz#1462011
+---
+ src/common/config_opts.h |  4 ++++
+ src/kv/RocksDBStore.cc   | 49 +++++++++++++++++++++++++++++++++++++++++++++++-
+ src/kv/RocksDBStore.h    | 12 ++++++++++++
+ 3 files changed, 64 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 2902016..6c34ce6 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -858,6 +858,10 @@ OPTION(rocksdb_pin_l0_filter_and_index_blocks_in_cache, OPT_BOOL, true) // Wheth
+ OPTION(rocksdb_index_type, OPT_STR, "binary_search") // Type of index for SST files: binary_search, hash_search, two_level
+ OPTION(rocksdb_partition_filters, OPT_BOOL, false) // (experimental) partition SST index/filters into smaller blocks
+ OPTION(rocksdb_metadata_block_size, OPT_INT, 4*1024) // The block size for index partitions (0 = rocksdb default)
++OPTION(rocksdb_perf, OPT_BOOL, false) // Enabling this will have 5-10% impact on performance for the stats collection
++OPTION(rocksdb_collect_compaction_stats, OPT_BOOL, false) //For rocksdb, this behavior will be an overhead of 5%~10%, collected only rocksdb_perf is enabled.
++OPTION(rocksdb_collect_extended_stats, OPT_BOOL, false) //For rocksdb, this behavior will be an overhead of 5%~10%, collected only rocksdb_perf is enabled.
++OPTION(rocksdb_collect_memory_stats, OPT_BOOL, false) //For rocksdb, this behavior will be an overhead of 5%~10%, collected only rocksdb_perf is enabled.
+ 
+ // rocksdb options that will be used for omap(if omap_backend is rocksdb)
+ OPTION(filestore_rocksdb_options, OPT_STR, "")
+diff --git a/src/kv/RocksDBStore.cc b/src/kv/RocksDBStore.cc
+index 017c4e0..cbff1f4 100644
+--- a/src/kv/RocksDBStore.cc
++++ b/src/kv/RocksDBStore.cc
+@@ -21,6 +21,7 @@ using std::string;
+ #include "common/perf_counters.h"
+ #include "common/debug.h"
+ #include "include/str_list.h"
++#include "include/stringify.h"
+ #include "include/str_map.h"
+ #include "KeyValueDB.h"
+ #include "RocksDBStore.h"
+@@ -181,6 +182,12 @@ int RocksDBStore::do_open(ostream &out, bool create_if_missing)
+       return -EINVAL;
+     }
+   }
++
++  if (g_conf->rocksdb_perf)  {
++    dbstats = rocksdb::CreateDBStatistics();
++    opt.statistics = dbstats;
++  }
++
+   opt.create_if_missing = create_if_missing;
+   if (g_conf->rocksdb_separate_wal_dir) {
+     opt.wal_dir = path + ".wal";
+@@ -315,6 +322,47 @@ void RocksDBStore::close()
+     cct->get_perfcounters_collection()->remove(logger);
+ }
+ 
++void RocksDBStore::get_statistics(Formatter *f)
++{
++  if (!g_conf->rocksdb_perf)  {
++    dout(20) << __func__ << "RocksDB perf is disabled, can't probe for stats"
++	     << dendl;
++    return;
++  }
++
++  if (g_conf->rocksdb_collect_compaction_stats) {
++    std::string stats;
++    bool status = db->GetProperty("rocksdb.stats", &stats);
++    if (status) {
++      f->open_object_section("rocksdb_statistics");
++      f->dump_string("rocksdb_compaction_statistics", stats);
++      f->close_section();
++    }
++  }
++  if (g_conf->rocksdb_collect_extended_stats) {
++    if (dbstats) {
++      f->open_object_section("rocksdb_extended_statistics");
++      f->dump_string("rocksdb_extended_statistics", dbstats->ToString().c_str());
++      f->close_section();
++    }
++    f->open_object_section("rocksdbstore_perf_counters");
++    logger->dump_formatted(f,0);
++    f->close_section();
++  }
++  if (g_conf->rocksdb_collect_memory_stats) {
++    f->open_object_section("rocksdb_memtable_statistics");
++    std::string str(stringify(bbt_opts.block_cache->GetUsage()));
++    f->dump_string("block_cache_usage", str.data());
++    str.clear();
++    str.append(stringify(bbt_opts.block_cache->GetPinnedUsage()));
++    f->dump_string("block_cache_pinned_blocks_usage", str);
++    str.clear();
++    db->GetProperty("rocksdb.cur-size-all-mem-tables", &str);
++    f->dump_string("rocksdb_memtable_usage", str);
++    f->close_section();
++  }
++}
++
+ int RocksDBStore::submit_transaction(KeyValueDB::Transaction t)
+ {
+   utime_t start = ceph_clock_now(g_ceph_context);
+@@ -423,7 +471,6 @@ void RocksDBStore::RocksDBTransactionImpl::rmkeys_by_prefix(const string &prefix
+   }
+ }
+ 
+-ew/delete
+ int RocksDBStore::get(
+     const string &prefix,
+     const std::set<string> &keys,
+diff --git a/src/kv/RocksDBStore.h b/src/kv/RocksDBStore.h
+index 8cd657c..6bc5e84 100644
+--- a/src/kv/RocksDBStore.h
++++ b/src/kv/RocksDBStore.h
+@@ -12,6 +12,10 @@
+ #include <memory>
+ #include <boost/scoped_ptr.hpp>
+ #include "rocksdb/write_batch.h"
++#include "rocksdb/perf_context.h"
++#include "rocksdb/iostats_context.h"
++#include "rocksdb/statistics.h"
++#include "rocksdb/table.h"
+ #include <errno.h>
+ #include "common/errno.h"
+ #include "common/dout.h"
+@@ -47,6 +51,7 @@ namespace rocksdb{
+   class Iterator;
+   class Logger;
+   struct Options;
++  struct BlockBasedTableOptions;
+ }
+ 
+ extern rocksdb::Logger *create_rocksdb_ceph_logger();
+@@ -61,7 +66,10 @@ class RocksDBStore : public KeyValueDB {
+   void *priv;
+   rocksdb::DB *db;
+   rocksdb::Env *env;
++  std::shared_ptr<rocksdb::Statistics> dbstats;
++  rocksdb::BlockBasedTableOptions bbt_opts;
+   string options_str;
++
+   int do_open(ostream &out, bool create_if_missing);
+ 
+   // manage async compactions
+@@ -118,6 +126,7 @@ public:
+     priv(p),
+     db(NULL),
+     env(static_cast<rocksdb::Env*>(p)),
++    dbstats(NULL),
+     compact_queue_lock("RocksDBStore::compact_thread_lock"),
+     compact_queue_stop(false),
+     compact_thread(this),
+@@ -136,6 +145,9 @@ public:
+   int create_and_open(ostream &out);
+ 
+   void close();
++
++  void get_statistics(Formatter *f);
++
+   struct  RocksWBHandler: public rocksdb::WriteBatch::Handler {
+     std::string seen ;
+     int num_seen = 0;

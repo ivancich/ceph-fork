@@ -1,0 +1,88 @@
+From: Varada Kari <varada.kari@sandisk.com>
+Date: Thu, 22 Dec 2016 15:19:38 +0530
+Subject: os/kv: beautify kvdb statistics
+
+Improves the presentation of rocksdb dump statistics
+
+Signed-off-by: Varada Kari <varada.kari@sandisk.com>
+(cherry picked from commit 8e1d4ac92e2f9cd5f7438a99459bc063adf2542b)
+
+Resolves: rhbz#1462011
+---
+ src/kv/RocksDBStore.cc | 34 ++++++++++++++++++++++++++++++----
+ src/kv/RocksDBStore.h  |  2 ++
+ 2 files changed, 32 insertions(+), 4 deletions(-)
+
+diff --git a/src/kv/RocksDBStore.cc b/src/kv/RocksDBStore.cc
+index 80ab0e5..a55f1db 100644
+--- a/src/kv/RocksDBStore.cc
++++ b/src/kv/RocksDBStore.cc
+@@ -322,6 +322,21 @@ void RocksDBStore::close()
+     cct->get_perfcounters_collection()->remove(logger);
+ }
+ 
++void RocksDBStore::split(const std::string &s, char delim, std::vector<std::string> &elems) {
++    std::stringstream ss;
++    ss.str(s);
++    std::string item;
++    while (std::getline(ss, item, delim)) {
++        elems.push_back(item);
++    }
++}
++
++std::vector<std::string> RocksDBStore::split(const std::string &s, char delim) {
++    std::vector<std::string> elems;
++    split(s, delim, elems);
++    return elems;
++}
++
+ void RocksDBStore::get_statistics(Formatter *f)
+ {
+   if (!g_conf->rocksdb_perf)  {
+@@ -331,18 +346,29 @@ void RocksDBStore::get_statistics(Formatter *f)
+   }
+ 
+   if (g_conf->rocksdb_collect_compaction_stats) {
+-    std::string stats;
+-    bool status = db->GetProperty("rocksdb.stats", &stats);
++    std::string stat_str;
++    bool status = db->GetProperty("rocksdb.stats", &stat_str);
+     if (status) {
+       f->open_object_section("rocksdb_statistics");
+-      f->dump_string("rocksdb_compaction_statistics", stats);
++      f->dump_string("rocksdb_compaction_statistics", "");
++      vector<string> stats;
++      split(stat_str, '\n', stats);
++      for (auto st :stats) {
++        f->dump_string("", st);
++      }
+       f->close_section();
+     }
+   }
+   if (g_conf->rocksdb_collect_extended_stats) {
+     if (dbstats) {
+       f->open_object_section("rocksdb_extended_statistics");
+-      f->dump_string("rocksdb_extended_statistics", dbstats->ToString().c_str());
++      string stat_str = dbstats->ToString();
++      vector<string> stats;
++      split(stat_str, '\n', stats);
++      f->dump_string("rocksdb_extended_statistics", "");
++      for (auto st :stats) {
++        f->dump_string(".", st);
++      }
+       f->close_section();
+     }
+     f->open_object_section("rocksdbstore_perf_counters");
+diff --git a/src/kv/RocksDBStore.h b/src/kv/RocksDBStore.h
+index 6bc5e84..0ba264d 100644
+--- a/src/kv/RocksDBStore.h
++++ b/src/kv/RocksDBStore.h
+@@ -146,6 +146,8 @@ public:
+ 
+   void close();
+ 
++  void split(const std::string &s, char delim, std::vector<std::string> &elems);
++  std::vector<std::string> split(const std::string &s, char delim);
+   void get_statistics(Formatter *f);
+ 
+   struct  RocksWBHandler: public rocksdb::WriteBatch::Handler {

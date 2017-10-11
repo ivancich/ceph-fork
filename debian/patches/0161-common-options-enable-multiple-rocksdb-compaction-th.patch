@@ -1,0 +1,37 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Tue, 10 Oct 2017 19:54:31 -0400
+Subject: common/options: enable multiple rocksdb compaction threads for
+ filestore
+
+One of the major benefits of rocksdb over leveldb is multithreaded
+compaction. The default of 1 thread does not provide much benefit, and
+is insufficient for heavy rgw workloads.
+
+For high-write and delete omap workloads I've seen up to 8 compaction
+threads be used.  There's little overhead to having a higher max than
+are needed, so set the default to 8.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+(cherry picked from commit 023fa810aa6b3af305e9027e3f717e54d1bb2712)
+
+Conflicts:
+	src/common/options.cc (moved to config_opts.h)
+
+Resolves: rhbz#1462011
+---
+ src/common/config_opts.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 9a67811..9168d40 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -864,7 +864,7 @@ OPTION(rocksdb_collect_extended_stats, OPT_BOOL, false) //For rocksdb, this beha
+ OPTION(rocksdb_collect_memory_stats, OPT_BOOL, false) //For rocksdb, this behavior will be an overhead of 5%~10%, collected only rocksdb_perf is enabled.
+ 
+ // rocksdb options that will be used for omap(if omap_backend is rocksdb)
+-OPTION(filestore_rocksdb_options, OPT_STR, "compaction_readahead_size=2097152")
++OPTION(filestore_rocksdb_options, OPT_STR, "max_background_compactions=8;compaction_readahead_size=2097152")
+ // rocksdb options that will be used in monstore
+ OPTION(mon_rocksdb_options, OPT_STR, "cache_size=536870912,write_buffer_size=33554432,block_size=65536,compression=kNoCompression")
+ 

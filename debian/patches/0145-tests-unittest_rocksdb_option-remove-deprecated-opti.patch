@@ -1,0 +1,41 @@
+From: Kefu Chai <kchai@redhat.com>
+Date: Wed, 12 Apr 2017 13:56:01 +0800
+Subject: tests: unittest_rocksdb_option: remove deprecated option
+
+* disable_data_sync was removed from rocksdb, see
+  https://github.com/facebook/rocksdb/blob/02799ad77a16332ee5bfb570f62ab6162a788a5a/HISTORY.md#530-03082017.
+  so remove it.
+* and check options.compression, which was commented out.
+
+Signed-off-by: Kefu Chai <kchai@redhat.com>
+(cherry picked from commit 94f4b48cd4be1b09ae5ee74b61c069e08424c3a5)
+
+Resolves: rhbz#1462011
+---
+ src/test/objectstore/TestRocksdbOptionParse.cc | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/src/test/objectstore/TestRocksdbOptionParse.cc b/src/test/objectstore/TestRocksdbOptionParse.cc
+index f89e27e..af7c551 100644
+--- a/src/test/objectstore/TestRocksdbOptionParse.cc
++++ b/src/test/objectstore/TestRocksdbOptionParse.cc
+@@ -26,8 +26,7 @@ TEST(RocksDBOption, simple) {
+ 			  "max_bytes_for_level_base = 104857600;"
+ 			  "target_file_size_base = 10485760;"
+ 			  "num_levels = 3;"
+-			  "compression = kNoCompression;"
+-			  "disable_data_sync = false;";
++			  "compression = kNoCompression;";
+   int r = db->ParseOptionsFromString(options_string, options);
+   ASSERT_EQ(0, r);
+   ASSERT_EQ(536870912u, options.write_buffer_size);
+@@ -39,8 +38,7 @@ TEST(RocksDBOption, simple) {
+   ASSERT_EQ(104857600u, options.max_bytes_for_level_base);
+   ASSERT_EQ(10485760u, options.target_file_size_base);
+   ASSERT_EQ(3, options.num_levels);
+-  ASSERT_FALSE(options.disableDataSync);
+- // ASSERT_EQ("none", options.compression);
++  ASSERT_EQ(rocksdb::kNoCompression, options.compression);
+ }
+ TEST(RocksDBOption, interpret) {
+   rocksdb::Options options;

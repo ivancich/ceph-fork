@@ -1,0 +1,25 @@
+From: xianxiaxiao <xianxia.xiao@kylin-cloud.com>
+Date: Wed, 14 Dec 2016 02:32:16 +0000
+Subject: src/kv/RocksDBStore.cc:fix typos
+
+Signed-off-by: xianxiaxiao <xianxia.xiao@kylin-cloud.com>
+(cherry picked from commit b26555a0422423a9fef0034aa9313b3a4c1308ef)
+
+Resolves: rhbz#1462011
+---
+ src/kv/RocksDBStore.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/kv/RocksDBStore.cc b/src/kv/RocksDBStore.cc
+index cbff1f4..80ab0e5 100644
+--- a/src/kv/RocksDBStore.cc
++++ b/src/kv/RocksDBStore.cc
+@@ -612,7 +612,7 @@ void RocksDBStore::compact_range_async(const string& start, const string& end)
+   }
+   compact_queue_cond.Signal();
+   if (!compact_thread.is_started()) {
+-    compact_thread.create("rstore_commpact");
++    compact_thread.create("rstore_compact");
+   }
+ }
+ bool RocksDBStore::check_omap_dir(string &omap_dir)

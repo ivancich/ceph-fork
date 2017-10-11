@@ -1,0 +1,95 @@
+From: Haomai Wang <haomai@xsky.com>
+Date: Fri, 23 Jun 2017 09:36:20 +0800
+Subject: kv/RocksDBStore: abort if rocksdb EIO, don't return incorrect result
+
+If the underlying disk is missing, the current logic won't check the actual
+reason why Get/Set failed, it will result to client get a empty key/value
+pair which is not expected. The correct logic should be abort
+right now. Otherwise, it will leads to undefined behavior.
+
+Signed-off-by: Haomai Wang <haomai@xsky.com>
+(cherry picked from commit 8c60b55d7d49bc6fa1d8d076c025fc83283c0776)
+
+Conflicts:
+	src/kv/RocksDBStore.cc (trivial)
+
+Resolves: rhbz#1462011
+---
+ src/kv/RocksDBStore.cc | 25 +++++++++++++++++++------
+ 1 file changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/src/kv/RocksDBStore.cc b/src/kv/RocksDBStore.cc
+index a55f1db..879e42c 100644
+--- a/src/kv/RocksDBStore.cc
++++ b/src/kv/RocksDBStore.cc
+@@ -508,8 +508,12 @@ int RocksDBStore::get(
+     std::string value;
+     std::string bound = combine_strings(prefix, *i);
+     auto status = db->Get(rocksdb::ReadOptions(), rocksdb::Slice(bound), &value);
+-    if (status.ok())
++    if (status.ok()) {
+       (*out)[*i].append(value);
++    } else if (status.IsIOError()) {
++      ceph_abort_msg(cct, status.ToString());
++    }
++
+   }
+   utime_t lat = ceph_clock_now(g_ceph_context) - start;
+   logger->inc(l_rocksdb_gets);
+@@ -531,8 +535,10 @@ int RocksDBStore::get(
+   s = db->Get(rocksdb::ReadOptions(), rocksdb::Slice(k), &value);
+   if (s.ok()) {
+     out->append(value);
+-  } else {
++  } else if (s.IsNotFound()) {
+     r = -ENOENT;
++  } else {
++    ceph_abort_msg(cct, s.ToString());
+   }
+   utime_t lat = ceph_clock_now(g_ceph_context) - start;
+   logger->inc(l_rocksdb_gets);
+@@ -664,17 +670,20 @@ RocksDBStore::RocksDBWholeSpaceIteratorImpl::~RocksDBWholeSpaceIteratorImpl()
+ int RocksDBStore::RocksDBWholeSpaceIteratorImpl::seek_to_first()
+ {
+   dbiter->SeekToFirst();
++  assert(!dbiter->status().IsIOError());
+   return dbiter->status().ok() ? 0 : -1;
+ }
+ int RocksDBStore::RocksDBWholeSpaceIteratorImpl::seek_to_first(const string &prefix)
+ {
+   rocksdb::Slice slice_prefix(prefix);
+   dbiter->Seek(slice_prefix);
++  assert(!dbiter->status().IsIOError());
+   return dbiter->status().ok() ? 0 : -1;
+ }
+ int RocksDBStore::RocksDBWholeSpaceIteratorImpl::seek_to_last()
+ {
+   dbiter->SeekToLast();
++  assert(!dbiter->status().IsIOError());
+   return dbiter->status().ok() ? 0 : -1;
+ }
+ int RocksDBStore::RocksDBWholeSpaceIteratorImpl::seek_to_last(const string &prefix)
+@@ -713,15 +722,19 @@ bool RocksDBStore::RocksDBWholeSpaceIteratorImpl::valid()
+ }
+ int RocksDBStore::RocksDBWholeSpaceIteratorImpl::next()
+ {
+-  if (valid())
+-  dbiter->Next();
++  if (valid()) {
++    dbiter->Next();
++  }
++  assert(!dbiter->status().IsIOError());
+   return dbiter->status().ok() ? 0 : -1;
+ }
+ int RocksDBStore::RocksDBWholeSpaceIteratorImpl::prev()
+ {
+-  if (valid())
++  if (valid()) {
+     dbiter->Prev();
+-    return dbiter->status().ok() ? 0 : -1;
++  }
++  assert(!dbiter->status().IsIOError());
++  return dbiter->status().ok() ? 0 : -1;
+ }
+ string RocksDBStore::RocksDBWholeSpaceIteratorImpl::key()
+ {

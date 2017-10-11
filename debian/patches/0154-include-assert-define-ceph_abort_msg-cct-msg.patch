@@ -1,0 +1,30 @@
+From: Sage Weil <sage@redhat.com>
+Date: Mon, 27 Jun 2016 11:34:31 -0700
+Subject: include/assert: define ceph_abort_msg(cct, msg)
+
+Abort with an error string.
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 23d6438f1253b593dd9a0e909e2ccbd045e168b8)
+
+Resolves: rhbz#1462011
+---
+ src/include/assert.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/include/assert.h b/src/include/assert.h
+index 94f9d74..8ddcc90 100644
+--- a/src/include/assert.h
++++ b/src/include/assert.h
+@@ -119,6 +119,11 @@ using namespace ceph;
+  */
+ #define ceph_abort() assert(0)
+ 
++#define ceph_abort_msg(cct, msg) {					\
++		lgeneric_derr(cct) << "abort: " << msg << dendl;	\
++		abort();						\
++	}
++
+ #endif
+ 
+ // wipe any prior assert definition

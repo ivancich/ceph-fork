@@ -1,3 +1,37 @@
+ceph (10.2.7-48redhat1) stable; urgency=medium
+
+  * kv/RocksDBStore: Add table options for filter and index tuning.
+    (rhbz#1462011)
+  * kv/Makefile: fix rocksdb build options (USE_RTTI=1) (rhbz#1462011)
+  * tests: unittest_rocksdb_option: remove deprecated option
+    (rhbz#1462011)
+  * kv/RocksDBStore: convert get() to use rocksdb Get() instead of
+    iterator (rhbz#1462011)
+  * RocksDBStore: use Get for multiget (rhbz#1462011)
+  * Logging rocksdb transaction in ceph log (rhbz#1462011)
+  * kv/RocksDBStore: no reason to make write_batch using new/delete
+    (rhbz#1462011)
+  * kv/RocksDBStore: dump extended stats (rhbz#1462011)
+  * src/kv/RocksDBStore.cc:fix typos (rhbz#1462011)
+  * os/kv: beautify kvdb statistics (rhbz#1462011)
+  * kv/RocksDBStore: abort if rocksdb EIO, don't return incorrect
+    result (rhbz#1462011)
+  * include/assert: define ceph_abort_msg(cct, msg) (rhbz#1462011)
+  * rocksdb: remove experimental status (rhbz#1462011)
+  * tools: Add --backend option to ceph-osdomap-tool default to
+    rocksdb (rhbz#1462011)
+  * Makefile-rocksdb.am: update for new rocksdb version (rhbz#1462011)
+  * tools/ceph-kvstore-tool: add destination store type to store-copy
+    (rhbz#1462011)
+  * tools/ceph-kvstore-tool: clean up destination store object
+    (rhbz#1462011)
+  * common/options.cc: Set Filestore rocksdb compaction readahead
+    option. (rhbz#1462011)
+  * common/options: enable multiple rocksdb compaction threads for
+    filestore (rhbz#1462011)
+
+ -- Ken Dreyer <kdreyer@redhat.com>  Wed, 11 Oct 2017 15:08:56 -0600
+
 ceph (10.2.7-47redhat1) stable; urgency=medium
 
   * osd: Fixes for osd_scrub_during_recovery handling (rhbz#1481830)

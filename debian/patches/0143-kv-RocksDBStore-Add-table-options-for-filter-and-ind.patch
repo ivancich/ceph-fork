@@ -1,0 +1,69 @@
+From: Mark Nelson <mnelson@redhat.com>
+Date: Tue, 18 Jul 2017 21:39:36 -0500
+Subject: kv/RocksDBStore: Add table options for filter and index tuning.
+
+This is a modified cherry-pick of commit 9c15338 to work with the old
+config_opts settings.
+
+Signed-off-by: Mark Nelson <mnelson@redhat.com>
+(cherry picked from commit 9c15338ad3049f5171cdecafb9370d6bf5dbe913)
+
+Resolves: rhbz#1462011
+---
+ src/common/config_opts.h |  8 ++++++++
+ src/kv/RocksDBStore.cc   | 23 +++++++++++++++++++++++
+ 2 files changed, 31 insertions(+)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index cef6a05..2902016 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -851,6 +851,14 @@ OPTION(rocksdb_db_paths, OPT_STR, "")   // path,size( path,size)*
+ OPTION(rocksdb_log_to_ceph_log, OPT_BOOL, true)  // log to ceph log
+ OPTION(rocksdb_cache_size, OPT_INT, 128*1024*1024)  // default leveldb cache size
+ OPTION(rocksdb_block_size, OPT_INT, 4*1024)  // default rocksdb block size
++OPTION(rocksdb_bloom_bits_per_key, OPT_INT, 20) // Number of bits per key for RocksDB's bloom filters
++OPTION(rocksdb_cache_index_and_filter_blocks, OPT_BOOL, true) // Whether to cache indices and filters in block cache
++OPTION(rocksdb_cache_index_and_filter_blocks_with_high_priority, OPT_BOOL, true) // Whether to cache indicies and filters in the block cache with high priority
++OPTION(rocksdb_pin_l0_filter_and_index_blocks_in_cache, OPT_BOOL, true) // Whether to pin Level 0 indices and bloom filters in the block cache
++OPTION(rocksdb_index_type, OPT_STR, "binary_search") // Type of index for SST files: binary_search, hash_search, two_level
++OPTION(rocksdb_partition_filters, OPT_BOOL, false) // (experimental) partition SST index/filters into smaller blocks
++OPTION(rocksdb_metadata_block_size, OPT_INT, 4*1024) // The block size for index partitions (0 = rocksdb default)
++
+ // rocksdb options that will be used for omap(if omap_backend is rocksdb)
+ OPTION(filestore_rocksdb_options, OPT_STR, "")
+ // rocksdb options that will be used in monstore
+diff --git a/src/kv/RocksDBStore.cc b/src/kv/RocksDBStore.cc
+index d8751cc..11818e4 100644
+--- a/src/kv/RocksDBStore.cc
++++ b/src/kv/RocksDBStore.cc
+@@ -222,6 +222,29 @@ int RocksDBStore::do_open(ostream &out, bool create_if_missing)
+   rocksdb::BlockBasedTableOptions bbt_opts;
+   bbt_opts.block_size = g_conf->rocksdb_block_size;
+   bbt_opts.block_cache = cache;
++
++  uint64_t bloom_bits = g_conf->rocksdb_bloom_bits_per_key;
++  if (bloom_bits > 0) {
++    dout(10) << __func__ << " set bloom filter bits per key to "
++	     << bloom_bits << dendl;
++    bbt_opts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(bloom_bits));
++  }
++  if (g_conf->rocksdb_index_type == "binary_search")
++    bbt_opts.index_type = rocksdb::BlockBasedTableOptions::IndexType::kBinarySearch;
++  if (g_conf->rocksdb_index_type == "hash_search")
++    bbt_opts.index_type = rocksdb::BlockBasedTableOptions::IndexType::kHashSearch;
++  if (g_conf->rocksdb_index_type == "two_level")
++    bbt_opts.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
++  bbt_opts.cache_index_and_filter_blocks = 
++      g_conf->rocksdb_cache_index_and_filter_blocks;
++  bbt_opts.cache_index_and_filter_blocks_with_high_priority = 
++      g_conf->rocksdb_cache_index_and_filter_blocks_with_high_priority;
++  bbt_opts.partition_filters = g_conf->rocksdb_partition_filters;
++  if (g_conf->rocksdb_metadata_block_size > 0)
++    bbt_opts.metadata_block_size = g_conf->rocksdb_metadata_block_size;
++  bbt_opts.pin_l0_filter_and_index_blocks_in_cache = 
++      g_conf->rocksdb_pin_l0_filter_and_index_blocks_in_cache;
++
+   opt.table_factory.reset(rocksdb::NewBlockBasedTableFactory(bbt_opts));
+   dout(10) << __func__ << " set block size to " << g_conf->rocksdb_block_size
+            << " cache size to " << g_conf->rocksdb_cache_size << dendl;

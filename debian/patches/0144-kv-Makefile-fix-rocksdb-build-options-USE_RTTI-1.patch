@@ -1,0 +1,24 @@
+From: Sage Weil <sage@redhat.com>
+Date: Fri, 22 Sep 2017 16:21:54 -0400
+Subject: kv/Makefile: fix rocksdb build options (USE_RTTI=1)
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+
+Resolves: rhbz#1462011
+---
+ src/kv/Makefile.am | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/kv/Makefile.am b/src/kv/Makefile.am
+index 9dd8b0d..70a82cf 100644
+--- a/src/kv/Makefile.am
++++ b/src/kv/Makefile.am
+@@ -21,7 +21,7 @@ if FREEBSD
+         NPROC = sysctl -n hw.ncpu
+ endif
+ rocksdb/librocksdb.a:
+-	cd rocksdb && CC="${CC}" CXX="${CXX}" EXTRA_CXXFLAGS=-fPIC PORTABLE=1 $(MAKE) -j$(shell ${NPROC}) static_lib
++	cd rocksdb && CC="${CC}" CXX="${CXX}" EXTRA_CXXFLAGS=-fPIC USE_RTTI=1 PORTABLE=1 $(MAKE) -j$(shell ${NPROC}) static_lib
+ libkv_a_CXXFLAGS += -I rocksdb/include -fPIC
+ libkv_a_SOURCES += kv/RocksDBStore.cc
+ libkv_a_LIBADD += rocksdb/librocksdb.a

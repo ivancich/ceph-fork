@@ -1,0 +1,34 @@
+From: Josh Durgin <jdurgin@redhat.com>
+Date: Mon, 25 Sep 2017 19:33:31 -0700
+Subject: tools/ceph-kvstore-tool: clean up destination store object
+
+If left alive, background threads in the db may crash
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+
+(cherry picked from commit 718fc15831a2cb4eb91ed2aa2f694b47329f9189)
+
+Resolves: rhbz#1462011
+---
+ src/tools/ceph_kvstore_tool.cc | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/tools/ceph_kvstore_tool.cc b/src/tools/ceph_kvstore_tool.cc
+index a7d2ce2..8ddfc47 100644
+--- a/src/tools/ceph_kvstore_tool.cc
++++ b/src/tools/ceph_kvstore_tool.cc
+@@ -150,10 +150,12 @@ class StoreTool
+     }
+ 
+     // open or create a leveldb store at @p other_path
+-    KeyValueDB *other = KeyValueDB::create(g_ceph_context, other_type, other_path);
+-    int err = other->create_and_open(std::cerr);
++    boost::scoped_ptr<KeyValueDB> other;
++    KeyValueDB *other_ptr = KeyValueDB::create(g_ceph_context, other_type, other_path);
++    int err = other_ptr->create_and_open(std::cerr);
+     if (err < 0)
+       return err;
++    other.reset(other_ptr);
+ 
+     KeyValueDB::WholeSpaceIterator it = db->get_iterator();
+     it->seek_to_first();
