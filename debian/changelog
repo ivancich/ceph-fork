@@ -1,3 +1,9 @@
+ceph (10.2.7-49redhat1) stable; urgency=medium
+
+  * ceph-disk: do not setup_statedir on trigger (rhbz#1458007)
+
+ --  <ceph-jenkins@redhat.com>  Wed, 18 Oct 2017 12:49:34 +0000
+
 ceph (10.2.7-48redhat1) stable; urgency=medium
 
   * kv/RocksDBStore: Add table options for filter and index tuning.

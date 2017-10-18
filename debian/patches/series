@@ -159,3 +159,4 @@
 0159-tools-ceph-kvstore-tool-clean-up-destination-store-o.patch
 0160-common-options.cc-Set-Filestore-rocksdb-compaction-r.patch
 0161-common-options-enable-multiple-rocksdb-compaction-th.patch
+0162-ceph-disk-do-not-setup_statedir-on-trigger.patch

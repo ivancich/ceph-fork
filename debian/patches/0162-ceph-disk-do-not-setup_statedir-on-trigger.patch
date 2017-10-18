@@ -1,0 +1,32 @@
+From: Loic Dachary <ldachary@redhat.com>
+Date: Thu, 1 Jun 2017 11:37:20 +0200
+Subject: ceph-disk: do not setup_statedir on trigger
+
+trigger may run when statedir is unavailable and does not use it.
+
+Fixes: http://tracker.ceph.com/issues/19941
+
+Signed-off-by: Loic Dachary <loic@dachary.org>
+(cherry picked from commit 16bfbdd3d9988523bba31aace516c303057daa58)
+(cherry picked from commit d33b30cdb019937ff88f9724599f52f4e00d37cf)
+
+Resolves: rhbz#1458007
+---
+ src/ceph-disk/ceph_disk/main.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index 85af56e..4dda47f 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -5282,7 +5282,9 @@ def main(argv):
+         path = os.environ.get('PATH', os.defpath)
+         os.environ['PATH'] = args.prepend_to_path + ":" + path
+ 
+-    setup_statedir(args.statedir)
++    if args.func.__name__ != 'main_trigger':
++        # trigger may run when statedir is unavailable and does not use it
++        setup_statedir(args.statedir)
+     setup_sysconfdir(args.sysconfdir)
+ 
+     global CEPH_PREF_USER
