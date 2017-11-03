@@ -1,0 +1,27 @@
+From: "Adam C. Emerson" <aemerson@redhat.com>
+Date: Tue, 8 Nov 2016 11:26:32 -0500
+Subject: erasure: Remove unused variable
+
+Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
+(cherry picked from commit 6cb93f7d3406efb8955770aef21e2dc791958b0a)
+(cherry picked from commit 06dceca0f8e160244850b5f80e9b9d8af0c87d7e)
+
+Resolves: rhbz#1508935
+---
+ src/osd/ECBackend.cc | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index 9690c81..4aaf70d 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -1533,9 +1533,6 @@ int ECBackend::get_remaining_shards(
+   const set<int> &avail,
+   set<pg_shard_t> *to_read)
+ {
+-  map<hobject_t, set<pg_shard_t> >::const_iterator miter =
+-    get_parent()->get_missing_loc_shards().find(hoid);
+-
+   set<int> need;
+   map<shard_id_t, pg_shard_t> shards;
+ 

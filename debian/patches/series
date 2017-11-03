@@ -160,3 +160,17 @@
 0160-common-options.cc-Set-Filestore-rocksdb-compaction-r.patch
 0161-common-options-enable-multiple-rocksdb-compaction-th.patch
 0162-ceph-disk-do-not-setup_statedir-on-trigger.patch
+0163-erasure-Remove-unused-variable.patch
+0164-test-CLEANUP-to-later-enable-TEST_rados_get_with_sub.patch
+0165-test-CLEANUP-make-test-clearer-by-using-fail-as-argu.patch
+0166-test-test-erasure-eio.sh-fix-recovery-testing-and-en.patch
+0167-osd-ECBackend-only-need-check-missing_loc-when-doing.patch
+0168-qa-Add-common-generalized-inject_eio-to-ceph-helpers.patch
+0169-test-Add-a-removal-test-for-erasure-code-read.patch
+0170-test-Use-feature-to-get-last-array-element.patch
+0171-test-Allow-modified-options-to-existing-setup-functi.patch
+0172-osd-Allow-recovery-to-send-additional-reads.patch
+0173-osd-For-recovery-get-all-possible-shards-to-read-on-.patch
+0174-osd-Better-handle-failure-to-get-enough-EC-shards-to.patch
+0175-test-Test-case-that-reproduces-tracker-18162.patch
+0176-test-Fix-osd-scrub-repair.sh-for-Jewel.patch

@@ -1,0 +1,74 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Wed, 23 Nov 2016 11:46:57 -0800
+Subject: test: CLEANUP make test clearer by using "fail" as argument
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit ce85112d353b30a615093643d29410432d69b4cd)
+(cherry picked from commit 6c1afa5ef8d0feba0af0808f602ceffb96eceb19)
+
+Resolves: rhbz#1508935
+---
+ src/test/erasure-code/test-erasure-eio.sh | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/test/erasure-code/test-erasure-eio.sh b/src/test/erasure-code/test-erasure-eio.sh
+index 2d51bc5..aa2b2c3 100755
+--- a/src/test/erasure-code/test-erasure-eio.sh
++++ b/src/test/erasure-code/test-erasure-eio.sh
+@@ -87,12 +87,12 @@ function rados_get() {
+     local dir=$1
+     local poolname=$2
+     local objname=${3:-SOMETHING}
+-    local expect=${4:-0}
++    local expect=${4:-ok}
+ 
+     #
+     # Expect a failure to get object
+     #
+-    if [ $expect = "1" ];
++    if [ $expect = "fail" ];
+     then
+         ! rados --pool $poolname get $objname $dir/COPY
+         return
+@@ -116,7 +116,7 @@ function rados_put_get() {
+     #
+     rados_put $dir $poolname $objname || return 1
+     # We can read even though caller injected read error on one of the shards
+-    rados_get $dir $poolname $objname 0 || return 1
++    rados_get $dir $poolname $objname || return 1
+ 
+     if [ -n "$recovery" ];
+     then
+@@ -130,7 +130,7 @@ function rados_put_get() {
+         ceph osd out ${initial_osds[$last]} || return 1
+         ! get_osds $poolname $objname | grep '\<'${initial_osds[$last]}'\>' || return 1
+         # This will fail since one shard is out and one shard has injected read error
+-        rados_get $dir $poolname $objname 1 || return 1
++        rados_get $dir $poolname $objname fail || return 1
+         ceph osd in ${initial_osds[$last]} || return 1
+     fi
+ 
+@@ -171,7 +171,7 @@ function rados_get_data_eio() {
+     shard_id=$(expr $shard_id + 1)
+     inject_eio $objname $dir $shard_id || return 1
+     # Now 2 out of 3 shards get EIO, so should fail
+-    rados_get $dir $poolname $objname 1 || return 1
++    rados_get $dir $poolname $objname fail || return 1
+ }
+ 
+ # Change the size of speificied shard
+@@ -221,12 +221,12 @@ function rados_get_data_bad_size() {
+     #
+     set_size $objname $dir $shard_id $bytes $mode || return 1
+ 
+-    rados_get $dir $poolname $objname 0 || return 1
++    rados_get $dir $poolname $objname || return 1
+ 
+     # Leave objname and modify another shard
+     shard_id=$(expr $shard_id + 1)
+     set_size $objname $dir $shard_id $bytes $mode || return 1
+-    rados_get $dir $poolname $objname 1 || return 1
++    rados_get $dir $poolname $objname fail || return 1
+ }
+ 
+ #

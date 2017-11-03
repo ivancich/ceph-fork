@@ -1,0 +1,37 @@
+From: huangjun <hjwsm1989@gmail.com>
+Date: Fri, 16 Dec 2016 18:14:23 +0800
+Subject: osd/ECBackend: only need check missing_loc when doing recovery
+
+  Signed-off-by: huangjun <hjwsm1989@gmail.com>
+
+(cherry picked from commit 317100ad5b12ffaf00b0559b1b50a99323d6dc4f)
+(cherry picked from commit ba1a5fe58b7f348f6db6af1c4096c981bf44a5a3)
+
+Resolves: rhbz#1508935
+---
+ src/osd/ECBackend.cc | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index 4aaf70d..d08f2de 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -1451,9 +1451,6 @@ int ECBackend::get_min_avail_to_read_shards(
+   // Make sure we don't do redundant reads for recovery
+   assert(!for_recovery || !do_redundant_reads);
+ 
+-  map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator>::const_iterator miter =
+-    get_parent()->get_missing_loc_shards().find(hoid);
+-
+   set<int> have;
+   map<shard_id_t, pg_shard_t> shards;
+ 
+@@ -1491,6 +1488,8 @@ int ECBackend::get_min_avail_to_read_shards(
+       }
+     }
+ 
++    map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator>::const_iterator miter =
++      get_parent()->get_missing_loc_shards().find(hoid);
+     if (miter != get_parent()->get_missing_loc_shards().end()) {
+       for (set<pg_shard_t>::iterator i = miter->second.begin();
+ 	   i != miter->second.end();

@@ -1,0 +1,78 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Thu, 21 Sep 2017 17:48:28 -0700
+Subject: osd: Allow recovery to send additional reads
+
+For now it doesn't include non-acting OSDs
+Added test for this case
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit 1235810c2ad08ccb7ef5946686eb2b85798f5bca)
+(cherry picked from commit 8af596b95143cab5caf24b26cf57e829fc691f3c)
+
+Resolves: rhbz#1508935
+---
+ src/osd/ECBackend.cc                      |  4 ++--
+ src/test/erasure-code/test-erasure-eio.sh | 28 ++++++++++++++++++++++++++++
+ 2 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index d08f2de..ae04aaa 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -1093,8 +1093,7 @@ void ECBackend::handle_sub_read_reply(
+   unsigned is_complete = 0;
+   // For redundant reads check for completion as each shard comes in,
+   // or in a non-recovery read check for completion once all the shards read.
+-  // TODO: It would be nice if recovery could send more reads too
+-  if (rop.do_redundant_reads || (!rop.for_recovery && rop.in_progress.empty())) {
++  if (rop.do_redundant_reads || rop.in_progress.empty()) {
+     for (map<hobject_t, read_result_t>::const_iterator iter =
+         rop.complete.begin();
+       iter != rop.complete.end();
+@@ -1110,6 +1109,7 @@ void ECBackend::handle_sub_read_reply(
+       set<int> want_to_read, dummy_minimum;
+       get_want_to_read_shards(&want_to_read);
+       int err;
++      // TODO: Should we include non-acting nodes here when for_recovery is set?
+       if ((err = ec_impl->minimum_to_decode(want_to_read, have, &dummy_minimum)) < 0) {
+ 	dout(20) << __func__ << " minimum_to_decode failed" << dendl;
+         if (rop.in_progress.empty()) {
+diff --git a/src/test/erasure-code/test-erasure-eio.sh b/src/test/erasure-code/test-erasure-eio.sh
+index df45c56..4db929f 100755
+--- a/src/test/erasure-code/test-erasure-eio.sh
++++ b/src/test/erasure-code/test-erasure-eio.sh
+@@ -375,6 +375,34 @@ function TEST_rados_get_with_subreadall_eio_shard_1() {
+     delete_pool $poolname
+ }
+ 
++# Test recovery the first k copies aren't all available
++function TEST_ec_recovery_errors() {
++    local dir=$1
++    local objname=myobject
++
++    setup_osds 7 || return 1
++
++    local poolname=pool-jerasure
++    create_erasure_coded_pool $poolname 3 2 || return 1
++
++    rados_put $dir $poolname $objname || return 1
++    inject_eio ec data $poolname $objname $dir 0 || return 1
++
++    local -a initial_osds=($(get_osds $poolname $objname))
++    local last_osd=${initial_osds[-1]}
++    # Kill OSD
++    kill_daemons $dir TERM osd.${last_osd} >&2 < /dev/null || return 1
++    ceph osd down ${last_osd} || return 1
++    ceph osd out ${last_osd} || return 1
++
++    # Cluster should recover this object
++    wait_for_clean || return 1
++
++    #rados_get_data_recovery eio $dir $shard_id || return 1
++
++    delete_pool $poolname
++}
++
+ main test-erasure-eio "$@"
+ 
+ # Local Variables:

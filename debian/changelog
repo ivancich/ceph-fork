@@ -1,3 +1,30 @@
+ceph (10.2.7-50redhat1) stable; urgency=medium
+
+  * erasure: Remove unused variable (rhbz#1508935)
+  * test: CLEANUP to later enable
+    TEST_rados_get_with_subreadall_eio_shard_* (rhbz#1508935)
+  * test: CLEANUP make test clearer by using "fail" as argument
+    (rhbz#1508935)
+  * test: test-erasure-eio.sh fix recovery testing and enable it
+    (rhbz#1508935)
+  * osd/ECBackend: only need check missing_loc when doing recovery
+    (rhbz#1508935)
+  * qa: Add common generalized inject_eio() to ceph-helpers.sh
+    (rhbz#1508935)
+  * test: Add a removal test for erasure code read (rhbz#1508935)
+  * test: Use feature to get last array element (rhbz#1508935)
+  * test: Allow modified options to existing setup functions
+    (rhbz#1508935)
+  * osd: Allow recovery to send additional reads (rhbz#1508935)
+  * osd: For recovery get all possible shards to read on errors
+    (rhbz#1508935)
+  * osd: Better handle failure to get enough EC shards to backfill
+    (rhbz#1508935)
+  * test: Test case that reproduces tracker 18162 (rhbz#1508935)
+  * test: Fix osd-scrub-repair.sh for Jewel (rhbz#1508935)
+
+ --  <ceph-jenkins@redhat.com>  Fri, 03 Nov 2017 14:55:48 +0000
+
 ceph (10.2.7-49redhat1) stable; urgency=medium
 
   * ceph-disk: do not setup_statedir on trigger (rhbz#1458007)

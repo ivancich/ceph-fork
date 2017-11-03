@@ -1,0 +1,102 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Tue, 3 Oct 2017 18:32:20 -0700
+Subject: osd: Better handle failure to get enough EC shards to backfill
+
+Fixes: http://tracker.ceph.com/issues/18162
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit 6a02bfef3d44a13589c1a90bec29ff0ac64f97aa)
+
+Conflicts:
+	src/osd/PGBackend.h (trivial)
+	src/osd/ReplicatedPG.cc (trivial)
+	src/osd/ReplicatedPG.h (trivial)
+
+(cherry picked from commit cef725bb47093da4293ae82ca38e7e13866842f7)
+
+Conflicts:
+	src/osd/PGBackend.h (trivial)
+	src/osd/ReplicatedPG.h (trivial)
+
+Resolves: rhbz#1508935
+---
+ src/osd/ECBackend.cc    | 3 +++
+ src/osd/PGBackend.h     | 6 ++++++
+ src/osd/ReplicatedPG.cc | 9 +++++++++
+ src/osd/ReplicatedPG.h  | 1 +
+ 4 files changed, 19 insertions(+)
+
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index 079d56e..c7a648b 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -196,6 +196,7 @@ void ECBackend::_failed_push(const hobject_t &hoid,
+   dout(10) << __func__ << ": canceling recovery op for obj " << hoid
+ 	   << dendl;
+   assert(recovery_ops.count(hoid));
++  eversion_t v = recovery_ops[hoid].v;
+   recovery_ops.erase(hoid);
+ 
+   list<pg_shard_t> fl;
+@@ -203,6 +204,8 @@ void ECBackend::_failed_push(const hobject_t &hoid,
+     fl.push_back(i.first);
+   }
+   get_parent()->failed_push(fl, hoid);
++  get_parent()->backfill_add_missing(hoid, v);
++  get_parent()->finish_degraded_object(hoid);
+ }
+ 
+ struct OnRecoveryReadComplete :
+diff --git a/src/osd/PGBackend.h b/src/osd/PGBackend.h
+index 45c6f1b..b40032c 100644
+--- a/src/osd/PGBackend.h
++++ b/src/osd/PGBackend.h
+@@ -98,10 +98,16 @@ struct inconsistent_obj_wrapper;
+        const hobject_t oid) = 0;
+ 
+      virtual void failed_push(const list<pg_shard_t> &from, const hobject_t &soid) = 0;
++     virtual void finish_degraded_object(const hobject_t& oid) = 0;
+      virtual void cancel_pull(const hobject_t &soid) = 0;
+      virtual void remove_missing_object(const hobject_t &oid,
+ 					eversion_t v,
+ 					Context *on_complete) = 0;
++     virtual void backfill_add_missing(
++       const hobject_t &oid,
++       eversion_t v
++       ) = 0;
++
+      /**
+       * Bless a context
+       *
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index 0622a77..2fef45e 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -362,6 +362,15 @@ void ReplicatedPG::send_message_osd_cluster(
+   osd->send_message_osd_cluster(m, con);
+ }
+ 
++void ReplicatedPG::backfill_add_missing(
++  const hobject_t &oid,
++  eversion_t v)
++{
++  dout(0) << __func__ << ": oid " << oid << " version " << v << dendl;
++  backfills_in_flight.erase(oid);
++  missing_loc.add_missing(oid, v, eversion_t());
++}
++
+ ConnectionRef ReplicatedPG::get_con_osd_cluster(
+   int peer, epoch_t from_epoch)
+ {
+diff --git a/src/osd/ReplicatedPG.h b/src/osd/ReplicatedPG.h
+index e9f1518..aaeb16a 100644
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -287,6 +287,7 @@ public:
+   void remove_missing_object(const hobject_t &oid,
+ 			     eversion_t v,
+ 			     Context *on_complete);
++  void backfill_add_missing(const hobject_t &oid, eversion_t v) override;
+ 
+   template <typename T>
+   class BlessedGenContext : public GenContext<T> {

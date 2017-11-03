@@ -1,0 +1,37 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Wed, 27 Sep 2017 14:29:25 -0700
+Subject: test: Use feature to get last array element
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit 43e3206de2a20bf17ad9f2b16b7e486804097bf2)
+(cherry picked from commit 2584be291655481d167a9916b8432773104fe187)
+
+Resolves: rhbz#1508935
+---
+ src/test/erasure-code/test-erasure-eio.sh | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/test/erasure-code/test-erasure-eio.sh b/src/test/erasure-code/test-erasure-eio.sh
+index 6e105ed..5525416 100755
+--- a/src/test/erasure-code/test-erasure-eio.sh
++++ b/src/test/erasure-code/test-erasure-eio.sh
+@@ -126,13 +126,13 @@ function rados_put_get() {
+         # recovery didn't crash the primary.
+         #
+         local -a initial_osds=($(get_osds $poolname $objname))
+-        local last=$((${#initial_osds[@]} - 1))
++        local last_osd=${initial_osds[-1]}
+         # Kill OSD
+-        kill_daemons $dir TERM osd.${initial_osds[$last]} >&2 < /dev/null || return 1
+-        ceph osd out ${initial_osds[$last]} || return 1
+-        ! get_osds $poolname $objname | grep '\<'${initial_osds[$last]}'\>' || return 1
+-        ceph osd in ${initial_osds[$last]} || return 1
+-        run_osd $dir ${initial_osds[$last]} || return 1
++        kill_daemons $dir TERM osd.${last_osd} >&2 < /dev/null || return 1
++        ceph osd out ${last_osd} || return 1
++        ! get_osds $poolname $objname | grep '\<'${last_osd}'\>' || return 1
++        ceph osd in ${last_osd} || return 1
++        run_osd $dir ${last_osd} || return 1
+         wait_for_clean || return 1
+     fi
+ 

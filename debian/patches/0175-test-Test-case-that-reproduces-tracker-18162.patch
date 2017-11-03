@@ -1,0 +1,199 @@
+From: David Zafman <dzafman@redhat.com>
+Date: Mon, 2 Oct 2017 13:51:17 -0700
+Subject: test: Test case that reproduces tracker 18162
+
+recover_replicas: object added to missing set for backfill, but is not in recovering, error!
+
+Signed-off-by: David Zafman <dzafman@redhat.com>
+(cherry picked from commit b9de5eec267627c8bc5ff0759ddea6c4a8aa7bce)
+
+Conflicts:
+	src/test/erasure-code/test-erasure-eio.sh (Errors during backfill/recovery doesn't change state)
+
+If we merge 5 additional commits from pull request #18145, the pg state will
+change to backfill_unfound or recovery_unfound.
+
+(cherry picked from commit c8045799bb2ac14b25128b69cbbbc56b7249a4a7)
+
+Resolves: rhbz#1508935
+---
+ src/test/erasure-code/test-erasure-eio.sh | 159 ++++++++++++++++++++++++++++++
+ 1 file changed, 159 insertions(+)
+
+diff --git a/src/test/erasure-code/test-erasure-eio.sh b/src/test/erasure-code/test-erasure-eio.sh
+index 4db929f..0fd893a 100755
+--- a/src/test/erasure-code/test-erasure-eio.sh
++++ b/src/test/erasure-code/test-erasure-eio.sh
+@@ -53,6 +53,13 @@ function setup_osds() {
+     grep 'load: jerasure.*lrc' $dir/osd.0.log || return 1
+ }
+ 
++function get_state() {
++    local pgid=$1
++    local sname=state
++    ceph --format json pg dump pgs 2>/dev/null | \
++        jq -r ".[] | select(.pgid==\"$pgid\") | .$sname"
++}
++
+ function create_erasure_coded_pool() {
+     local poolname=$1
+     shift
+@@ -403,6 +410,158 @@ function TEST_ec_recovery_errors() {
+     delete_pool $poolname
+ }
+ 
++# Test backfill with errors present
++function TEST_ec_backfill_errors() {
++    local dir=$1
++    local objname=myobject
++    local lastobj=300
++    # Must be between 1 and $lastobj
++    local testobj=obj250
++
++    export CEPH_ARGS
++    CEPH_ARGS+=' --osd_min_pg_log_entries=5 --osd_max_pg_log_entries=10'
++    setup_osds 5 || return 1
++
++    local poolname=pool-jerasure
++    create_erasure_coded_pool $poolname 3 2 || return 1
++
++    ceph pg dump pgs
++
++    rados_put $dir $poolname $objname || return 1
++
++    local -a initial_osds=($(get_osds $poolname $objname))
++    local last_osd=${initial_osds[-1]}
++    kill_daemons $dir TERM osd.${last_osd} 2>&2 < /dev/null || return 1
++    ceph osd down ${last_osd} || return 1
++    ceph osd out ${last_osd} || return 1
++
++    ceph pg dump pgs
++
++    dd if=/dev/urandom of=${dir}/ORIGINAL bs=1024 count=4
++    for i in $(seq 1 $lastobj)
++    do
++      rados --pool $poolname put obj${i} $dir/ORIGINAL || return 1
++    done
++
++    inject_eio ec data $poolname $testobj $dir 0 || return 1
++    inject_eio ec data $poolname $testobj $dir 1 || return 1
++
++    run_osd $dir ${last_osd} || return 1
++    ceph osd in ${last_osd} || return 1
++
++    sleep 15
++
++    # while(true); do
++    #   state=$(get_state 2.0)
++    #  echo $state | grep -v backfilling
++    #  if [ "$?" = "0" ]; then
++    #    break
++    #  fi
++    #  echo -n "$state "
++    #done
++
++    ceph pg dump pgs
++    ceph pg 2.0 list_missing | grep -q $testobj || return 1
++
++    # Command should hang because object is unfound
++    timeout 5 rados -p $poolname get $testobj $dir/CHECK
++    test $? = "124" || return 1
++
++    ceph pg 2.0 mark_unfound_lost delete
++
++    wait_for_clean || return 1
++
++    for i in $(seq 1 $lastobj)
++    do
++      if [ obj${i} = "$testobj" ]; then
++        # Doesn't exist anymore
++        ! rados -p $poolname get $testobj $dir/CHECK || return 1
++      else
++        rados --pool $poolname get obj${i} $dir/CHECK || return 1
++        diff -q $dir/ORIGINAL $dir/CHECK || return 1
++      fi
++    done
++
++    rm -f ${dir}/ORIGINAL ${dir}/CHECK
++
++    delete_pool $poolname
++}
++
++# Test recovery with errors present
++function TEST_ec_recovery_errors() {
++    local dir=$1
++    local objname=myobject
++    local lastobj=100
++    # Must be between 1 and $lastobj
++    local testobj=obj75
++
++    setup_osds 5 || return 1
++
++    local poolname=pool-jerasure
++    create_erasure_coded_pool $poolname 3 2 || return 1
++
++    ceph pg dump pgs
++
++    rados_put $dir $poolname $objname || return 1
++
++    local -a initial_osds=($(get_osds $poolname $objname))
++    local last_osd=${initial_osds[-1]}
++    kill_daemons $dir TERM osd.${last_osd} 2>&2 < /dev/null || return 1
++    ceph osd down ${last_osd} || return 1
++    ceph osd out ${last_osd} || return 1
++
++    ceph pg dump pgs
++
++    dd if=/dev/urandom of=${dir}/ORIGINAL bs=1024 count=4
++    for i in $(seq 1 $lastobj)
++    do
++      rados --pool $poolname put obj${i} $dir/ORIGINAL || return 1
++    done
++
++    inject_eio ec data $poolname $testobj $dir 0 || return 1
++    inject_eio ec data $poolname $testobj $dir 1 || return 1
++
++    run_osd $dir ${last_osd} || return 1
++    ceph osd in ${last_osd} || return 1
++
++    sleep 15
++
++    #while(true); do
++    #  state=$(get_state 2.0)
++    #  echo $state | grep -v recovering
++    #  if [ "$?" = "0" ]; then
++    #    break
++    #  fi
++    #  echo -n "$state "
++    #done
++
++    ceph pg dump pgs
++    ceph pg 2.0 list_missing | grep -q $testobj || return 1
++
++    # Command should hang because object is unfound
++    timeout 5 rados -p $poolname get $testobj $dir/CHECK
++    test $? = "124" || return 1
++
++    ceph pg 2.0 mark_unfound_lost delete
++
++    wait_for_clean || return 1
++
++    for i in $(seq 1 $lastobj)
++    do
++      if [ obj${i} = "$testobj" ]; then
++        # Doesn't exist anymore
++        ! rados -p $poolname get $testobj $dir/CHECK || return 1
++      else
++        rados --pool $poolname get obj${i} $dir/CHECK || return 1
++        diff -q $dir/ORIGINAL $dir/CHECK || return 1
++      fi
++    done
++
++    rm -f ${dir}/ORIGINAL ${dir}/CHECK
++
++    delete_pool $poolname
++}
++
+ main test-erasure-eio "$@"
+ 
+ # Local Variables:
