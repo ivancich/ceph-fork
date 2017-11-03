@@ -1,4 +1,11 @@
-ceph (10.2.7-50redhat1) stable; urgency=medium
+ceph (10.2.7-49redhat3.TEST.walmart) stable; urgency=medium
+
+  * rgw: fix BZ 1500904, Stale bucket index entry remains after object
+    deletion (rhbz#1500904)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Fri, 03 Nov 2017 14:37:03 -0400
+
+ceph (10.2.7-49redhat2.TEST.walmart) stable; urgency=medium
 
   * erasure: Remove unused variable (rhbz#1508935)
   * test: CLEANUP to later enable

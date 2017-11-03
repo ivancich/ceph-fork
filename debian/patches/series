@@ -174,3 +174,4 @@
 0174-osd-Better-handle-failure-to-get-enough-EC-shards-to.patch
 0175-test-Test-case-that-reproduces-tracker-18162.patch
 0176-test-Fix-osd-scrub-repair.sh-for-Jewel.patch
+0177-rgw-fix-BZ-1500904-Stale-bucket-index-entry-remains-.patch

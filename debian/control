@@ -78,6 +78,12 @@ Description: distributed storage and file system
  Ceph is a massively scalable, open-source, distributed
  storage system that runs on commodity hardware and delivers object,
  block and file system storage.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-base
 Architecture: linux-any
@@ -114,6 +120,12 @@ Description: common ceph daemon libraries and management tools
  This package contains the libraries and management tools that are common among
  the three Ceph server daemons (ceph-mon, ceph-osd, ceph-mds). These tools are
  necessary for creating, running, and administering a Ceph storage cluster.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-mds
 Architecture: linux-any
@@ -130,6 +142,12 @@ Description: metadata server for the ceph distributed file system
  .
  This package contains the metadata server daemon, which is used to
  create a distributed file system on top of the ceph storage cluster.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-mds-dbg
 Architecture: linux-any
@@ -142,6 +160,12 @@ Description: debugging symbols for ceph-mds
  block and file system storage.
  .
  This package contains the debugging symbols for ceph-mds.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-mon
 Architecture: linux-any
@@ -161,6 +185,12 @@ Description: monitor server for the ceph storage system
  system. One or more instances of ceph-mon form a Paxos part-time parliament
  cluster that provides extremely reliable and durable storage of cluster
  membership, configuration, and state.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-mon-dbg
 Architecture: linux-any
@@ -173,6 +203,12 @@ Description: debugging symbols for ceph-mon
  block and file system storage.
  .
  This package contains the debugging symbols for ceph-mon.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-osd
 Architecture: linux-any
@@ -191,6 +227,12 @@ Description: OSD server for the ceph storage system
  This package contains the Object Storage Daemon for the Ceph storage system.
  It is responsible for storing objects on a local file system
  and providing access to them over the network.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-osd-dbg
 Architecture: linux-any
@@ -203,6 +245,12 @@ Description: debugging symbols for ceph-osd
  block and file system storage.
  .
  This package contains the debugging symbols for ceph-osd.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-fuse
 Architecture: linux-any
@@ -220,6 +268,12 @@ Description: FUSE-based client for the Ceph distributed file system
  be used if possible.  If it is not practical to load a kernel module
  (insufficient privileges, older kernel, etc.), then the FUSE client will
  do.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-fuse-dbg
 Architecture: linux-any
@@ -234,6 +288,12 @@ Description: debugging symbols for ceph-fuse
  root privileges.
  .
  This package contains the debugging symbols for ceph-fuse.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: rbd-fuse
 Architecture: linux-any
@@ -246,6 +306,12 @@ Description: FUSE-based rbd client for the Ceph distributed file system
  FUSE-based client that allows one to map Ceph rbd images as files.
  .
  FUSE base client that allows one to map Ceph rbd images as files.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: rbd-fuse-dbg
 Architecture: linux-any
@@ -259,6 +325,12 @@ Description: debugging symbols for rbd-fuse
  FUSE-based client that allows one to map Ceph rbd images as files.
  .
  This package contains the debugging symbols for rbd-fuse.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: rbd-mirror
 Architecture: linux-any
@@ -271,6 +343,12 @@ Description: Ceph daemon for mirroring RBD images
  block and file system storage.  This is a
  daemon for mirroring RBD images between Ceph clusters, streaming
  changes asynchronously.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: rbd-mirror-dbg
 Architecture: linux-any
@@ -285,6 +363,12 @@ Description: debugging symbols for rbd-mirror
  changes asynchronously.
  .
  This package contains the debugging symbols for rbd-mirror.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: rbd-nbd
 Architecture: linux-any
@@ -298,6 +382,12 @@ Description: NBD-based rbd client for the Ceph distributed file system
  .
  NBD base client that allows one to map Ceph rbd images as local
  block device.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: rbd-nbd-dbg
 Architecture: linux-any
@@ -312,6 +402,12 @@ Description: debugging symbols for rbd-nbd
  block device.
  .
  This package contains the debugging symbols for rbd-nbd.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-common
 Architecture: linux-any
@@ -336,6 +432,12 @@ Description: common utilities to mount and interact with a ceph storage cluster
  storage system that runs on commodity hardware and delivers object,
  block and file system storage.  This is a collection
  of common tools that allow one to interact with and administer a Ceph cluster.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-common-dbg
 Architecture: linux-any
@@ -353,6 +455,12 @@ Description: debugging symbols for ceph-common
  of common tools that allow one to interact with and administer a Ceph cluster.
  .
  This package contains the debugging symbols for ceph-common.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-fs-common
 Architecture: linux-any
@@ -365,6 +473,12 @@ Description: common utilities to mount and interact with a ceph file system
  block and file system storage.  This is a collection
  of common tools, including the mount utility, that allows one to mount the
  Ceph file system with the kernel client.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-fs-common-dbg
 Architecture: linux-any
@@ -381,6 +495,12 @@ Description: debugging symbols for ceph-fs-common
  Ceph file system with the kernel client.
  .
  This package contains the debugging symbols for ceph-fs-common.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-resource-agents
 Architecture: linux-any
@@ -395,6 +515,12 @@ Description: OCF-compliant resource agents for Ceph
  This package contains the resource agents (RAs) which integrate
  Ceph with OCF-compliant cluster resource managers,
  such as Pacemaker.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librados2
 Conflicts: librados, librados1
@@ -407,6 +533,12 @@ Description: RADOS distributed object store client library
  developed as part of the Ceph distributed storage system.  This is a
  shared library allowing applications to access the distributed object
  store using a simple file-like interface.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librados2-dbg
 Conflicts: librados1-dbg
@@ -422,6 +554,12 @@ Description: debugging symbols for librados
  store using a simple file-like interface.
  .
  This package contains debugging symbols for librados.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librados-dev
 Architecture: linux-any
@@ -437,6 +575,12 @@ Description: RADOS distributed object store client library (development files)
  .
  This package contains development files needed for building applications that
  link against librados.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librbd1
 Architecture: linux-any
@@ -447,6 +591,12 @@ Description: RADOS block device client library
  in RADOS, a reliable, autonomic distributed object storage cluster
  developed as part of the Ceph distributed storage system.  This is a
  shared library allowing applications to manage these block devices.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librbd1-dbg
 Architecture: linux-any
@@ -460,6 +610,12 @@ Description: debugging symbols for librbd1
  shared library allowing applications to manage these block devices.
  .
  This package contains debugging symbols for librbd1.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librbd-dev
 Architecture: linux-any
@@ -476,6 +632,12 @@ Description: RADOS block device client library (development files)
  .
  This package contains development files needed for building applications that
  link against librbd1.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: libcephfs1
 Conflicts: libceph, libceph1, libcephfs
@@ -489,6 +651,12 @@ Description: Ceph distributed file system client library
  block and file system storage.  This is a
  shared library allowing applications to access a Ceph distributed
  file system via a POSIX-like interface.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: libcephfs1-dbg
 Architecture: linux-any
@@ -505,6 +673,12 @@ Description: debugging symbols for libcephfs1
  file system via a POSIX-like interface.
  .
  This package contains debugging symbols for libcephfs1.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: libcephfs-dev
 Architecture: linux-any
@@ -521,6 +695,12 @@ Description: Ceph distributed file system client library (development files)
  .
  This package contains development files needed for building applications that
  link against libcephfs.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librgw2
 Architecture: linux-any
@@ -533,6 +713,12 @@ Description: RADOS Gateway client library
  service.
  .
  This package contains the library interface and headers only.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librgw2-dbg
 Architecture: linux-any
@@ -546,6 +732,12 @@ Description: debugging symbols for librbd1
  service.
  .
  This package contains debugging symbols for librgw2.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: librgw-dev
 Architecture: linux-any
@@ -560,6 +752,12 @@ Description: RADOS client library (development files)
  .
  This package contains development files needed for building applications
  that link against librgw2.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: radosgw
 Architecture: linux-any
@@ -576,6 +774,12 @@ Description: REST gateway for RADOS distributed object store
  service as well as the OpenStack Object Storage ("Swift") API.
  .
  This package contains the proxy daemon and related tools only.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: radosgw-dbg
 Architecture: linux-any
@@ -589,12 +793,24 @@ Description: debugging symbols for radosgw
  service as well as the OpenStack Object Storage ("Swift") API.
  .
  This package contains debugging symbols for radosgw.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-test
 Architecture: linux-any
 Depends: ceph-common, curl, xml2, xmlstarlet, ${misc:Depends}, ${shlibs:Depends}
 Description: Ceph test and benchmarking tools
  This package contains tools for testing and benchmarking Ceph.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: ceph-test-dbg
 Architecture: linux-any
@@ -606,6 +822,12 @@ Depends: ceph-test (= ${binary:Version}), ceph-common (= ${binary:Version}),
 Description: Ceph test and benchmarking tools
  .
  This package contains the debugging symbols for ceph-test.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: python-ceph
 Architecture: linux-any
@@ -620,6 +842,12 @@ Description: Meta-package for python libraries for the Ceph libraries
  block and file system storage.
  .
  This package is a metapackage for all python bindings.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: python-rados
 Architecture: linux-any
@@ -635,6 +863,12 @@ Description: Python libraries for the Ceph librados library
  .
  This package contains Python libraries for interacting with Ceph's
  RADOS object storage.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: python-rbd
 Architecture: linux-any
@@ -650,6 +884,12 @@ Description: Python libraries for the Ceph librbd library
  .
  This package contains Python libraries for interacting with Ceph's
  RBD block device library.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: python-cephfs
 Architecture: linux-any
@@ -665,12 +905,23 @@ Description: Python libraries for the Ceph libcephfs library
  .
  This package contains Python libraries for interacting with Ceph's
  CephFS file system client library.
+ .
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: libcephfs-java
 Section: java
 Architecture: all
 Depends: libcephfs-jni (= ${binary:Version}), ${java:Depends}, ${misc:Depends}
 Description: Java libraries for the Ceph File System
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.
 
 Package: libcephfs-jni
 Architecture: linux-any
@@ -678,3 +929,8 @@ Section: libs
 Depends: libcephfs1 (= ${binary:Version}), ${java:Depends},
          ${misc:Depends}, ${shlibs:Depends}
 Description: Java Native Interface library for CephFS Java bindings
+ This package has been provided by Red Hat for testing purposes only and is NOT
+ supported for any other use. This package may contain changes that are necessary
+ for debugging but that are not appropriate for other uses, or that are not
+ compatible with third-party hardware or software. This package should NOT be
+ deployed for purposes other than testing and debugging.

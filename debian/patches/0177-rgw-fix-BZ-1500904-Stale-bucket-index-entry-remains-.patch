@@ -1,0 +1,101 @@
+From: "J. Eric Ivancich" <ivancich@redhat.com>
+Date: Fri, 3 Nov 2017 09:15:13 -0400
+Subject: rgw: fix BZ 1500904,
+ Stale bucket index entry remains after object deletion
+
+We have a race condition:
+
+ 1. RGW client #1: requests an object be deleted.
+ 2. RGW client #1: sends a prepare op to bucket index OSD #1.
+ 3. OSD #1:        prepares the op, adding pending ops to the bucket dir entry
+ 4. RGW client #2: sends a list bucket to OSD #1
+ 5. RGW client #2: sees that there are pending operations on bucket
+                   dir entry, and calls check_disk_state
+ 6. RGW client #2: check_disk_state sees that the object still exists, so it
+                   sends CEPH_RGW_UPDATE to bucket index OSD (#1)
+ 7. RGW client #1: sends a delete object to object OSD (#2)
+ 8. OSD #2:        deletes the object
+ 9. RGW client #2: sends a complete op to bucket index OSD (#1)
+10. OSD #1:        completes the op
+11. OSD #1:        receives the CEPH_RGW_UPDATE and updates the bucket index
+                   entry, thereby **RECREATING** it
+
+Solution implemented:
+
+At step #5 the object's dir entry exists. If we get to beginning of
+step #11 and the object's dir entry no longer exists, we know that the
+dir entry was just actively being modified, and ignore the
+CEPH_RGW_UPDATE operation, thereby NOT recreating it.
+
+Resolves: rhbz#1500904
+
+Signed-off-by: J. Eric Ivancich <ivancich@redhat.com>
+(cherry picked from commit b33f529e79b74314a2030231e1308ee225717743)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+---
+ src/cls/rgw/cls_rgw.cc | 23 ++++++++++++++++++-----
+ src/rgw/rgw_rados.cc   |  1 -
+ 2 files changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/src/cls/rgw/cls_rgw.cc b/src/cls/rgw/cls_rgw.cc
+index 2a8de1a..ac25b6a 100644
+--- a/src/cls/rgw/cls_rgw.cc
++++ b/src/cls/rgw/cls_rgw.cc
+@@ -1890,7 +1890,8 @@ static int rgw_bucket_clear_olh(cls_method_context_t hctx, bufferlist *in, buffe
+   return 0;
+ }
+ 
+-int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
++int rgw_dir_suggest_changes(cls_method_context_t hctx,
++			    bufferlist *in, bufferlist *out)
+ {
+   CLS_LOG(1, "rgw_dir_suggest_changes()");
+ 
+@@ -1982,8 +1983,21 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
+         }
+         break;
+       case CEPH_RGW_UPDATE:
++	if (!cur_disk.exists) {
++	  // this update would only have been sent by the rgw client
++	  // if the rgw_bucket_dir_entry existed, however between that
++	  // check and now the entry has diappeared, so we were likely
++	  // in the midst of a delete op, and we will not recreate the
++	  // entry
++	  CLS_LOG(10,
++		  "CEPH_RGW_UPDATE not applied because rgw_bucket_dir_entry"
++		  " no longer exists\n");
++	  break;
++	}
++
+         CLS_LOG(10, "CEPH_RGW_UPDATE name=%s instance=%s total_entries: %" PRId64 " -> %" PRId64 "\n",
+                 cur_change.key.name.c_str(), cur_change.key.instance.c_str(), stats.num_entries, stats.num_entries + 1);
++
+         stats.num_entries++;
+         stats.total_size += cur_change.meta.accounted_size;
+         stats.total_size_rounded += cls_rgw_get_rounded_size(cur_change.meta.accounted_size);
+@@ -2003,10 +2017,9 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
+           }
+         }
+         break;
+-      }
+-    }
+-
+-  }
++      } // switch(op)
++    } // if (cur_disk.pending_map.empty())
++  } // while (!in_iter.end())
+ 
+   if (header_changed) {
+     return write_bucket_header(hctx, &header);
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index f5c654d..55f20b1 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -8117,7 +8117,6 @@ int RGWRados::Object::Delete::delete_obj()
+ 
+   index_op.set_bilog_flags(params.bilog_flags);
+ 
+-
+   r = index_op.prepare(CLS_RGW_OP_DEL);
+   if (r < 0)
+     return r;
