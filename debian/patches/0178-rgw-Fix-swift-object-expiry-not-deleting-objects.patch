@@ -1,0 +1,37 @@
+From: Pavan Rallabhandi <PRallabhandi@walmartlabs.com>
+Date: Wed, 8 Nov 2017 21:35:54 +0530
+Subject: rgw: Fix swift object expiry not deleting objects
+
+In cls_timeindex_list() though `to_index` has expired for a timespan, the marker is set for a subsequent index during the time boundary check.
+This marker is further returned to RGWObjectExpirer::process_single_shard(), where this out_marker is trimmed from the respective shard,
+resulting in a lost removal hint and a leaked object.
+
+Fixes: http://tracker.ceph.com/issues/22084
+Resolves: rhbz#1514210
+
+Signed-off-by: Pavan Rallabhandi <PRallabhandi@walmartlabs.com>
+(cherry picked from commit 70adfaae5073d2680a9722526a6a19795dd18780)
+---
+ src/cls/timeindex/cls_timeindex.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/cls/timeindex/cls_timeindex.cc b/src/cls/timeindex/cls_timeindex.cc
+index 3300362..1e6cfa2 100644
+--- a/src/cls/timeindex/cls_timeindex.cc
++++ b/src/cls/timeindex/cls_timeindex.cc
+@@ -151,7 +151,6 @@ static int cls_timeindex_list(cls_method_context_t hctx,
+     const string& index = iter->first;
+     bufferlist& bl = iter->second;
+ 
+-    marker = index;
+     if (use_time_boundary && index.compare(0, to_index.size(), to_index) >= 0) {
+       CLS_LOG(20, "DEBUG: cls_timeindex_list: finishing on to_index=%s",
+               to_index.c_str());
+@@ -170,6 +169,7 @@ static int cls_timeindex_list(cls_method_context_t hctx,
+       e.value = bl;
+       entries.push_back(e);
+     }
++    marker = index;
+   }
+ 
+   if (iter == keys.end()) {

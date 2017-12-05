@@ -1,0 +1,35 @@
+From: "Adam C. Emerson" <aemerson@redhat.com>
+Date: Mon, 4 Dec 2017 15:30:01 -0500
+Subject: rgw: Handle stale bucket info in RGWDeleteBucketWebsite
+
+Resolves: rhbz#1491739
+
+Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
+(cherry picked from commit f4d274248e43cb38ff2b27782c010b2c35b12b2b)
+(cherry picked from commit 485fb71c944e8abc9058353fe7072f26cde3ab32)
+---
+ src/rgw/rgw_op.cc | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index f03e56c..5d53cb4 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -1705,10 +1705,14 @@ void RGWDeleteBucketWebsite::pre_exec()
+ 
+ void RGWDeleteBucketWebsite::execute()
+ {
+-  s->bucket_info.has_website = false;
+-  s->bucket_info.website_conf = RGWBucketWebsiteConf();
++  op_ret = retry_raced_bucket_write(store, s, [this] {
++      s->bucket_info.has_website = false;
++      s->bucket_info.website_conf = RGWBucketWebsiteConf();
++
++      op_ret = store->put_bucket_instance_info(s->bucket_info, false, real_time(), &s->bucket_attrs);
+ 
+-  op_ret = store->put_bucket_instance_info(s->bucket_info, false, real_time(), &s->bucket_attrs);
++      return op_ret;
++    });
+   if (op_ret < 0) {
+     ldout(s->cct, 0) << "NOTICE: put_bucket_info on bucket=" << s->bucket.name << " returned err=" << op_ret << dendl;
+     return;

@@ -1,0 +1,44 @@
+From: "Adam C. Emerson" <aemerson@redhat.com>
+Date: Mon, 4 Dec 2017 14:58:44 -0500
+Subject: rgw: Handle stale bucket info in RGWSetBucketVersioning
+
+Resolves: rhbz#1491739
+
+Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
+(cherry picked from commit a0a1e7c2ef992b8758bcfb20d893730c1b202475)
+(cherry picked from commit 5b1da58a869039ccd63305e2e5d1bf1ccc8f5264)
+---
+ src/rgw/rgw_op.cc | 19 +++++++++++--------
+ 1 file changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index 2af79ee..347deef 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -1618,15 +1618,18 @@ void RGWSetBucketVersioning::execute()
+     }
+   }
+ 
+-  if (enable_versioning) {
+-    s->bucket_info.flags |= BUCKET_VERSIONED;
+-    s->bucket_info.flags &= ~BUCKET_VERSIONS_SUSPENDED;
+-  } else {
+-    s->bucket_info.flags |= (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED);
+-  }
++  op_ret = retry_raced_bucket_write(store, s, [this] {
++      if (enable_versioning) {
++	s->bucket_info.flags |= BUCKET_VERSIONED;
++	s->bucket_info.flags &= ~BUCKET_VERSIONS_SUSPENDED;
++      } else {
++	s->bucket_info.flags |= (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED);
++      }
+ 
+-  op_ret = store->put_bucket_instance_info(s->bucket_info, false, real_time(),
+-					  &s->bucket_attrs);
++      op_ret = store->put_bucket_instance_info(s->bucket_info, false, real_time(),
++					       &s->bucket_attrs);
++      return op_ret;
++    });
+   if (op_ret < 0) {
+     ldout(s->cct, 0) << "NOTICE: put_bucket_info on bucket=" << s->bucket.name
+ 		     << " returned err=" << op_ret << dendl;

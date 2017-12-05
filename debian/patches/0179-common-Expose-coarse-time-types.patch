@@ -1,0 +1,27 @@
+From: "Adam C. Emerson" <aemerson@redhat.com>
+Date: Mon, 4 Dec 2017 13:24:25 -0500
+Subject: common: Expose coarse time types
+
+Resolves: rhbz#1491739
+
+Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
+(cherry picked from commit a12208a395074d3203790eda4d6e42df384f9260)
+---
+ src/common/ceph_time.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/common/ceph_time.h b/src/common/ceph_time.h
+index 2c7061a..8ad8dc0 100644
+--- a/src/common/ceph_time.h
++++ b/src/common/ceph_time.h
+@@ -313,6 +313,10 @@ namespace ceph {
+   // std::chrono::steady_clock time and ceph::mono_clock time.
+   typedef mono_clock::time_point mono_time;
+ 
++  // And likewise for coarseness
++  typedef coarse_real_clock::time_point coarse_real_time;
++  typedef coarse_mono_clock::time_point coarse_mono_time;
++
+   template<typename Rep1, typename Ratio1, typename Rep2, typename Ratio2>
+   auto floor(const std::chrono::duration<Rep1, Ratio1>& duration,
+ 	     const std::chrono::duration<Rep2, Ratio2>& precision) ->

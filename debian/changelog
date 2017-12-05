@@ -1,3 +1,21 @@
+ceph (10.2.7-49redhat4.TEST.walmart) stable; urgency=medium
+
+  * rgw: Fix swift object expiry not deleting objects (rhbz#1514210)
+  * common: Expose coarse time types (rhbz#1491739)
+  * rgw: Add try_refresh_bucket_info function (rhbz#1491739)
+  * rgw: Add retry_raced_bucket_write (rhbz#1491739)
+  * rgw: Handle stale bucket info in RGWPutMetadataBucket
+    (rhbz#1491739)
+  * rgw: Handle stale bucket info in RGWSetBucketVersioning
+    (rhbz#1491739)
+  * rgw: Handle stale bucket info in RGWSetBucketWebsite
+    (rhbz#1491739)
+  * rgw: Handle stale bucket info in RGWDeleteBucketWebsite
+    (rhbz#1491739)
+  * rgw: Expire entries in bucket info cache (rhbz#1491739)
+
+ -- Thomas Serlin <tserlin@redhat.com>  Tue, 05 Dec 2017 14:04:56 -0500
+
 ceph (10.2.7-49redhat3.TEST.walmart) stable; urgency=medium
 
   * rgw: fix BZ 1500904, Stale bucket index entry remains after object

@@ -1,0 +1,92 @@
+From: "Adam C. Emerson" <aemerson@redhat.com>
+Date: Fri, 17 Nov 2017 17:15:26 -0500
+Subject: rgw: Expire entries in bucket info cache
+
+To bound the degree to which an RGW instance can go out to lunch if
+the watch/notify breaks down, force refresh of any cache entry over a
+certain age.
+
+Fifteen minutes by default, and expiration can be turned off entirely.
+
+This is separate from the LRU. The LRU removes entries based on the
+last time of access. This expiration patch forces refresh based on the
+last time they were updated.
+
+Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
+(cherry picked from commit 4489cb58a15647a31ac0546d70400af5668404cb)
+Conflicts:
+	src/common/options.cc
+
+Resolved by re-adding as an old-style option and accessing as such.
+
+Resolves: rhbz#1491739
+
+(cherry picked from commit a0c1c279b144db248bfd77bcb6bcd2ab8cb5626c)
+Signed-off-by: Matt Benjamin <mbenjamin@redhat.com>
+---
+ src/common/config_opts.h |  2 ++
+ src/rgw/rgw_rados.h      | 18 ++++++++++++++----
+ 2 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index 9168d40..98ee803 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -1481,3 +1481,5 @@ OPTION(rgw_swift_custom_header, OPT_STR, "") // option to enable swift custom he
+ OPTION(internal_safe_to_start_threads, OPT_BOOL, false)
+ 
+ OPTION(debug_deliberately_leak_memory, OPT_BOOL, false)
++
++OPTION(rgw_bucket_info_cache_expiry_interval, OPT_U64, 900)
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index 3509fa8..8b5b9af 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -3139,25 +3139,32 @@ public:
+ 
+ template <class T>
+ class RGWChainedCacheImpl : public RGWChainedCache {
++  ceph::timespan expiry;
+   RWLock lock;
+ 
+-  map<string, T> entries;
++  map<string, std::pair<T, ceph::coarse_mono_time>> entries;
+ 
+ public:
+   RGWChainedCacheImpl() : lock("RGWChainedCacheImpl::lock") {}
+ 
+   void init(RGWRados *store) {
+     store->register_chained_cache(this);
++    expiry = std::chrono::seconds(store->ctx()->_conf->
++				  rgw_bucket_info_cache_expiry_interval);
+   }
+ 
+   bool find(const string& key, T *entry) {
+     RWLock::RLocker rl(lock);
+-    typename map<string, T>::iterator iter = entries.find(key);
++    auto iter = entries.find(key);
+     if (iter == entries.end()) {
+       return false;
+     }
++    if (expiry.count() &&
++	(ceph::coarse_mono_clock::now() - iter->second.second) > expiry) {
++      return false;
++    }
+ 
+-    *entry = iter->second;
++    *entry = iter->second.first;
+     return true;
+   }
+ 
+@@ -3171,7 +3178,10 @@ public:
+   void chain_cb(const string& key, void *data) {
+     T *entry = static_cast<T *>(data);
+     RWLock::WLocker wl(lock);
+-    entries[key] = *entry;
++    entries[key].first = *entry;
++    if (expiry.count() > 0) {
++      entries[key].second = ceph::coarse_mono_clock::now();
++    }
+   }
+ 
+   void invalidate(const string& key) {

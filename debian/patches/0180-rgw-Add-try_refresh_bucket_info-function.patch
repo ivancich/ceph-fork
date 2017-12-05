@@ -1,0 +1,143 @@
+From: "Adam C. Emerson" <aemerson@redhat.com>
+Date: Thu, 16 Nov 2017 14:42:58 -0500
+Subject: rgw: Add try_refresh_bucket_info function
+
+Sometimes operations fail with -ECANCELED. This means we got raced. If
+this happens we should update our bucket info from cache and try again.
+
+Some user reports suggest that our cache may be getting and staying
+out of sync. This is a bug and should be fixed, but it would also be
+nice if we were robust enough to notice the problem and refresh.
+
+So in that case, we invalidate the cache and fetch direct from the
+OSD, putting a warning in the log.
+
+Resolves: rhbz#1491739
+
+Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
+(cherry picked from commit 9114e5e50995f0c7d2be5c24aa4712d89cd89f48)
+(cherry picked from commit df3eddef94dc59ef9f6b3512417c5e313ddfcf3e)
+---
+ src/rgw/rgw_rados.cc | 45 ++++++++++++++++++++++++++++++++++++++++++---
+ src/rgw/rgw_rados.h  | 26 ++++++++++++++++++++++----
+ 2 files changed, 64 insertions(+), 7 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 55f20b1..d4fd664 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -10979,15 +10979,27 @@ int RGWRados::convert_old_bucket_info(RGWObjectCtx& obj_ctx,
+   return 0;
+ }
+ 
+-int RGWRados::get_bucket_info(RGWObjectCtx& obj_ctx,
+-                              const string& tenant, const string& bucket_name, RGWBucketInfo& info,
+-                              real_time *pmtime, map<string, bufferlist> *pattrs)
++int RGWRados::_get_bucket_info(RGWObjectCtx& obj_ctx,
++                               const string& tenant,
++                               const string& bucket_name,
++                               RGWBucketInfo& info,
++                               real_time *pmtime,
++                               map<string, bufferlist> *pattrs,
++                               boost::optional<obj_version> refresh_version)
+ {
+   bucket_info_entry e;
+   string bucket_entry;
+   rgw_make_bucket_entry_name(tenant, bucket_name, bucket_entry);
+ 
++
+   if (binfo_cache->find(bucket_entry, &e)) {
++    if (refresh_version &&
++        e.info.objv_tracker.read_version.compare(&(*refresh_version))) {
++      lderr(cct) << "WARNING: The bucket info cache is inconsistent. This is "
++                 << "a failure that should be debugged. I am a nice machine, "
++                 << "so I will try to recover." << dendl;
++      binfo_cache->invalidate(bucket_entry);
++    }
+     info = e.info;
+     if (pattrs)
+       *pattrs = e.attrs;
+@@ -11040,6 +11052,7 @@ int RGWRados::get_bucket_info(RGWObjectCtx& obj_ctx,
+   e.info.ep_objv = ot.read_version;
+   info = e.info;
+   if (ret < 0) {
++    lderr(cct) << "ERROR: get_bucket_instance_from_oid failed: " << ret << dendl;
+     info.bucket.tenant = tenant;
+     info.bucket.name = bucket_name;
+     // XXX and why return anything in case of an error anyway?
+@@ -11061,9 +11074,35 @@ int RGWRados::get_bucket_info(RGWObjectCtx& obj_ctx,
+     ldout(cct, 20) << "couldn't put binfo cache entry, might have raced with data changes" << dendl;
+   }
+ 
++  if (refresh_version &&
++      refresh_version->compare(&info.objv_tracker.read_version)) {
++    lderr(cct) << "WARNING: The OSD has the same version I have. Something may "
++               << "have gone squirrelly. An administrator may have forced a "
++               << "change; otherwise there is a problem somewhere." << dendl;
++  }
++
+   return 0;
+ }
+ 
++int RGWRados::get_bucket_info(RGWObjectCtx& obj_ctx,
++                              const string& tenant, const string& bucket_name,
++                              RGWBucketInfo& info,
++                              real_time *pmtime, map<string, bufferlist> *pattrs)
++{
++  return _get_bucket_info(obj_ctx, tenant, bucket_name, info, pmtime,
++                          pattrs, boost::none);
++}
++
++int RGWRados::try_refresh_bucket_info(RGWBucketInfo& info,
++                                      ceph::real_time *pmtime,
++                                      map<string, bufferlist> *pattrs)
++{
++  RGWObjectCtx obj_ctx(this);
++
++  return _get_bucket_info(obj_ctx, info.bucket.tenant, info.bucket.name,
++                          info, pmtime, pattrs, info.objv_tracker.read_version);
++}
++
+ int RGWRados::put_bucket_entrypoint_info(const string& tenant_name, const string& bucket_name, RGWBucketEntryPoint& entry_point,
+                                          bool exclusive, RGWObjVersionTracker& objv_tracker, real_time mtime,
+                                          map<string, bufferlist> *pattrs)
+diff --git a/src/rgw/rgw_rados.h b/src/rgw/rgw_rados.h
+index bebfe80..3509fa8 100644
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -2840,13 +2840,31 @@ public:
+ 
+   int convert_old_bucket_info(RGWObjectCtx& obj_ctx, const string& tenant_name, const string& bucket_name);
+   static void make_bucket_entry_name(const string& tenant_name, const string& bucket_name, string& bucket_entry);
+-  virtual int get_bucket_info(RGWObjectCtx& obj_ctx,
+-                              const string& tenant_name, const string& bucket_name,
+-                              RGWBucketInfo& info,
+-                              ceph::real_time *pmtime, map<string, bufferlist> *pattrs = NULL);
+   virtual int put_linked_bucket_info(RGWBucketInfo& info, bool exclusive, ceph::real_time mtime, obj_version *pep_objv,
+                                      map<string, bufferlist> *pattrs, bool create_entry_point);
+ 
++private:
++  int _get_bucket_info(RGWObjectCtx& obj_ctx, const string& tenant,
++		       const string& bucket_name, RGWBucketInfo& info,
++		       real_time *pmtime,
++		       map<string, bufferlist> *pattrs,
++		       boost::optional<obj_version> refresh_version);
++public:
++
++
++  int get_bucket_info(RGWObjectCtx& obj_ctx,
++		      const string& tenant_name, const string& bucket_name,
++		      RGWBucketInfo& info,
++		      ceph::real_time *pmtime, map<string, bufferlist> *pattrs = NULL);
++
++  // Returns true on successful refresh. Returns false if there was an
++  // error or the version stored on the OSD is the same as that
++  // presented in the BucketInfo structure.
++  //
++  int try_refresh_bucket_info(RGWBucketInfo& info,
++			      ceph::real_time *pmtime,
++			      map<string, bufferlist> *pattrs = nullptr);
++
+   int cls_rgw_init_index(librados::IoCtx& io_ctx, librados::ObjectWriteOperation& op, string& oid);
+   int cls_obj_prepare_op(BucketShard& bs, RGWModifyOp op, string& tag, rgw_obj& obj, uint16_t bilog_flags);
+   int cls_obj_complete_op(BucketShard& bs, RGWModifyOp op, string& tag, int64_t pool, uint64_t epoch,

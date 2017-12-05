@@ -175,3 +175,12 @@
 0175-test-Test-case-that-reproduces-tracker-18162.patch
 0176-test-Fix-osd-scrub-repair.sh-for-Jewel.patch
 0177-rgw-fix-BZ-1500904-Stale-bucket-index-entry-remains-.patch
+0178-rgw-Fix-swift-object-expiry-not-deleting-objects.patch
+0179-common-Expose-coarse-time-types.patch
+0180-rgw-Add-try_refresh_bucket_info-function.patch
+0181-rgw-Add-retry_raced_bucket_write.patch
+0182-rgw-Handle-stale-bucket-info-in-RGWPutMetadataBucket.patch
+0183-rgw-Handle-stale-bucket-info-in-RGWSetBucketVersioni.patch
+0184-rgw-Handle-stale-bucket-info-in-RGWSetBucketWebsite.patch
+0185-rgw-Handle-stale-bucket-info-in-RGWDeleteBucketWebsi.patch
+0186-rgw-Expire-entries-in-bucket-info-cache.patch
