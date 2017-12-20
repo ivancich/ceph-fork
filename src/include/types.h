@@ -342,12 +342,34 @@ inline ostream& operator<<(ostream& out, const client_t& c) {
 
 struct prettybyte_t {
   uint64_t v;
+  bool error;
   // cppcheck-suppress noExplicitConstructor
-  prettybyte_t(uint64_t _v) : v(_v) {}
+  prettybyte_t(uint64_t _v) : v(_v), error(false) {}
+  prettybyte_t(int64_t _v) : v(_v), error(_v < 0) {}
+
+  // following template constructors required to avoid compile-time
+  // type ambiguity of the above
+
+  // handle signed types that are not int64_t via type traits
+  template<typename T>
+  prettybyte_t(T _v,
+	       typename std::enable_if<std::is_signed<T>::value>::type* = 0) :
+    prettybyte_t(int64_t(_v))
+  {}
+
+  // handle unsigned types that are not uint64_t via type traits
+  template<typename T>
+  prettybyte_t(T _v,
+	       typename std::enable_if<std::is_unsigned<T>::value>::type* = 0) :
+    prettybyte_t(uint64_t(_v))
+  {}
 };
 
 inline ostream& operator<<(ostream& out, const prettybyte_t& b)
 {
+  if (b.error)
+    return out << "ERROR";
+
   uint64_t bump_after = 100;
   if (b.v > bump_after << 60)
     return out << (b.v >> 60) << " EB";    
@@ -366,12 +388,32 @@ inline ostream& operator<<(ostream& out, const prettybyte_t& b)
 
 struct si_t {
   uint64_t v;
+  bool error;
   // cppcheck-suppress noExplicitConstructor
-  si_t(uint64_t _v) : v(_v) {}
+  si_t(uint64_t _v) : v(_v), error(false) {}
+  si_t(int64_t _v) : v(_v), error(_v < 0) {}
+
+  // following template constructors required to avoid compile-time
+  // type ambiguity of the above
+
+  // handle signed types that are not int64_t via type traits
+  template<typename T>
+  si_t(T _v, typename std::enable_if<std::is_signed<T>::value>::type* = 0) :
+    si_t(int64_t(_v))
+  {}
+
+  // handle unsigned types that are not uint64_t via type traits
+  template<typename T>
+  si_t(T _v, typename std::enable_if<std::is_unsigned<T>::value>::type* = 0) :
+    si_t(uint64_t(_v))
+  {}
 };
 
 inline ostream& operator<<(ostream& out, const si_t& b)
 {
+  if (b.error)
+    return out << "ERROR";
+
   char buffer[32];
   uint64_t n = b.v;
   int index = 0;
@@ -410,12 +452,34 @@ inline ostream& operator<<(ostream& out, const si_t& b)
 
 struct pretty_si_t {
   uint64_t v;
+  bool error;
   // cppcheck-suppress noExplicitConstructor
-  pretty_si_t(uint64_t _v) : v(_v) {}
+  pretty_si_t(uint64_t _v) : v(_v), error(false) {}
+  pretty_si_t(int64_t _v) : v(_v), error(_v < 0) {}
+
+  // following template constructors required to avoid compile-time
+  // type ambiguity of the above
+
+  // handle signed types that are not int64_t via type traits
+  template<typename T>
+  pretty_si_t(T _v,
+	      typename std::enable_if<std::is_signed<T>::value>::type* = 0) :
+    pretty_si_t(int64_t(_v))
+  {}
+
+  // handle unsigned types that are not uint64_t via type traits
+  template<typename T>
+  pretty_si_t(T _v,
+	      typename std::enable_if<std::is_unsigned<T>::value>::type* = 0) :
+    pretty_si_t(uint64_t(_v))
+  {}
 };
 
 inline ostream& operator<<(ostream& out, const pretty_si_t& b)
 {
+  if (b.error)
+    return out << "ERROR";
+
   uint64_t bump_after = 100;
   if (b.v > bump_after << 60)
     return out << (b.v >> 60) << " E";
@@ -434,12 +498,31 @@ inline ostream& operator<<(ostream& out, const pretty_si_t& b)
 
 struct kb_t {
   uint64_t v;
+  bool error;
   // cppcheck-suppress noExplicitConstructor
   kb_t(uint64_t _v) : v(_v) {}
+  kb_t(int64_t _v) : v(_v), error(_v < 0) {}
+
+  // handle signed types that are not int64_t via type traits
+  template<typename T>
+  kb_t(T _v,
+       typename std::enable_if<std::is_signed<T>::value>::type* = 0) :
+    kb_t(int64_t(_v))
+  {}
+
+  // handle unsigned types that are not uint64_t via type traits
+  template<typename T>
+  kb_t(T _v,
+       typename std::enable_if<std::is_unsigned<T>::value>::type* = 0) :
+    kb_t(uint64_t(_v))
+  {}
 };
 
 inline ostream& operator<<(ostream& out, const kb_t& kb)
 {
+  if (kb.error)
+    return out << "ERROR";
+
   uint64_t bump_after = 100;
   if (kb.v > bump_after << 40)
     return out << (kb.v >> 40) << " PB";    
