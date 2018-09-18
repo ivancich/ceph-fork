@@ -56,39 +56,39 @@ class RGWReshardWait;
 
 #define RGW_BUCKET_INSTANCE_MD_PREFIX ".bucket.meta."
 
-#define RGW_NO_SHARD -1
-
-#define RGW_SHARDS_PRIME_0 7877
-#define RGW_SHARDS_PRIME_1 65521
+// indicate "don't care" regarding a specific shard
+#define RGW_NO_SHARD (-1)
 
 // only called by rgw_shard_id and rgw_bucket_shard_index
 static inline int rgw_shards_mod(unsigned hval, int max_shards)
 {
-  if (max_shards <= RGW_SHARDS_PRIME_0) {
-    return hval % RGW_SHARDS_PRIME_0 % max_shards;
-  }
-  return hval % RGW_SHARDS_PRIME_1 % max_shards;
+#warning remove me
+  return RGWBucketDefaultIndexer::rgw_shards_mod(hval, max_shards);
 }
 
 // used for logging and tagging
 static inline int rgw_shard_id(const string& key, int max_shards)
 {
-  return rgw_shards_mod(ceph_str_hash_linux(key.c_str(), key.size()),
-			max_shards);
+  // since this is not the same hashing algorithm used for indexing,
+  // perhaps we should re-implement it
+  return RGWBucketDefaultIndexer::rgw_shards_mod(
+    ceph_str_hash_linux(key.c_str(), key.size()),
+    max_shards);
 }
 
 // used for bucket indices
 static inline uint32_t rgw_bucket_shard_index(const std::string& key,
 					      int num_shards) {
-  uint32_t sid = ceph_str_hash_linux(key.c_str(), key.size());
-  uint32_t sid2 = sid ^ ((sid & 0xFF) << 24);
-  return rgw_shards_mod(sid2, num_shards);
+#warning remove me
+  return RGWBucketDefaultIndexer::rgw_bucket_shard_index(key, num_shards);
 }
 
+#ifdef STRATS
 static inline int rgw_shards_max()
 {
   return RGW_SHARDS_PRIME_1;
 }
+#endif
 
 static inline void prepend_bucket_marker(const rgw_bucket& bucket, const string& orig_oid, string& oid)
 {
@@ -2283,7 +2283,9 @@ class RGWRados : public AdminSocketHook
   void build_bucket_index_marker(const string& shard_id_str, const string& shard_marker,
       string *marker);
 
+#ifdef STRATS
   void get_bucket_instance_ids(const RGWBucketInfo& bucket_info, int shard_id, map<int, string> *result);
+#endif
 
   std::atomic<int64_t> max_req_id = { 0 };
   Mutex lock;
@@ -2421,6 +2423,10 @@ public:
   }
   void set_context(CephContext *_cct) {
     cct = _cct;
+  }
+
+  uint32_t get_bucket_index_max_shards() const {
+    return bucket_index_max_shards;
   }
 
   /**
@@ -2569,9 +2575,8 @@ public:
   int get_max_chunk_size(const string& placement_rule, const rgw_obj& obj, uint64_t *max_chunk_size);
 
   uint32_t get_max_bucket_shards() {
-    return rgw_shards_max();
+    return RGWBucketDefaultIndexer::get_shards_max();
   }
-
 
   int get_raw_obj_ref(const rgw_raw_obj& obj, rgw_rados_ref *ref);
 
@@ -2647,6 +2652,7 @@ public:
 
   int create_pool(const rgw_pool& pool);
 
+#warning see why num_shards are sent in when stored in bucket_info; maybe use bucket_indexer instead?
   int init_bucket_index(RGWBucketInfo& bucket_info, int num_shards);
   int select_bucket_placement(RGWUserInfo& user_info, const string& zonegroup_id, const string& rule,
                               string *pselected_rule_name, RGWZonePlacementInfo *rule_info);
@@ -2670,7 +2676,7 @@ public:
                             obj_version *pep_objv,
                             ceph::real_time creation_time,
                             rgw_bucket *master_bucket,
-                            uint32_t *master_num_shards,
+                            RGWBucketIndexer::Ref&& indexer,
                             bool exclusive = true);
   int add_bucket_placement(const rgw_pool& new_pool);
   int remove_bucket_placement(const rgw_pool& new_pool);
@@ -2956,14 +2962,15 @@ public:
     int shard_id;
 
   public:
-    Bucket(RGWRados *_store, const RGWBucketInfo& _bucket_info) : store(_store), bucket_info(_bucket_info), bucket(bucket_info.bucket),
-                                                            shard_id(RGW_NO_SHARD) {}
+    Bucket(RGWRados *_store, const RGWBucketInfo& _bucket_info) :
+      store(_store), bucket_info(_bucket_info), bucket(bucket_info.bucket),
+      shard_id(RGW_NO_SHARD)
+    {}
     RGWRados *get_store() { return store; }
     rgw_bucket& get_bucket() { return bucket; }
     RGWBucketInfo& get_bucket_info() { return bucket_info; }
 
     int update_bucket_id(const string& new_bucket_id);
-
     int get_shard_id() { return shard_id; }
     void set_shard_id(int id) {
       shard_id = id;
@@ -2996,10 +3003,11 @@ public:
       int guard_reshard(BucketShard **pbs, std::function<int(BucketShard *)> call);
     public:
 
-      UpdateIndex(RGWRados::Bucket *_target, const rgw_obj& _obj) : target(_target), obj(_obj),
-                                                              bs(target->get_store()) {
-                                                                blind = (target->get_bucket_info().index_type == RGWBIType_Indexless);
-                                                              }
+      UpdateIndex(RGWRados::Bucket *_target, const rgw_obj& _obj) :
+	  target(_target), obj(_obj),
+	  bs(target->get_store()) {
+	blind = ! target->get_bucket_info().has_index();
+      }
 
       int get_bucket_shard(BucketShard **pbs) {
         if (!bs_initialized) {
@@ -3783,6 +3791,7 @@ public:
   int list_mfa(const string& oid, list<rados::cls::otp::otp_info_t> *result,
                RGWObjVersionTracker *objv_tracker, ceph::real_time *pmtime);
  private:
+#ifdef STRATS
   /**
    * This is a helper method, it generates a list of bucket index objects with the given
    * bucket base oid and number of shards.
@@ -3811,6 +3820,7 @@ public:
 
   void get_bucket_index_object(const string& bucket_oid_base, uint32_t num_shards,
                                int shard_id, string *bucket_obj);
+#endif
 
   /**
    * Check the actual on-disk state of the object specified

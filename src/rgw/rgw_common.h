@@ -1,4 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 /*
  * Ceph - scalable distributed file system
@@ -8,21 +8,23 @@
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License version 2.1, as published by the Free Software 
+ * License version 2.1, as published by the Free Software
  * Foundation.  See file COPYING.
- * 
+ *
  */
 
 #ifndef CEPH_RGW_COMMON_H
 #define CEPH_RGW_COMMON_H
 
 #include <array>
+#include <memory>
 
 #include <boost/utility/string_view.hpp>
 
 #include "common/ceph_crypto.h"
 #include "common/perf_counters.h"
 #include "rgw_acl.h"
+#include "rgw_bucket_index.h"
 #include "rgw_cors.h"
 #include "rgw_iam_policy.h"
 #include "rgw_quota.h"
@@ -1197,28 +1199,7 @@ enum RGWBucketFlags {
   BUCKET_MFA_ENABLED = 0X10,
 };
 
-enum RGWBucketIndexType {
-  RGWBIType_Normal = 0,
-  RGWBIType_Indexless = 1,
-};
-
-inline ostream& operator<<(ostream& out, const RGWBucketIndexType &index_type) 
-{
-  switch (index_type) {
-    case RGWBIType_Normal:
-      return out << "Normal";
-    case RGWBIType_Indexless:
-      return out << "Indexless";
-    default:
-      return out << "Unknown";
-  }
-}
-
 struct RGWBucketInfo {
-  enum BIShardsHashType {
-    MOD = 0
-  };
-
   rgw_bucket bucket;
   rgw_user owner;
   uint32_t flags;
@@ -1230,6 +1211,7 @@ struct RGWBucketInfo {
   obj_version ep_objv; /* entry point object version, for runtime tracking only */
   RGWQuotaInfo quota;
 
+#if 0
   // Represents the number of bucket index object shards:
   //   - value of 0 indicates there is no sharding (this is by default before this
   //     feature is implemented).
@@ -1242,12 +1224,15 @@ struct RGWBucketInfo {
   // Represents the shard number for blind bucket.
   const static uint32_t NUM_SHARDS_BLIND_BUCKET;
 
+  RGWBucketIndexType index_type = RGWBIType_Normal;
+#else
+  RGWBucketIndexer::Ref bucket_indexer;
+#endif
+
   bool requester_pays;
 
   bool has_website;
   RGWBucketWebsiteConf website_conf;
-
-  RGWBucketIndexType index_type = RGWBIType_Normal;
 
   bool swift_versioning;
   string swift_ver_location;
@@ -1259,7 +1244,7 @@ struct RGWBucketInfo {
   string new_bucket_instance_id;
 
   void encode(bufferlist& bl) const {
-     ENCODE_START(19, 4, bl);
+     ENCODE_START(20, 4, bl);
      encode(bucket, bl);
      encode(owner.id, bl);
      encode(flags, bl);
@@ -1269,15 +1254,19 @@ struct RGWBucketInfo {
      encode(placement_rule, bl);
      encode(has_instance_obj, bl);
      encode(quota, bl);
-     encode(num_shards, bl);
-     encode(bucket_index_shard_hash_type, bl);
      encode(requester_pays, bl);
      encode(owner.tenant, bl);
      encode(has_website, bl);
      if (has_website) {
        encode(website_conf, bl);
      }
+#if 0
+     encode(num_shards, bl);
+     encode(bucket_index_shard_hash_type, bl);
      encode((uint32_t)index_type, bl);
+#else
+     encode(*bucket_indexer, bl);
+#endif
      encode(swift_versioning, bl);
      if (swift_versioning) {
        encode(swift_ver_location, bl);
@@ -1289,6 +1278,10 @@ struct RGWBucketInfo {
      ENCODE_FINISH(bl);
   }
   void decode(bufferlist::const_iterator& bl) {
+    uint32_t temp_num_shards = 0;
+    uint8_t temp_bucket_index_shard_hash_type;
+    RGWBucketIndexType temp_index_type;
+
     DECODE_START_LEGACY_COMPAT_LEN_32(19, 4, 4, bl);
      decode(bucket, bl);
      if (struct_v >= 2) {
@@ -1312,10 +1305,10 @@ struct RGWBucketInfo {
        decode(has_instance_obj, bl);
      if (struct_v >= 9)
        decode(quota, bl);
-     if (struct_v >= 10)
-       decode(num_shards, bl);
-     if (struct_v >= 11)
-       decode(bucket_index_shard_hash_type, bl);
+     if (struct_v >= 10 && struct_v < 20)
+       decode(temp_num_shards, bl);
+     if (struct_v >= 11 && struct_v < 20)
+       decode(temp_bucket_index_shard_hash_type, bl);
      if (struct_v >= 12)
        decode(requester_pays, bl);
      if (struct_v >= 13)
@@ -1328,12 +1321,16 @@ struct RGWBucketInfo {
          website_conf = RGWBucketWebsiteConf();
        }
      }
-     if (struct_v >= 15) {
-       uint32_t it;
-       decode(it, bl);
-       index_type = (RGWBucketIndexType)it;
+     if (struct_v < 20) {
+       if (struct_v >= 15) {
+	 uint32_t it;
+	 decode(it, bl);
+	 temp_index_type = (RGWBucketIndexType)it;
+       } else if (struct_v < 15) {
+	 temp_index_type = RGWBIType_Normal;
+       }
      } else {
-       index_type = RGWBIType_Normal;
+       decode(bucket_indexer, bl);
      }
      swift_versioning = false;
      swift_ver_location.clear();
@@ -1371,8 +1368,50 @@ struct RGWBucketInfo {
     return swift_versioning && !versioned();
   }
 
-  RGWBucketInfo() : flags(0), has_instance_obj(false), num_shards(0), bucket_index_shard_hash_type(MOD), requester_pays(false),
-                    has_website(false), swift_versioning(false), reshard_status(0) {}
+  RGWBucketInfo() : flags(0), has_instance_obj(false), requester_pays(false),
+                    has_website(false), swift_versioning(false),
+		    reshard_status(0)
+  {
+    bucket_indexer = std::make_unique<RGWBucketDefaultIndexer>(0);
+  }
+
+#if 0
+// NOTE: this is not needed until we switch RGWBucketIndexer from
+// std::shared_ptr back to std::unique_ptr.
+  RGWBucketInfo(const RGWBucketInfo&);
+#endif
+
+  int open_bucket_index_shard(librados::IoCtx& index_ctx,
+			      const string& obj_key,
+			      string *bucket_obj,
+			      int *shard_id) {
+#warning unimplemented
+    return 0;
+  }
+
+  const RGWBucketIndexer& get_bucket_indexer() const {
+    return *bucket_indexer;
+  }
+
+  /*
+   * some convenience methods that transfer to the bucket indexer
+   */
+
+  bool is_sharded() const {
+    return bucket_indexer->is_sharded();
+  }
+
+  int get_num_shards() const {
+    return bucket_indexer->get_num_shards();
+  }
+
+  RGWBucketIndexType get_index_type() const {
+    return bucket_indexer->get_index_type();
+  }
+
+  bool has_index() const {
+    return bucket_indexer->has_index();
+  }
 };
 WRITE_CLASS_ENCODER(RGWBucketInfo)
 

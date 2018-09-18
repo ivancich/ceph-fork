@@ -14,6 +14,7 @@
 #ifndef CEPH_ENCODING_H
 #define CEPH_ENCODING_H
 
+#include <memory>
 #include <set>
 #include <map>
 #include <deque>
@@ -175,6 +176,21 @@ WRITE_INTTYPE_ENCODER(int16_t, le16)
   inline void encode(const cl &c, ::ceph::bufferlist &bl, uint64_t features = 0) { \
     ENCODE_DUMP_PRE(); c.encode(bl, features); ENCODE_DUMP_POST(cl); }	\
   inline void decode(cl &c, ::ceph::bufferlist::const_iterator &p) { c.decode(p); }
+
+#define WRITE_CLASS_ENCODER_UNIQPTR(cl)	\
+  inline void encode(const cl &c, ::ceph::bufferlist &bl, uint64_t features=0) { \
+    ENCODE_DUMP_PRE(); c.encode(bl); ENCODE_DUMP_POST(cl); } \
+  inline void encode(const std::unique_ptr<cl> &c, ::ceph::bufferlist &bl, uint64_t features=0) { \
+    ENCODE_DUMP_PRE(); c->encode(bl); ENCODE_DUMP_POST(cl); } \
+  inline void decode(std::unique_ptr<cl> &c, ::ceph::bufferlist::const_iterator &p) { auto r = cl::decode(p); std::swap(r, c); }
+
+#warning "Keep this?"
+#define WRITE_CLASS_ENCODER_SHAREDPTR(cl)	\
+  inline void encode(const cl &c, ::ceph::bufferlist &bl, uint64_t features=0) { \
+    ENCODE_DUMP_PRE(); c.encode(bl); ENCODE_DUMP_POST(cl); } \
+  inline void encode(const std::shared_ptr<cl> &c, ::ceph::bufferlist &bl, uint64_t features=0) { \
+    ENCODE_DUMP_PRE(); c->encode(bl); ENCODE_DUMP_POST(cl); } \
+  inline void decode(std::shared_ptr<cl> &c, ::ceph::bufferlist::const_iterator &p) { c = cl::decode(p); }
 
 
 // string

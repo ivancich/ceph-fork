@@ -43,8 +43,6 @@ using rgw::IAM::Policy;
 
 PerfCounters *perfcounter = NULL;
 
-const uint32_t RGWBucketInfo::NUM_SHARDS_BLIND_BUCKET(UINT32_MAX);
-
 rgw_http_errors rgw_http_s3_errors({
     { 0, {200, "" }},
     { STATUS_CREATED, {201, "Created" }},
@@ -1968,3 +1966,30 @@ string camelcase_dash_http_attr(const string& orig)
   }
   return string(buf);
 }
+
+
+#if 0
+// NOTE: this is not needed until we switch RGWBucketIndexer from
+// std::shared_ptr back to std::unique_ptr.
+RGWBucketInfo::RGWBucketInfo(const RGWBucketInfo& other) :
+  bucket(other.bucket),
+  owner(other.owner),
+  flags(other.flags),
+  zonegroup(other.zonegroup),
+  creation_time(other.creation_time),
+  placement_rule(other.placememt_rule),
+  has_instance_obj(other.has_instance_obj),
+  objv_tracker(other.objv_tracker),
+  ep_objv(other.ep_objv),
+  quota(other.quota),
+  bucket_indexer(std::make_unique<Ref>(other.bucket_indexer->clone())),
+  requester_pays(other.requester_pays),
+  has_website(other.has_website),
+  website_conf(other.website_conf),
+  swift_versioning(other.swift_versioning),
+  swift_ver_location(other.swift_ver_location),
+  mdsearch_config(other.mdsearch_config),
+  reshard_status(other.reshard_status),
+  new_bucket_instance_id(other.new_bucket_instance_id)
+{ }
+#endif

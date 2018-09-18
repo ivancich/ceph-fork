@@ -839,7 +839,7 @@ public:
           call(new RGWReadRESTResourceCR<bucket_instance_meta_info>(store->ctx(), sync_env->conn, sync_env->http_manager, path, pairs, &meta_info));
         }
 
-        num_shards = meta_info.data.get_bucket_info().num_shards;
+        num_shards = meta_info.data.get_bucket_info().get_num_shards();
         if (num_shards > 0) {
           for (i = 0; i < num_shards; i++) {
             char buf[16];
@@ -3260,7 +3260,7 @@ int RGWBucketSyncStatusManager::init()
   }
 
   RGWBucketInfo& bi = result.data.get_bucket_info();
-  num_shards = bi.num_shards;
+  num_shards = bi.get_num_shards();
 
   error_logger = new RGWSyncErrorLogger(store, RGW_SYNC_ERROR_LOG_SHARD_PREFIX, ERROR_LOGGER_SHARDS);
 
@@ -3390,7 +3390,7 @@ int rgw_bucket_sync_status(RGWRados *store, const std::string& source_zone,
                            const RGWBucketInfo& bucket_info,
                            std::vector<rgw_bucket_shard_sync_info> *status)
 {
-  const auto num_shards = bucket_info.num_shards;
+  const auto num_shards = bucket_info.get_num_shards();
   status->clear();
   status->resize(std::max<size_t>(1, num_shards));
 

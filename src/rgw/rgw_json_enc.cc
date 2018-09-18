@@ -755,8 +755,11 @@ void RGWBucketInfo::dump(Formatter *f) const
   encode_json("placement_rule", placement_rule, f);
   encode_json("has_instance_obj", has_instance_obj, f);
   encode_json("quota", quota, f);
-  encode_json("num_shards", num_shards, f);
+#warning change encoding/decoding in encode/decode_json
+#if 0
+  encode_json("num_shards", get_num_shards(), f);
   encode_json("bi_shard_hash_type", (uint32_t)bucket_index_shard_hash_type, f);
+#endif
   encode_json("requester_pays", requester_pays, f);
   encode_json("has_website", has_website, f);
   if (has_website) {
@@ -764,7 +767,9 @@ void RGWBucketInfo::dump(Formatter *f) const
   }
   encode_json("swift_versioning", swift_versioning, f);
   encode_json("swift_ver_location", swift_ver_location, f);
+#if 0
   encode_json("index_type", (uint32_t)index_type, f);
+#endif
   encode_json("mdsearch_config", mdsearch_config, f);
   encode_json("reshard_status", (int)reshard_status, f);
   encode_json("new_bucket_instance_id", new_bucket_instance_id, f);
@@ -785,10 +790,12 @@ void RGWBucketInfo::decode_json(JSONObj *obj) {
   JSONDecoder::decode_json("placement_rule", placement_rule, obj);
   JSONDecoder::decode_json("has_instance_obj", has_instance_obj, obj);
   JSONDecoder::decode_json("quota", quota, obj);
+#if 0
   JSONDecoder::decode_json("num_shards", num_shards, obj);
   uint32_t hash_type;
   JSONDecoder::decode_json("bi_shard_hash_type", hash_type, obj);
   bucket_index_shard_hash_type = (uint8_t)hash_type;
+#endif
   JSONDecoder::decode_json("requester_pays", requester_pays, obj);
   JSONDecoder::decode_json("has_website", has_website, obj);
   if (has_website) {
@@ -796,9 +803,11 @@ void RGWBucketInfo::decode_json(JSONObj *obj) {
   }
   JSONDecoder::decode_json("swift_versioning", swift_versioning, obj);
   JSONDecoder::decode_json("swift_ver_location", swift_ver_location, obj);
+#if 0
   uint32_t it;
   JSONDecoder::decode_json("index_type", it, obj);
   index_type = (RGWBucketIndexType)it;
+#endif
   JSONDecoder::decode_json("mdsearch_config", mdsearch_config, obj);
   int rs;
   JSONDecoder::decode_json("reshard_status", rs, obj);

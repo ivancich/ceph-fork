@@ -65,9 +65,10 @@ class BucketReshardShard {
 public:
   BucketReshardShard(RGWRados *_store, const RGWBucketInfo& _bucket_info,
                      int _num_shard,
-                     deque<librados::AioCompletion *>& _completions) : store(_store), bucket_info(_bucket_info), bs(store),
-                                                                       aio_completions(_completions) {
-    num_shard = (bucket_info.num_shards > 0 ? _num_shard : -1);
+                     deque<librados::AioCompletion *>& _completions) :
+      store(_store), bucket_info(_bucket_info), bs(store),
+      aio_completions(_completions) {
+    num_shard = bucket_info.get_num_shards() || -1;
     bs.init(bucket_info.bucket, num_shard);
   }
 
@@ -265,13 +266,15 @@ static int create_new_bucket_instance(RGWRados *store,
   store->create_bucket_id(&new_bucket_info.bucket.bucket_id);
   new_bucket_info.bucket.oid.clear();
 
-  new_bucket_info.num_shards = new_num_shards;
+  new_bucket_info.bucket_indexer =
+    std::make_unique<RGWBucketDefaultIndexer>(new_num_shards);
   new_bucket_info.objv_tracker.clear();
 
   new_bucket_info.new_bucket_instance_id.clear();
   new_bucket_info.reshard_status = 0;
 
-  int ret = store->init_bucket_index(new_bucket_info, new_bucket_info.num_shards);
+  int ret = store->init_bucket_index(new_bucket_info,
+				     new_bucket_info.get_num_shards());
   if (ret < 0) {
     cerr << "ERROR: failed to init new bucket indexes: " << cpp_strerror(-ret) << std::endl;
     return -ret;
@@ -393,7 +396,7 @@ int RGWBucketReshard::do_reshard(
     return ret;
   }
 
-  int num_target_shards = (new_bucket_info.num_shards > 0 ? new_bucket_info.num_shards : 1);
+  int num_target_shards = new_bucket_info.get_num_shards() || 1;
 
   BucketReshardManager target_shards_mgr(store, new_bucket_info, num_target_shards);
 
@@ -409,7 +412,7 @@ int RGWBucketReshard::do_reshard(
     cout << "total entries:";
   }
 
-  int num_source_shards = (bucket_info.num_shards > 0 ? bucket_info.num_shards : 1);
+  int num_source_shards = bucket_info.get_num_shards() || 1;
   string marker;
   for (int i = 0; i < num_source_shards; ++i) {
     bool is_truncated = true;

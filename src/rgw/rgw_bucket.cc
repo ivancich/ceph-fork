@@ -18,6 +18,7 @@
 
 #include "include/types.h"
 #include "rgw_bucket.h"
+#include "rgw_bucket_index.h"
 #include "rgw_user.h"
 #include "rgw_string.h"
 #include "rgw_multi.h"
@@ -526,7 +527,8 @@ int rgw_remove_bucket(RGWRados *store, rgw_bucket& bucket, bool delete_children)
   if (ret < 0)
     return ret;
 
-  ret = store->get_bucket_stats(info, RGW_NO_SHARD, &bucket_ver, &master_ver, stats, NULL);
+  ret = store->get_bucket_stats(info, RGW_NO_SHARD,
+				&bucket_ver, &master_ver, stats, NULL);
   if (ret < 0)
     return ret;
 
@@ -626,7 +628,8 @@ int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket,
   if (ret < 0)
     return ret;
 
-  ret = store->get_bucket_stats(info, RGW_NO_SHARD, &bucket_ver, &master_ver, stats, NULL);
+  ret = store->get_bucket_stats(info, RGW_NO_SHARD,
+				&bucket_ver, &master_ver, stats, NULL);
   if (ret < 0)
     return ret;
 
@@ -1145,7 +1148,8 @@ int RGWBucket::check_object_index(RGWBucketAdminOpState& op_state,
   while (is_truncated) {
     map<string, rgw_bucket_dir_entry> result;
 
-    int r = store->cls_bucket_list_ordered(bucket_info, RGW_NO_SHARD,
+    int r = store->cls_bucket_list_ordered(bucket_info,
+					   RGW_NO_SHARD,
 					   marker, prefix, 1000, true,
 					   result, &is_truncated, &marker,
 					   bucket_object_check_filter);
@@ -1410,7 +1414,9 @@ static int bucket_stats(RGWRados *store, const std::string& tenant_name, std::st
 
   string bucket_ver, master_ver;
   string max_marker;
-  int ret = store->get_bucket_stats(bucket_info, RGW_NO_SHARD, &bucket_ver, &master_ver, stats, &max_marker);
+  int ret = store->get_bucket_stats(bucket_info, RGW_NO_SHARD,
+				    &bucket_ver, &master_ver, stats,
+				    &max_marker);
   if (ret < 0) {
     cerr << "error getting bucket stats ret=" << ret << std::endl;
     return ret;
@@ -1425,7 +1431,7 @@ static int bucket_stats(RGWRados *store, const std::string& tenant_name, std::st
   ::encode_json("explicit_placement", bucket.explicit_placement, formatter);
   formatter->dump_string("id", bucket.bucket_id);
   formatter->dump_string("marker", bucket.marker);
-  formatter->dump_stream("index_type") << bucket_info.index_type;
+  formatter->dump_stream("index_type") << bucket_info.get_index_type();
   ::encode_json("owner", bucket_info.owner, formatter);
   formatter->dump_string("ver", bucket_ver);
   formatter->dump_string("master_ver", master_ver);
@@ -1500,9 +1506,9 @@ int RGWBucketAdminOp::limit_check(RGWRados *store,
 	/* need stats for num_entries */
 	string bucket_ver, master_ver;
 	std::map<RGWObjCategory, RGWStorageStats> stats;
-	ret = store->get_bucket_stats(info, RGW_NO_SHARD, &bucket_ver,
-				      &master_ver, stats, nullptr);
-
+	ret = store->get_bucket_stats(info, RGW_NO_SHARD,
+				      &bucket_ver, &master_ver, stats,
+				      nullptr);
 	if (ret < 0)
 	  continue;
 
@@ -1510,7 +1516,7 @@ int RGWBucketAdminOp::limit_check(RGWRados *store,
 	    num_objects += s.second.num_objects;
 	}
 
-	num_shards = info.num_shards;
+	num_shards = info.get_num_shards();
 	uint64_t objs_per_shard =
 	  (num_shards) ? num_objects/num_shards : num_objects;
 	{
@@ -2303,16 +2309,20 @@ public:
         ldout(store->ctx(), 0) << "ERROR: select_bucket_placement() returned " << ret << dendl;
         return ret;
       }
-      bci.info.index_type = rule_info.index_type;
+#warning fix next line
+#if 0
+      bci.info.index_type = rule_info.get_index_type();
+#endif
     } else {
       /* existing bucket, keep its placement */
       bci.info.bucket.explicit_placement = old_bci.info.bucket.explicit_placement;
       bci.info.placement_rule = old_bci.info.placement_rule;
     }
 
-    if (exists && old_bci.info.datasync_flag_enabled() != bci.info.datasync_flag_enabled()) {
-      int shards_num = bci.info.num_shards? bci.info.num_shards : 1;
-      int shard_id = bci.info.num_shards? 0 : -1;
+    if (exists &&
+	old_bci.info.datasync_flag_enabled() != bci.info.datasync_flag_enabled()) {
+      int shards_num = bci.info.get_num_shards() || 1;
+      int shard_id = bci.info.get_num_shards() ? 0 : -1;
 
       if (!bci.info.datasync_flag_enabled()) {
       ret = store->stop_bi_log_entries(bci.info, -1);
@@ -2355,7 +2365,7 @@ public:
 
     objv_tracker = bci.info.objv_tracker;
 
-    ret = store->init_bucket_index(bci.info, bci.info.num_shards);
+    ret = store->init_bucket_index(bci.info, bci.info.get_num_shards());
     if (ret < 0)
       return ret;
 
