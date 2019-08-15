@@ -973,14 +973,23 @@ void RGWMetadataManager::get_sections(list<string>& sections)
   }
 }
 
-int RGWMetadataManager::pre_modify(RGWMetadataHandler *handler, string& section, const string& key,
-                                   RGWMetadataLogData& log_data, RGWObjVersionTracker *objv_tracker,
-                                   RGWMDLogStatus op_type)
+int RGWMetadataManager::pre_modify(RGWMetadataHandler *handler,
+				   string& section,
+				   const string& key,
+				   RGWMetadataLogData& log_data,
+				   RGWObjVersionTracker *objv_tracker,
+				   RGWMDLogStatus op_type)
 {
+  // NB: this log output is temporary until a rare segmentation fault
+  // is tracked down
+  ldout(store->ctx(), 0) << "INFO: RGWMetadataManager::" << __func__ <<
+    " pointer values -- handler=" << (void*) handler << " objv_tracker=" <<
+    (void*) objv_tracker << " current_log=" << (void*) current_log << dendl;
+
   section = handler->get_type();
 
-  /* if write version has not been set, and there's a read version, set it so that we can
-   * log it
+  /* if write version has not been set, and there's a read version,
+   * set it so that we can log it
    */
   if (objv_tracker) {
     if (objv_tracker->read_version.ver && !objv_tracker->write_version.ver) {
