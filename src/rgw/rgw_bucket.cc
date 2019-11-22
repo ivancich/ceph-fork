@@ -853,14 +853,31 @@ static void dump_bucket_index(const RGWRados::ent_map_t& result,  Formatter *f)
   }
 }
 
-static void dump_bucket_usage(map<RGWObjCategory, RGWStorageStats>& stats, Formatter *formatter)
+static const char* rgw_obj_category_name(RGWObjCategory category)
+{
+  switch (category) {
+  case RGWObjCategory::None:
+    return "rgw.none";
+  case RGWObjCategory::Main:
+    return "rgw.main";
+  case RGWObjCategory::Shadow:
+    return "rgw.shadow";
+  case RGWObjCategory::MultiMeta:
+    return "rgw.multimeta";
+  default:
+    return "unknown";
+  }
+}
+
+static void dump_bucket_usage(std::map<RGWObjCategory, RGWStorageStats>& stats,
+			      Formatter *formatter)
 {
   map<RGWObjCategory, RGWStorageStats>::iterator iter;
 
   formatter->open_object_section("usage");
-  for (iter = stats.begin(); iter != stats.end(); ++iter) {
-    RGWStorageStats& s = iter->second;
-    const char *cat_name = rgw_obj_category_name(iter->first);
+  for (const auto& stat : stats) {
+    const RGWStorageStats& s = stat.second;
+    const char *cat_name = rgw_obj_category_name(stat.first);
     formatter->open_object_section(cat_name);
     s.dump(formatter);
     formatter->close_section();
@@ -868,9 +885,10 @@ static void dump_bucket_usage(map<RGWObjCategory, RGWStorageStats>& stats, Forma
   formatter->close_section();
 }
 
-static void dump_index_check(map<RGWObjCategory, RGWStorageStats> existing_stats,
-        map<RGWObjCategory, RGWStorageStats> calculated_stats,
-        Formatter *formatter)
+static void dump_index_check(
+  std::map<RGWObjCategory, RGWStorageStats> existing_stats,
+  std::map<RGWObjCategory, RGWStorageStats> calculated_stats,
+  Formatter *formatter)
 {
   formatter->open_object_section("check_result");
   formatter->open_object_section("existing_header");
@@ -1037,14 +1055,17 @@ int RGWBucket::check_object_index(RGWBucketAdminOpState& op_state,
 }
 
 
-int RGWBucket::check_index(RGWBucketAdminOpState& op_state,
-        map<RGWObjCategory, RGWStorageStats>& existing_stats,
-        map<RGWObjCategory, RGWStorageStats>& calculated_stats,
-        std::string *err_msg)
+int RGWBucket::check_index(
+  RGWBucketAdminOpState& op_state,
+  std::map<RGWObjCategory, RGWStorageStats>& existing_stats,
+  std::map<RGWObjCategory, RGWStorageStats>& calculated_stats,
+  std::string *err_msg)
 {
   bool fix_index = op_state.will_fix_index();
 
-  int r = store->getRados()->bucket_check_index(bucket_info, &existing_stats, &calculated_stats);
+  int r = store->getRados()->bucket_check_index(bucket_info,
+						&existing_stats,
+						&calculated_stats);
   if (r < 0) {
     set_err_msg(err_msg, "failed to check index error=" + cpp_strerror(-r));
     return r;
