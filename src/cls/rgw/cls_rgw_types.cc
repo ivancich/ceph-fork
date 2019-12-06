@@ -254,30 +254,32 @@ bool rgw_cls_bi_entry::get_info(cls_rgw_obj_key *key,
   auto iter = data.cbegin();
   using ceph::decode;
   switch (type) {
-    case BIIndexType::Plain:
-        account = true;
-        // NO BREAK; falls through to case InstanceIdx:
-    case BIIndexType::Instance:
-      {
-        rgw_bucket_dir_entry entry;
-        decode(entry, iter);
-        *key = entry.key;
-        *category = entry.meta.category;
-        accounted_stats->num_entries++;
-        accounted_stats->total_size += entry.meta.accounted_size;
-        accounted_stats->total_size_rounded += cls_rgw_get_rounded_size(entry.meta.accounted_size);
-        accounted_stats->actual_size += entry.meta.size;
-      }
-      break;
-    case BIIndexType::OLH:
-      {
-        rgw_bucket_olh_entry entry;
-        decode(entry, iter);
-        *key = entry.key;
-      }
-      break;
-    default:
-      break;
+  case BIIndexType::Plain:
+    account = entry.meta.category != RGWObjCategory::None;
+    // NO BREAK; falls through to case InstanceIdx:
+  case BIIndexType::Instance:
+  {
+    rgw_bucket_dir_entry entry;
+    decode(entry, iter);
+    *key = entry.key;
+    *category = entry.meta.category;
+	
+    accounted_stats->num_entries++;
+    accounted_stats->total_size += entry.meta.accounted_size;
+    accounted_stats->total_size_rounded +=
+      cls_rgw_get_rounded_size(entry.meta.accounted_size);
+    accounted_stats->actual_size += entry.meta.size;
+  }
+  break;
+  case BIIndexType::OLH:
+  {
+    rgw_bucket_olh_entry entry;
+    decode(entry, iter);
+    *key = entry.key;
+  }
+  break;
+  default:
+    break;
   }
 
   return account;
