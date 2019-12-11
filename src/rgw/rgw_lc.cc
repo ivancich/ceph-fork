@@ -461,8 +461,8 @@ int RGWLC::bucket_lc_process(string& shard_id)
               auto iter = tags_bl.begin();
               dest_obj_tags.decode(iter);
             } catch (buffer::error& err) {
-               ldout(cct,0) << "ERROR: caught buffer::error, couldn't decode TagSet" << dendl;
-              return -EIO;
+	      ldout(cct,5) << "ERROR: caught buffer::error, couldn't decode TagSet for key=" << key << dendl;
+	       continue;
             }
 
 	    if (! has_all_tags(prefix_iter->second, dest_obj_tags)) {
@@ -483,7 +483,8 @@ int RGWLC::bucket_lc_process(string& shard_id)
           if (is_expired) {
             int ret = store->get_obj_state(&rctx, bucket_info, obj, &state, false);
             if (ret < 0) {
-              return ret;
+	      ldout(cct,5) << "ERROR: get_obj_state() failed for key=" << key << dendl;
+	      continue;
             }
             if (state->mtime != obj_iter->meta.mtime) {
               //Check mtime again to avoid delete a recently update object as much as possible
@@ -589,8 +590,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
 		  auto iter = tags_bl.begin();
 		  dest_obj_tags.decode(iter);
 		} catch (buffer::error& err) {
-		  ldout(cct,0) << "ERROR: caught buffer::error, couldn't decode TagSet" << dendl;
-		  return -EIO;
+		  ldout(cct,5) << "ERROR: caught buffer::error, couldn't decode TagSet for key=" << key << dendl;
 		}
 
 		if (! has_all_tags(prefix_iter->second, dest_obj_tags)) {
@@ -621,7 +621,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
               RGWObjState *state;
               int ret = store->get_obj_state(&rctx, bucket_info, obj, &state, false);
               if (ret < 0) {
-                return ret;
+		ldout(cct,5) << "ERROR: get_obj_state() failed for key=" << obj_iter->key << dendl;
               }
             }
             ret = remove_expired_obj(bucket_info, obj_iter->key, obj_iter->meta.owner, obj_iter->meta.owner_display_name, remove_indeed);
