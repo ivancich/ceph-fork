@@ -5696,9 +5696,6 @@ int RGWRados::Bucket::List::list_objects_ordered(
 
   result->clear();
 
-  constexpr int allowed_restarts = 2;
-  int restarts = 0;
-restart:
   rgw_obj_key marker_obj(params.marker.name, params.marker.instance, params.ns);
   rgw_obj_index_key cur_marker;
   marker_obj.get_index_key(&cur_marker);
@@ -5756,17 +5753,8 @@ restart:
     for (auto eiter = ent_map.begin(); eiter != ent_map.end(); ++eiter) {
       rgw_bucket_dir_entry& entry = eiter->second;
       rgw_obj_index_key index_key = entry.key;
+
       rgw_obj_key obj(index_key);
-
-      if (cur_end_marker_valid && cur_end_marker <= index_key) {
-        truncated = false;
-        goto done;
-      }
-
-      if (count < max) {
-        params.marker = index_key;
-        next_marker = index_key;
-      }
 
       /* note that parse_raw_oid() here will not set the correct
        * object's instance, as rgw_obj_index_key encodes that
@@ -5776,17 +5764,16 @@ restart:
        */
       bool valid = rgw_obj_key::parse_raw_oid(index_key.name, &obj);
       if (!valid) {
-        ldout(cct, 0) << "ERROR: could not parse object name: "
-		      << obj.name << dendl;
+        ldout(cct, 0) << "ERROR: could not parse object name: " << obj.name << dendl;
         continue;
       }
 
-      bool matched_ns = (obj.ns == params.ns);
+      bool check_ns = (obj.ns == params.ns);
       if (!params.list_versions && !entry.is_visible()) {
         continue;
       }
 
-      if (params.enforce_ns && !matched_ns) {
+      if (params.enforce_ns && !check_ns) {
         if (!params.ns.empty()) {
           /* we've iterated past the namespace we're searching -- done now */
           truncated = false;
@@ -5795,6 +5782,16 @@ restart:
 
         /* we're not looking at the namespace this object is in, next! */
         continue;
+      }
+
+      if (cur_end_marker_valid && cur_end_marker <= index_key) {
+        truncated = false;
+        goto done;
+      }
+
+      if (count < max) {
+        params.marker = index_key;
+        next_marker = index_key;
       }
 
       if (params.filter && !params.filter->filter(obj.name, index_key.name))
@@ -5856,13 +5853,6 @@ restart:
       " INFO ordered bucket listing requires read #" << (2 + attempt) <<
       dendl;
   } // read attempt loop
-
-  /* reject empty results */
-  if ((result->size() == 0) &&
-      (restarts < allowed_restarts)) {
-    ++restarts;
-    goto restart;
-  }
 
 done:
   if (is_truncated)
