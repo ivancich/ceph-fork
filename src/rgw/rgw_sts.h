@@ -39,7 +39,7 @@ public:
   const string& getRoleARN() const { return roleArn; }
   const string& getRoleSessionName() const { return roleSessionName; }
   const string& getPolicy() const {return iamPolicy; }
-  static const uint64_t& getMaxPolicySize() { return MAX_POLICY_SIZE; }
+  static uint64_t getMaxPolicySize() { return MAX_POLICY_SIZE; }
   void setMaxDuration(const uint64_t& maxDuration) { MAX_DURATION_IN_SECS = maxDuration; }
   uint64_t& getDuration() { return duration; }
   int validate_input() const;
@@ -57,7 +57,7 @@ public:
   GetSessionTokenRequest(string& duration, string& serialNumber, string& tokenCode);
 
   const uint64_t& getDuration() const { return duration; }
-  static const uint64_t& getMinDuration() { return MIN_DURATION_IN_SECS; }
+  static uint64_t getMinDuration() { return MIN_DURATION_IN_SECS; }
 };
 
 class AssumedRoleUser {
