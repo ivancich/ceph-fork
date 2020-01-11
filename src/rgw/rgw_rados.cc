@@ -5728,7 +5728,7 @@ int RGWRados::Bucket::List::list_objects_ordered(
   rgw_obj_index_key prev_marker;
   uint16_t attempt = 0;
   while (true) {
-    ldout(cct, 20) << "RGWRados::Bucket::List" << __func__ <<
+    ldout(cct, 20) << "RGWRados::Bucket::List::" << __func__ <<
       " beginning attempt=" << ++attempt << dendl;
 
     // this loop is generally expected only to have a single
@@ -5746,7 +5746,7 @@ int RGWRados::Bucket::List::list_objects_ordered(
 
     if (attempt > 1 && !(prev_marker < cur_marker)) {
       // we've failed to make forward progress
-      ldout(cct, 0) << "RGWRados::Bucket::List" << __func__ <<
+      ldout(cct, 0) << "RGWRados::Bucket::List::" << __func__ <<
 	": ERROR marker failed to make forward progress; attempt=" << attempt <<
 	", prev_marker=" << prev_marker <<
 	", cur_marker=" << cur_marker << dendl;
@@ -5761,10 +5761,10 @@ int RGWRados::Bucket::List::list_objects_ordered(
 					   cur_prefix,
 					   read_ahead + 1 - count,
 					   params.list_versions,
+					   attempt,
 					   ent_map,
 					   &truncated,
-					   &cur_marker,
-					   attempt);
+					   &cur_marker);
     if (r < 0)
       return r;
 
@@ -5867,7 +5867,7 @@ int RGWRados::Bucket::List::list_objects_ordered(
     } // eiter for loop
 
     ldout(cct, 20) << "RGWRados::Bucket::List::" << __func__ <<
-      " INFO end of outer loop, trucated=" << truncated <<
+      " INFO end of outer loop, truncated=" << truncated <<
       ", count=" << count << ", attempt=" << attempt << dendl;
 
     // if we finished listing, or if we're returning at least half the
@@ -13550,15 +13550,15 @@ uint32_t RGWRados::calc_ordered_bucket_list_per_shard(uint32_t num_entries,
 
 
 int RGWRados::cls_bucket_list_ordered(RGWBucketInfo& bucket_info,
-				      int shard_id,
+				      const int shard_id,
 				      const rgw_obj_index_key& start,
 				      const string& prefix,
-				      uint32_t num_entries,
-				      bool list_versions,
+				      const uint32_t num_entries,
+				      const bool list_versions,
+				      const uint16_t attempt,
 				      map<string, rgw_bucket_dir_entry>& m,
 				      bool *is_truncated,
 				      rgw_obj_index_key *last_entry,
-				      uint16_t attempt,
 				      bool (*force_check_filter)(const string& name))
 {
   ldout(cct, 10) << "RGWRados::" << __func__ << ": " << bucket_info.bucket <<
@@ -13579,12 +13579,19 @@ int RGWRados::cls_bucket_list_ordered(RGWBucketInfo& bucket_info,
   }
 
   const uint32_t shard_count = oids.size();
-  const uint32_t num_entries_per_shard =
-    attempt > 0 ?
-    std::min(num_entries,
-	     (attempt *
-	      calc_ordered_bucket_list_per_shard(num_entries, shard_count))) :
-    calc_ordered_bucket_list_per_shard(num_entries, shard_count);
+  uint32_t num_entries_per_shard;
+  if (attempt == 0) {
+    num_entries_per_shard =
+      calc_ordered_bucket_list_per_shard(num_entries, shard_count);
+  } else if (attempt <= 11) {
+    // we'll max out the exponential multiplication factor at 1024 (2<<10)
+    num_entries_per_shard =
+      std::min(num_entries,
+	       (uint32_t(1 << (attempt - 1)) *
+		calc_ordered_bucket_list_per_shard(num_entries, shard_count)));
+  } else {
+    num_entries_per_shard = num_entries;
+  }
 
   ldout(cct, 10) << "RGWRados::" << __func__ <<
     " request from each of " << shard_count <<

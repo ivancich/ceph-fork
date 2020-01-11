@@ -1380,8 +1380,8 @@ int RGWBucket::check_object_index(RGWBucketAdminOpState& op_state,
 
     int r = store->cls_bucket_list_ordered(bucket_info, RGW_NO_SHARD,
 					   marker, prefix, 1000, true,
-					   result, &is_truncated, &marker,
 					   ++attempt,
+					   result, &is_truncated, &marker,
 					   bucket_object_check_filter);
     if (r == -ENOENT) {
       break;
