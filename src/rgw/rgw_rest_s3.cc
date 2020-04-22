@@ -5472,6 +5472,13 @@ AWSBrowserUploadAbstractor::get_auth_data_v4(const req_state* const s) const
                                      std::placeholders::_2,
                                      std::placeholders::_3);
 
+  dout(0) << "ERIC ==== AWSBrowserUploadAbstractor::get_auth_data_v4 ====" << dendl;
+  dout(0) << "ERIC signature = " << s->auth.s3_postobj_creds.signature << dendl;
+  dout(0) << "ERIC x_amz_security_token = " <<
+    s->auth.s3_postobj_creds.x_amz_security_token << dendl;
+  dout(0) << "ERIC encoded_policy = " <<
+    s->auth.s3_postobj_creds.encoded_policy.to_str() << dendl;
+
   return {
     access_key_id,
     s->auth.s3_postobj_creds.signature,
@@ -5668,6 +5675,8 @@ rgw::auth::s3::LocalEngine::authenticate(
     signature_factory(cct, k.key, string_to_sign);
   auto compare = signature.compare(server_signature);
 
+  ldpp_dout(dpp, 0) << "ERIC: access_key_id = " << access_key_id << dendl;
+  
   ldpp_dout(dpp, 15) << "string_to_sign="
                  << rgw::crypt_sanitize::log_content{string_to_sign}
                  << dendl;

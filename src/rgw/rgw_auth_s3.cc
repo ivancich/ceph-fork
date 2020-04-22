@@ -768,6 +768,11 @@ get_v4_signature(const boost::string_view& credential_scope,
 {
   auto signing_key = get_v4_signing_key(cct, credential_scope, secret_key);
 
+  ldout(cct, 0) << "ERIC ==== get_v4_signature ====" << dendl;
+  ldout(cct, 0) << "ERIC secret key is " << secret_key << dendl;
+  ldout(cct, 0) << "ERIC signing key is " << signing_key << dendl;
+  ldout(cct, 0) << "ERIC string to sign is " << string_to_sign << dendl;
+
   /* The server-side generated digest for comparison. */
   const auto digest = calc_hmac_sha256(signing_key, string_to_sign);
 
