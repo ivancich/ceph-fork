@@ -43,7 +43,7 @@ def download(ctx, config):
             args=[
                 'git', 'clone',
                 '-b', s3tests_branch,
-                git_remote + 's3-tests.git',
+                git_remote + 's3-tests-fork.git',
                 '{tdir}/s3-tests'.format(tdir=testdir),
                 ],
             )

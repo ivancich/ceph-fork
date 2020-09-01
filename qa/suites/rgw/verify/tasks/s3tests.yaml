@@ -2,5 +2,5 @@ tasks:
 - s3tests:
     client.0:
       force-branch: eric-s3-qa
-      git_remote: git://github.com/ivancich/s3-tests-fork.git
+      git_remote: git://github.com/ivancich/
       rgw_server: client.0
