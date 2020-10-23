@@ -55,7 +55,7 @@
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
 
-#define BUCKET_TAG_TIMEOUT 30
+static constexpr uint64_t BUCKET_TAG_TIMEOUT = 30; // seconds
 
 // default number of entries to list with each bucket listing call
 // (use marker to bridge between calls)
@@ -787,10 +787,10 @@ int RGWBucket::remove_object(RGWBucketAdminOpState& op_state, std::string *err_m
   return 0;
 }
 
-static void dump_bucket_index(const RGWRados::ent_map_t& result,  Formatter *f)
+static void dump_bucket_index(const RGWRados::ent_map_t& result, Formatter* f)
 {
-  for (auto iter = result.begin(); iter != result.end(); ++iter) {
-    f->dump_string("object", iter->first);
+  for (const auto& o : result) {
+    f->dump_string("object", o.first);
   }
 }
 
@@ -824,22 +824,29 @@ static void dump_index_check(map<RGWObjCategory, RGWStorageStats> existing_stats
 }
 
 int RGWBucket::check_bad_index_multipart(RGWBucketAdminOpState& op_state,
-               RGWFormatterFlusher& flusher ,std::string *err_msg)
+					 RGWFormatterFlusher& flusher,
+					 std::string* err_msg)
 {
-  bool fix_index = op_state.will_fix_index();
+  const bool fix_index = op_state.will_fix_index();
   rgw_bucket bucket = op_state.get_bucket();
 
-  map<string, bool> common_prefixes;
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): entering for bucket=" << bucket << ", fix_index=" <<
+    fix_index << dendl;
+
+  std::map<std::string, bool> common_prefixes;
 
   bool is_truncated;
-  map<string, bool> meta_objs;
-  map<rgw_obj_index_key, string> all_objs;
+  std::map<std::string, bool> meta_objs;
+  std::map<rgw_obj_index_key, std::string> all_objs;
 
   RGWBucketInfo bucket_info;
   auto obj_ctx = store->svc()->sysobj->init_obj_ctx();
-  int r = store->getRados()->get_bucket_instance_info(obj_ctx, bucket, bucket_info, nullptr, nullptr, null_yield);
+  int r = store->getRados()->get_bucket_instance_info(obj_ctx, bucket, bucket_info,
+						      nullptr, nullptr, null_yield);
   if (r < 0) {
-    ldout(store->ctx(), 0) << "ERROR: " << __func__ << "(): get_bucket_instance_info(bucket=" << bucket << ") returned r=" << r << dendl;
+    ldout(store->ctx(), 0) << "ERROR: " << __func__ <<
+      "(): get_bucket_instance_info(bucket=" << bucket << ") returned r=" << r << dendl;
     return r;
   }
 
@@ -850,21 +857,19 @@ int RGWBucket::check_bad_index_multipart(RGWBucketAdminOpState& op_state,
   list_op.params.ns = RGW_OBJ_NS_MULTIPART;
 
   do {
-    vector<rgw_bucket_dir_entry> result;
+    std::vector<rgw_bucket_dir_entry> result;
     int r = list_op.list_objects(listing_max_entries, &result,
 				 &common_prefixes, &is_truncated, null_yield);
     if (r < 0) {
       set_err_msg(err_msg, "failed to list objects in bucket=" + bucket.name +
               " err=" +  cpp_strerror(-r));
-
       return r;
     }
 
-    vector<rgw_bucket_dir_entry>::iterator iter;
-    for (iter = result.begin(); iter != result.end(); ++iter) {
-      rgw_obj_index_key key = iter->key;
+    for (const auto& iter : result) {
+      const rgw_obj_index_key& key = iter.key;
       rgw_obj obj(bucket, key);
-      string oid = obj.get_oid();
+      const std::string& oid = obj.get_oid();
 
       int pos = oid.find_last_of('.');
       if (pos < 0) {
@@ -884,73 +889,99 @@ int RGWBucket::check_bad_index_multipart(RGWBucketAdminOpState& op_state,
     }
   } while (is_truncated);
 
-  list<rgw_obj_index_key> objs_to_unlink;
-  Formatter *f =  flusher.get_formatter();
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): found " << meta_objs.size() << " meta-multipart entries and " <<
+    all_objs.size()  << " regular multipart entries" << dendl;
+
+  std::list<rgw_obj_index_key> objs_to_unlink;
+  Formatter *f = flusher.get_formatter();
 
   f->open_array_section("invalid_multipart_entries");
 
-  for (auto aiter = all_objs.begin(); aiter != all_objs.end(); ++aiter) {
-    string& name = aiter->second;
+  auto fix_and_dump =
+    [&]() -> int {
+      if (!objs_to_unlink.empty()) {
+	ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+	  "(): found " << objs_to_unlink.size() <<
+	  " multipart entries without corresponding .meta entry" << dendl;
+
+	if (fix_index) {
+	  int r = store->getRados()->remove_objs_from_index(bucket_info, objs_to_unlink);
+	  if (r < 0) {
+	    set_err_msg(err_msg, "ERROR: remove_objs_from_index() returned error: " +
+			cpp_strerror(-r));
+	    return r;
+	  }
+	}
+
+	dump_mulipart_index_results(objs_to_unlink, flusher.get_formatter());
+	flusher.flush();
+	objs_to_unlink.clear();
+      }
+      return 0;
+    };
+
+  for (const auto& aiter : all_objs) {
+    const std::string& name = aiter.second;
 
     if (meta_objs.find(name) == meta_objs.end()) {
-      objs_to_unlink.push_back(aiter->first);
+      objs_to_unlink.push_back(aiter.first);
     }
 
     if (objs_to_unlink.size() > listing_max_entries) {
-      if (fix_index) {
-	int r = store->getRados()->remove_objs_from_index(bucket_info, objs_to_unlink);
-	if (r < 0) {
-	  set_err_msg(err_msg, "ERROR: remove_obj_from_index() returned error: " +
-		      cpp_strerror(-r));
-	  return r;
-	}
+      int r = fix_and_dump();
+      if (r < 0) {
+	return r;
       }
-
-      dump_mulipart_index_results(objs_to_unlink, flusher.get_formatter());
-      flusher.flush();
-      objs_to_unlink.clear();
     }
   }
 
-  if (fix_index) {
-    int r = store->getRados()->remove_objs_from_index(bucket_info, objs_to_unlink);
+  if (!objs_to_unlink.empty()) {
+    int r = fix_and_dump();
     if (r < 0) {
-      set_err_msg(err_msg, "ERROR: remove_obj_from_index() returned error: " +
-              cpp_strerror(-r));
-
       return r;
     }
   }
 
-  dump_mulipart_index_results(objs_to_unlink, f);
   f->close_section();
   flusher.flush();
+
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): exiting for bucket=" << bucket << ", fix_index=" <<
+    fix_index << dendl;
 
   return 0;
 }
 
+
+/* Temporarily sets the bucket tag timeout to a low value (30 seconds)
+ * and then does a bucket index listing in order to exploit the
+ * dir_suggest mechanism to "complete" bucket index ops. Although
+ * non-obvious, even though it's "just" doing a listing, this can
+ * modify (i.e., fix) the bucket index. */
 int RGWBucket::check_object_index(RGWBucketAdminOpState& op_state,
                                   RGWFormatterFlusher& flusher,
                                   optional_yield y,
-                                  std::string *err_msg)
+                                  std::string* err_msg)
 {
-
-  bool fix_index = op_state.will_fix_index();
-
+  const bool fix_index = op_state.will_fix_index();
   if (!fix_index) {
     set_err_msg(err_msg, "check-objects flag requires fix index enabled");
     return -EINVAL;
   }
 
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): entering for bucket=" << bucket_info.bucket << dendl;
+
   store->getRados()->cls_obj_set_bucket_tag_timeout(bucket_info, BUCKET_TAG_TIMEOUT);
 
-  string prefix;
-  string empty_delimiter;
+  std::string prefix;
+  std::string empty_delimiter;
   rgw_obj_index_key marker;
   bool is_truncated = true;
   bool cls_filtered = true;
 
-  Formatter *formatter = flusher.get_formatter();
+  Formatter* formatter = flusher.get_formatter();
   formatter->open_object_section("objects");
   uint16_t expansion_factor = 1;
   while (is_truncated) {
@@ -979,22 +1010,27 @@ int RGWBucket::check_object_index(RGWBucketAdminOpState& op_state,
     flusher.flush();
   }
 
-  formatter->close_section();
+  formatter->close_section(); // objects
 
   store->getRados()->cls_obj_set_bucket_tag_timeout(bucket_info, 0);
+
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): exiting for bucket=" << bucket_info.bucket << dendl;
 
   return 0;
 }
 
 
 int RGWBucket::check_index(RGWBucketAdminOpState& op_state,
-        map<RGWObjCategory, RGWStorageStats>& existing_stats,
-        map<RGWObjCategory, RGWStorageStats>& calculated_stats,
-        std::string *err_msg)
+			   std::map<RGWObjCategory, RGWStorageStats>& existing_stats,
+			   std::map<RGWObjCategory, RGWStorageStats>& calculated_stats,
+			   std::string* err_msg)
 {
-  bool fix_index = op_state.will_fix_index();
+  const bool fix_index = op_state.will_fix_index();
 
-  int r = store->getRados()->bucket_check_index(bucket_info, &existing_stats, &calculated_stats);
+  int r = store->getRados()->bucket_check_index(bucket_info,
+						&existing_stats,
+						&calculated_stats);
   if (r < 0) {
     set_err_msg(err_msg, "failed to check index error=" + cpp_strerror(-r));
     return r;
@@ -1219,34 +1255,42 @@ int RGWBucketAdminOp::chown(rgw::sal::RGWRadosStore *store, RGWBucketAdminOpStat
 
 }
 
-int RGWBucketAdminOp::check_index(rgw::sal::RGWRadosStore *store, RGWBucketAdminOpState& op_state,
-                  RGWFormatterFlusher& flusher, optional_yield y)
+int RGWBucketAdminOp::check_index(rgw::sal::RGWRadosStore *store,
+				  RGWBucketAdminOpState& op_state,
+				  RGWFormatterFlusher& flusher,
+				  optional_yield y)
 {
   int ret;
-  map<RGWObjCategory, RGWStorageStats> existing_stats;
-  map<RGWObjCategory, RGWStorageStats> calculated_stats;
-
-
   RGWBucket bucket;
 
   ret = bucket.init(store, op_state, null_yield);
-  if (ret < 0)
+  if (ret < 0) {
     return ret;
+  }
 
   Formatter *formatter = flusher.get_formatter();
   flusher.start(0);
 
   ret = bucket.check_bad_index_multipart(op_state, flusher);
-  if (ret < 0)
+  if (ret < 0) {
     return ret;
+  }
 
-  ret = bucket.check_object_index(op_state, flusher, y);
-  if (ret < 0)
-    return ret;
+  // HERE
+  if (op_state.check_objects) {
+    ret = bucket.check_object_index(op_state, flusher, y);
+    if (ret < 0) {
+      return ret;
+    }
+  }
+
+  std::map<RGWObjCategory, RGWStorageStats> existing_stats;
+  std::map<RGWObjCategory, RGWStorageStats> calculated_stats;
 
   ret = bucket.check_index(op_state, existing_stats, calculated_stats);
-  if (ret < 0)
+  if (ret < 0) {
     return ret;
+  }
 
   dump_index_check(existing_stats, calculated_stats, formatter);
   flusher.flush();

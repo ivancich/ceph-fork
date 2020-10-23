@@ -456,8 +456,7 @@ struct rgw_cls_list_ret {
 };
 WRITE_CLASS_ENCODER(rgw_cls_list_ret)
 
-struct rgw_cls_check_index_ret
-{
+struct rgw_cls_check_index_ret {
   rgw_bucket_dir_header existing_header;
   rgw_bucket_dir_header calculated_header;
 
@@ -480,8 +479,7 @@ struct rgw_cls_check_index_ret
 };
 WRITE_CLASS_ENCODER(rgw_cls_check_index_ret)
 
-struct rgw_cls_bucket_update_stats_op
-{
+struct rgw_cls_bucket_update_stats_op {
   bool absolute{false};
   std::map<RGWObjCategory, rgw_bucket_category_stats> stats;
 

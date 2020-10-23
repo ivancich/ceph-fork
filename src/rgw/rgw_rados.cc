@@ -4828,7 +4828,7 @@ static void accumulate_raw_stats(const rgw_bucket_dir_header& header,
                                  map<RGWObjCategory, RGWStorageStats>& stats)
 {
   for (const auto& pair : header.stats) {
-    const RGWObjCategory category = static_cast<RGWObjCategory>(pair.first);
+    const RGWObjCategory category = pair.first;
     const rgw_bucket_category_stats& header_stats = pair.second;
 
     RGWStorageStats& s = stats[category];
@@ -4842,50 +4842,82 @@ static void accumulate_raw_stats(const rgw_bucket_dir_header& header,
 }
 
 int RGWRados::bucket_check_index(RGWBucketInfo& bucket_info,
-				 map<RGWObjCategory, RGWStorageStats> *existing_stats,
-				 map<RGWObjCategory, RGWStorageStats> *calculated_stats)
+				 std::map<RGWObjCategory, RGWStorageStats>* existing_stats,
+				 std::map<RGWObjCategory, RGWStorageStats>* calculated_stats)
 {
-  RGWSI_RADOS::Pool index_pool;
-  // key - bucket index object id
-  // value - bucket index check OP returned result with the given bucket index object (shard)
-  map<int, string> oids;
-  map<int, struct rgw_cls_check_index_ret> bucket_objs_ret;
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): entering for bucket=" << bucket_info.bucket << dendl;
 
-  int ret = svc.bi_rados->open_bucket_index(bucket_info, std::nullopt, &index_pool, &oids, nullptr);
+  RGWSI_RADOS::Pool index_pool;
+
+  std::map<int, std::string> oids;
+  int ret = svc.bi_rados->open_bucket_index(bucket_info, std::nullopt,
+					    &index_pool, &oids, nullptr);
   if (ret < 0) {
-      return ret;
+    lderr(store->ctx()) << "ERROR: " << __func__ <<
+      "(): error with open_bucket_index: " << cpp_strerror(-ret) << dendl;
+    return ret;
   }
 
-  for (auto& iter : oids) {
+  // key - bucket index object id
+  // value - bucket index check OP returned result with the given bucket index object (shard)
+  std::map<int, rgw_cls_check_index_ret> bucket_objs_ret;
+
+  // pre-populate map
+  for (const auto& iter : oids) {
     bucket_objs_ret[iter.first] = rgw_cls_check_index_ret();
   }
 
-  ret = CLSRGWIssueBucketCheck(index_pool.ioctx(), oids, bucket_objs_ret, cct->_conf->rgw_bucket_index_max_aio)();
+  ret =
+    CLSRGWIssueBucketCheck(index_pool.ioctx(), oids, bucket_objs_ret,
+			   cct->_conf->rgw_bucket_index_max_aio)(/*execute*/);
   if (ret < 0) {
-      return ret;
+    lderr(store->ctx()) << "ERROR: " << __func__ <<
+      "(): error with CLSRGWIssueBucketCheck operator: " << cpp_strerror(-ret) << dendl;
+    return ret;
   }
 
-  // Aggregate results (from different shards if there is any)
-  map<int, struct rgw_cls_check_index_ret>::iterator iter;
-  for (iter = bucket_objs_ret.begin(); iter != bucket_objs_ret.end(); ++iter) {
-    accumulate_raw_stats(iter->second.existing_header, *existing_stats);
-    accumulate_raw_stats(iter->second.calculated_header, *calculated_stats);
+  // aggregate results (from different shards if there is any)
+  for (const auto& iter : bucket_objs_ret) {
+    accumulate_raw_stats(iter.second.existing_header, *existing_stats);
+    accumulate_raw_stats(iter.second.calculated_header, *calculated_stats);
   }
+
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): exiting for bucket=" << bucket_info.bucket << dendl;
 
   return 0;
 }
 
 int RGWRados::bucket_rebuild_index(RGWBucketInfo& bucket_info)
 {
+  int r;
   RGWSI_RADOS::Pool index_pool;
-  map<int, string> bucket_objs;
+  std::map<int, std::string> bucket_objs;
 
-  int r = svc.bi_rados->open_bucket_index(bucket_info, std::nullopt, &index_pool, &bucket_objs, nullptr);
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): entering for bucket=" << bucket_info.bucket << dendl;
+
+  r = svc.bi_rados->open_bucket_index(bucket_info, std::nullopt,
+				      &index_pool, &bucket_objs, nullptr);
   if (r < 0) {
+    lderr(store->ctx()) << "ERROR: " << __func__ <<
+      "(): error with open_bucket_index: " << cpp_strerror(-r) << dendl;
     return r;
   }
 
-  return CLSRGWIssueBucketRebuild(index_pool.ioctx(), bucket_objs, cct->_conf->rgw_bucket_index_max_aio)();
+  r = CLSRGWIssueBucketRebuild(index_pool.ioctx(), bucket_objs,
+			       cct->_conf->rgw_bucket_index_max_aio)(/*execute*/);
+  if (r < 0) {
+    lderr(store->ctx()) << "ERROR: " << __func__ <<
+      "(): error with CLSRGWIssueBucketRebuild operator: " << cpp_strerror(-r) << dendl;
+    return r;
+  }
+
+  ldout(store->ctx(), 20) << "INFO: " << __func__ <<
+    "(): exiting for bucket=" << bucket_info.bucket << dendl;
+
+  return 0;
 }
 
 int RGWRados::bucket_set_reshard(const RGWBucketInfo& bucket_info, const cls_rgw_bucket_instance_entry& entry)
@@ -8246,7 +8278,7 @@ int RGWRados::cls_obj_set_bucket_tag_timeout(RGWBucketInfo& bucket_info, uint64_
   if (r < 0)
     return r;
 
-  return CLSRGWIssueSetTagTimeout(index_pool.ioctx(), bucket_objs, cct->_conf->rgw_bucket_index_max_aio, timeout)();
+  return CLSRGWIssueSetTagTimeout(index_pool.ioctx(), bucket_objs, cct->_conf->rgw_bucket_index_max_aio, timeout)(/*execute*/);
 }
 
 
@@ -8791,7 +8823,8 @@ int RGWRados::cls_obj_usage_log_clear(string& oid)
 }
 
 
-int RGWRados::remove_objs_from_index(RGWBucketInfo& bucket_info, list<rgw_obj_index_key>& oid_list)
+int RGWRados::remove_objs_from_index(RGWBucketInfo& bucket_info,
+				     list<rgw_obj_index_key>& oid_list)
 {
   RGWSI_RADOS::Pool index_pool;
   string dir_oid;
@@ -8799,16 +8832,21 @@ int RGWRados::remove_objs_from_index(RGWBucketInfo& bucket_info, list<rgw_obj_in
   uint8_t suggest_flag = (svc.zone->get_zone().log_data ? CEPH_RGW_DIR_SUGGEST_LOG_OP : 0);
 
   int r = svc.bi_rados->open_bucket_index(bucket_info, &index_pool, &dir_oid);
-  if (r < 0)
+  if (r < 0) {
     return r;
+  }
 
   bufferlist updates;
 
-  for (auto iter = oid_list.begin(); iter != oid_list.end(); ++iter) {
+  for (const auto& oid : oid_list) {
     rgw_bucket_dir_entry entry;
-    entry.key = *iter;
-    dout(2) << "RGWRados::remove_objs_from_index bucket=" << bucket_info.bucket << " obj=" << entry.key.name << ":" << entry.key.instance << dendl;
-    entry.ver.epoch = (uint64_t)-1; // ULLONG_MAX, needed to that objclass doesn't skip out request
+    entry.key = oid;
+
+    dout(2) << "RGWRados::" << __func__ << " bucket=" << bucket_info.bucket <<
+      " obj=" << entry.key.name << ":" << entry.key.instance << dendl;
+
+    // ULLONG_MAX, needed to that objclass doesn't skip out request
+    entry.ver.epoch = uint64_t(-1);
     updates.append(CEPH_RGW_REMOVE | suggest_flag);
     encode(entry, updates);
   }

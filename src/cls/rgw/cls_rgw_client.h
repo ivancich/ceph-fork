@@ -516,15 +516,19 @@ public:
  *
  * Return 0 on success, a failure code otherwise.
  */
-class CLSRGWIssueBucketCheck : public CLSRGWConcurrentIO /*<std::map<std::string, rgw_cls_check_index_ret> >*/ {
+class CLSRGWIssueBucketCheck : public CLSRGWConcurrentIO {
   std::map<int, rgw_cls_check_index_ret>& result;
+
 protected:
   int issue_op(int shard_id, const std::string& oid) override;
+
 public:
-  CLSRGWIssueBucketCheck(librados::IoCtx& ioc, std::map<int, std::string>& oids,
+  CLSRGWIssueBucketCheck(librados::IoCtx& ioc,
+			 std::map<int, std::string>& oids,
 			 std::map<int, rgw_cls_check_index_ret>& bucket_objs_ret,
 			 uint32_t _max_aio) :
-    CLSRGWConcurrentIO(ioc, oids, _max_aio), result(bucket_objs_ret) {}
+    CLSRGWConcurrentIO(ioc, oids, _max_aio), result(bucket_objs_ret)
+  {}
 };
 
 class CLSRGWIssueBucketRebuild : public CLSRGWConcurrentIO {

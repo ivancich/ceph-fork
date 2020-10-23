@@ -1526,8 +1526,8 @@ int do_check_object_locator(const string& tenant_name, const string& bucket_name
     }
     f->flush(cout);
   } while (truncated && count < max_entries);
-  f->close_section();
-  f->close_section();
+  f->close_section(); // check_objects
+  f->close_section(); // bucket
 
   f->flush(cout);
 
