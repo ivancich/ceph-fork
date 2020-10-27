@@ -625,10 +625,14 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
   return 0;
 } // rgw_bucket_list
 
+/* Checks the index by reading the existing stats and calculating the
+ * stats. */
 static int check_index(cls_method_context_t hctx,
-		       rgw_bucket_dir_header *existing_header,
-		       rgw_bucket_dir_header *calc_header)
+		       rgw_bucket_dir_header* existing_header,
+		       rgw_bucket_dir_header* calc_header)
 {
+  constexpr int CHECK_CHUNK_SIZE = 1000;
+
   int rc = read_bucket_header(hctx, existing_header);
   if (rc < 0) {
     CLS_LOG(1, "ERROR: check_index(): failed to read header\n");
@@ -638,42 +642,49 @@ static int check_index(cls_method_context_t hctx,
   calc_header->tag_timeout = existing_header->tag_timeout;
   calc_header->ver = existing_header->ver;
 
-  map<string, bufferlist> keys;
-  string start_obj;
-  string filter_prefix;
+  std::map<std::string, bufferlist> keys;
+  std::string filter_prefix;
 
-#define CHECK_CHUNK_SIZE 1000
+  // empty string for first call to get_obj_vals
+  static const std::string empty_string;
+  const std::string* start_obj_p = &empty_string;
+
   bool done = false;
   bool more;
-
   do {
-    rc = get_obj_vals(hctx, start_obj, filter_prefix, CHECK_CHUNK_SIZE, &keys, &more);
-    if (rc < 0)
+    rc = get_obj_vals(hctx, *start_obj_p, filter_prefix, CHECK_CHUNK_SIZE, &keys, &more);
+    if (rc < 0) {
       return rc;
+    }
 
-    for (auto kiter = keys.begin(); kiter != keys.end(); ++kiter) {
-      if (!bi_is_objs_index(kiter->first)) {
+    for (const auto& kiter : keys) {
+      if (!bi_is_objs_index(kiter.first)) {
+	// we found an entry that begins with BI_PREFIX_CHAR, so we've
+	// moved past all normal entries
         done = true;
         break;
       }
 
       rgw_bucket_dir_entry entry;
-      auto eiter = kiter->second.cbegin();
+      auto eiter = kiter.second.cbegin();
       try {
         decode(entry, eiter);
       } catch (ceph::buffer::error& err) {
-        CLS_LOG(1, "ERROR: rgw_bucket_list(): failed to decode entry, key=%s\n", kiter->first.c_str());
+        CLS_LOG(1,
+		"ERROR: rgw_bucket_list(): failed to decode entry, key=%s\n",
+		kiter.first.c_str());
         return -EIO;
       }
+
       rgw_bucket_category_stats& stats = calc_header->stats[entry.meta.category];
       stats.num_entries++;
       stats.total_size += entry.meta.accounted_size;
       stats.total_size_rounded += cls_rgw_get_rounded_size(entry.meta.accounted_size);
       stats.actual_size += entry.meta.size;
 
-      start_obj = kiter->first;
+      start_obj_p = &kiter.first;
     }
-  } while (keys.size() == CHECK_CHUNK_SIZE && !done);
+  } while (more && !done);
 
   return 0;
 }
@@ -701,13 +712,15 @@ static int write_bucket_header(cls_method_context_t hctx, rgw_bucket_dir_header 
 }
 
 
+/* Recalculates the bucket header and writes it back out. */
 int rgw_bucket_rebuild_index(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 {
   rgw_bucket_dir_header existing_header;
   rgw_bucket_dir_header calc_header;
   int rc = check_index(hctx, &existing_header, &calc_header);
-  if (rc < 0)
+  if (rc < 0) {
     return rc;
+  }
 
   return write_bucket_header(hctx, &calc_header);
 }

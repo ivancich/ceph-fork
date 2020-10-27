@@ -1037,6 +1037,7 @@ int RGWBucket::check_index(RGWBucketAdminOpState& op_state,
   }
 
   if (fix_index) {
+    // recalculates the bucket header and writes it back out
     r = store->getRados()->bucket_rebuild_index(bucket_info);
     if (r < 0) {
       set_err_msg(err_msg, "failed to rebuild index err=" + cpp_strerror(-r));
@@ -1047,10 +1048,14 @@ int RGWBucket::check_index(RGWBucketAdminOpState& op_state,
   return 0;
 }
 
-int RGWBucket::sync(RGWBucketAdminOpState& op_state, map<string, bufferlist> *attrs, std::string *err_msg)
+int RGWBucket::sync(RGWBucketAdminOpState& op_state,
+		    std::map<std::string, bufferlist>* attrs,
+		    std::string* err_msg)
 {
   if (!store->svc()->zone->is_meta_master()) {
-    set_err_msg(err_msg, "ERROR: failed to update bucket sync: only allowed on meta master zone");
+    set_err_msg(err_msg,
+		"ERROR: failed to update bucket sync: only allowed on "
+		"meta master zone");
     return EINVAL;
   }
   bool sync = op_state.will_sync_bucket();
@@ -1286,7 +1291,6 @@ int RGWBucketAdminOp::check_index(rgw::sal::RGWRadosStore *store,
 
   std::map<RGWObjCategory, RGWStorageStats> existing_stats;
   std::map<RGWObjCategory, RGWStorageStats> calculated_stats;
-
   ret = bucket.check_index(op_state, existing_stats, calculated_stats);
   if (ret < 0) {
     return ret;
