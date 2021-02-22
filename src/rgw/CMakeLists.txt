@@ -420,6 +420,11 @@ if(WITH_RADOSGW_KAFKA_ENDPOINT)
   target_link_libraries(rgw PRIVATE RDKafka::RDKafka)
 endif()
 
+if(WITH_ARROW)
+  target_include_directories(rgw_common SYSTEM PUBLIC "../arrow/cpp/src")
+  target_link_libraries(rgw PRIVATE arrow_static)
+endif()
+
 target_link_libraries(rgw PRIVATE ${LUA_LIBRARIES})
 
 set_target_properties(rgw PROPERTIES OUTPUT_NAME rgw VERSION 2.0.0

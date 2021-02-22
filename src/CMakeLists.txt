@@ -869,6 +869,9 @@ if(WITH_RADOSGW)
   endif(OPENSSL_FOUND)
   add_subdirectory(rgw)
 
+  if(WITH_ARROW)
+    add_subdirectory(arrow/cpp)
+  endif(WITH_ARROW)
 endif(WITH_RADOSGW)
 
 install(FILES
