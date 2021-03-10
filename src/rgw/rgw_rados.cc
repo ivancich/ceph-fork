@@ -5014,11 +5014,15 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
   const string& instance = src_obj.key.instance;
   rgw_obj obj = src_obj;
 
+  ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT A" << dendl;
+
   if (instance == "null") {
     obj.key.instance.clear();
   }
 
   bool explicit_marker_version = (!params.marker_version_id.empty());
+
+  ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT B" << dendl;
 
   if (params.versioning_status & BUCKET_VERSIONED || explicit_marker_version) {
     if (instance.empty() || explicit_marker_version) {
@@ -5067,6 +5071,7 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
       result.version_id = instance;
     }
 
+    ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT C" << dendl;
     BucketShard *bs;
     int r = target->get_bucket_shard(&bs, dpp);
     if (r < 0) {
@@ -5096,7 +5101,10 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
 
   ObjectWriteOperation op;
 
+  ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D, exists=" <<
+    state->exists << dendl;
   if (!real_clock::is_zero(params.unmod_since)) {
+    ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.1.a" << dendl;
     struct timespec ctime = ceph::real_clock::to_timespec(state->mtime);
     struct timespec unmod = ceph::real_clock::to_timespec(params.unmod_since);
     if (!params.high_precision_time) {
@@ -5106,6 +5114,7 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
 
     ldpp_dout(dpp, 10) << "If-UnModified-Since: " << params.unmod_since << " Last-Modified: " << ctime << dendl;
     if (ctime > unmod) {
+      ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.1" << dendl;
       return -ERR_PRECONDITION_FAILED;
     }
 
@@ -5115,34 +5124,43 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
   uint64_t obj_accounted_size = state->accounted_size;
 
   if(params.abortmp) {
+    ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.1.b" << dendl;
     obj_accounted_size = params.parts_accounted_size;
   }
 
   if (!real_clock::is_zero(params.expiration_time)) {
+    ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.1.c" << dendl;
     bufferlist bl;
     real_time delete_at;
 
     if (state->get_attr(RGW_ATTR_DELETE_AT, bl)) {
+      ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.1.d" << dendl;
       try {
+	ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.1.e" << dendl;
         auto iter = bl.cbegin();
         decode(delete_at, iter);
       } catch (buffer::error& err) {
         ldpp_dout(dpp, 0) << "ERROR: couldn't decode RGW_ATTR_DELETE_AT" << dendl;
+	ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.2" << dendl;
 	return -EIO;
       }
 
       if (params.expiration_time != delete_at) {
+	ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.3" << dendl;
         return -ERR_PRECONDITION_FAILED;
       }
     } else {
+      ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.4" << dendl;
       return -ERR_PRECONDITION_FAILED;
     }
   }
 
   if (!state->exists) {
     target->invalidate_state();
+    ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.5" << dendl;
     return -ENOENT;
   }
+  ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT E" << dendl;
 
   r = target->prepare_atomic_modification(dpp, op, false, NULL, NULL, NULL, true, false, y);
   if (r < 0)
@@ -5156,6 +5174,7 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
   index_op.set_zones_trace(params.zones_trace);
   index_op.set_bilog_flags(params.bilog_flags);
 
+  ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT F" << dendl;
   r = index_op.prepare(dpp, CLS_RGW_OP_DEL, &state->write_tag, y);
   if (r < 0)
     return r;
@@ -5170,6 +5189,7 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
 
   int64_t poolid = ioctx.get_id();
   if (r >= 0) {
+    ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT G" << dendl;
     tombstone_cache_t *obj_tombstone_cache = store->get_tombstone_cache();
     if (obj_tombstone_cache) {
       tombstone_entry entry{*state};
@@ -5183,6 +5203,7 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
     }
     /* other than that, no need to propagate error */
   } else {
+    ldout(store->ctx(), 0) << "ERIC: rgw_rados_operate returned " << r << dendl;
     int ret = index_op.cancel(dpp);
     if (ret < 0) {
       ldout(store->ctx(), 0) << "ERROR: index_op.cancel() returned ret=" << ret << dendl;
