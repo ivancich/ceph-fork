@@ -4707,34 +4707,46 @@ void RGWDeleteObj::execute(optional_yield y)
 
   rgw::sal::RGWAttrs attrs;
 
+  ldpp_dout(this, 0) << "ERIC: point A" << dendl;
   bool check_obj_lock = s->object->have_instance() && s->bucket->get_info().obj_lock_enabled();
 
   if (!rgw::sal::RGWObject::empty(s->object.get())) {
+    ldpp_dout(this, 0) << "ERIC: point B" << dendl;
     op_ret = s->object->get_obj_attrs(s->obj_ctx, s->yield, this);
     if (op_ret < 0) {
+      ldpp_dout(this, 0) << "ERIC: point C" << dendl;
       if (need_object_expiration() || multipart_delete) {
+	ldpp_dout(this, 0) << "ERIC: point D" << dendl;
         return;
       }
 
+      ldpp_dout(this, 0) << "ERIC: point E" << dendl;
       if (check_obj_lock) {
+	ldpp_dout(this, 0) << "ERIC: point F" << dendl;
         /* check if obj exists, read orig attrs */
         if (op_ret == -ENOENT) {
+	  ldpp_dout(this, 0) << "ERIC: point G" << dendl;
           /* object maybe delete_marker, skip check_obj_lock*/
           check_obj_lock = false;
         } else {
+	  ldpp_dout(this, 0) << "ERIC: point H" << dendl;
           return;
         }
       }
     } else {
+      ldpp_dout(this, 0) << "ERIC: point I" << dendl;
       attrs = s->object->get_attrs();
     }
 
     // ignore return value from get_obj_attrs in all other cases
     op_ret = 0;
 
+    ldpp_dout(this, 0) << "ERIC: point J" << dendl;
     if (check_obj_lock) {
+      ldpp_dout(this, 0) << "ERIC: point K" << dendl;
       int object_lock_response = verify_object_lock(this, attrs, bypass_perm, bypass_governance_mode);
       if (object_lock_response != 0) {
+	ldpp_dout(this, 0) << "ERIC: point L" << dendl;
         op_ret = object_lock_response;
 	if (op_ret == -EACCES) {
 	  s->err.message = "forbidden by object lock";
@@ -4743,7 +4755,9 @@ void RGWDeleteObj::execute(optional_yield y)
       }
     }
 
+    ldpp_dout(this, 0) << "ERIC: point M" << dendl;
     if (multipart_delete) {
+      ldpp_dout(this, 0) << "ERIC: point N" << dendl;
       const auto slo_attr = attrs.find(RGW_ATTR_SLO_MANIFEST);
 
       if (slo_attr != attrs.end()) {
@@ -4758,6 +4772,8 @@ void RGWDeleteObj::execute(optional_yield y)
       return;
     }
 
+    ldpp_dout(this, 0) << "ERIC: point O" << dendl;
+
     // make reservation for notification if needed
     const auto versioned_object = s->bucket->versioning_enabled();
     const auto event_type = versioned_object && s->object->get_instance().empty() ? 
@@ -4766,6 +4782,7 @@ void RGWDeleteObj::execute(optional_yield y)
 									s, event_type);
     op_ret = res->publish_reserve();
     if (op_ret < 0) {
+      ldpp_dout(this, 0) << "ERIC: point P" << dendl;
       return;
     }
 
@@ -4774,7 +4791,9 @@ void RGWDeleteObj::execute(optional_yield y)
 
     bool ver_restored = false;
     op_ret = s->object->swift_versioning_restore(s->obj_ctx, ver_restored, this);
+    ldpp_dout(this, 0) << "ERIC: point Q" << dendl;
     if (op_ret < 0) {
+      ldpp_dout(this, 0) << "ERIC: point R" << dendl;
       return;
     }
 
@@ -4789,6 +4808,7 @@ void RGWDeleteObj::execute(optional_yield y)
 	return;
       }
 
+      ldpp_dout(this, 0) << "ERIC: point S" << dendl;
       std::unique_ptr<rgw::sal::RGWObject::DeleteOp> del_op = s->object->get_delete_op(obj_ctx);
       del_op->params.obj_owner = s->owner;
       del_op->params.bucket_owner = s->bucket_owner;
@@ -4812,6 +4832,7 @@ void RGWDeleteObj::execute(optional_yield y)
       }
     }
 
+    ldpp_dout(this, 0) << "ERIC: point T" << dendl;
     if (op_ret == -ECANCELED) {
       op_ret = 0;
     }
@@ -4821,6 +4842,7 @@ void RGWDeleteObj::execute(optional_yield y)
 
     const auto obj_state = obj_ctx->get_state(s->object->get_obj());
 
+    ldpp_dout(this, 0) << "ERIC: point U" << dendl;
     // send request to notification manager
     int ret = res->publish_commit(this, obj_state->size, obj_state->mtime, attrs[RGW_ATTR_ETAG].to_str());
     if (ret < 0) {
@@ -4830,6 +4852,7 @@ void RGWDeleteObj::execute(optional_yield y)
   } else {
     op_ret = -EINVAL;
   }
+  ldpp_dout(this, 0) << "ERIC: point V" << dendl;
 }
 
 bool RGWCopyObj::parse_copy_location(const std::string_view& url_src,
