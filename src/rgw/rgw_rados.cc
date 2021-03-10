@@ -5096,8 +5096,9 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
 
   RGWObjState *state;
   r = target->get_state(dpp, &state, false, y);
-  if (r < 0)
+  if (r < 0) {
     return r;
+  }
 
   ObjectWriteOperation op;
 
@@ -5155,16 +5156,22 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
     }
   }
 
+#if 0
   if (!state->exists) {
     target->invalidate_state();
     ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT D.5" << dendl;
     return -ENOENT;
   }
+#endif
+  
   ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT E" << dendl;
 
-  r = target->prepare_atomic_modification(dpp, op, false, NULL, NULL, NULL, true, false, y);
-  if (r < 0)
-    return r;
+  if (state->exists) {
+    r = target->prepare_atomic_modification(dpp, op, false, NULL, NULL, NULL, true, false, y);
+    if (r < 0) {
+      return r;
+    }
+  }
 
   RGWBucketInfo& bucket_info = target->get_bucket_info();
 
@@ -5176,13 +5183,18 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
 
   ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT F" << dendl;
   r = index_op.prepare(dpp, CLS_RGW_OP_DEL, &state->write_tag, y);
-  if (r < 0)
+  if (r < 0) {
     return r;
-
-  store->remove_rgw_head_obj(op);
+  }
 
   auto& ioctx = ref.pool.ioctx();
-  r = rgw_rados_operate(ioctx, ref.obj.oid, &op, null_yield);
+  if (state->exists) {
+    store->remove_rgw_head_obj(op);
+
+    r = rgw_rados_operate(ioctx, ref.obj.oid, &op, null_yield);
+  } else {
+    r = 0;
+  }
 
   /* raced with another operation, object state is indeterminate */
   const bool need_invalidate = (r == -ECANCELED);
@@ -5196,10 +5208,12 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
       obj_tombstone_cache->add(obj, entry);
     }
     r = index_op.complete_del(dpp, poolid, ioctx.get_last_version(), state->mtime, params.remove_objs);
-    
-    int ret = target->complete_atomic_modification();
-    if (ret < 0) {
-      ldpp_dout(dpp, 0) << "ERROR: complete_atomic_modification returned ret=" << ret << dendl;
+
+    if (state->exists) {
+      int ret = target->complete_atomic_modification();
+      if (ret < 0) {
+	ldpp_dout(dpp, 0) << "ERROR: complete_atomic_modification returned ret=" << ret << dendl;
+      }
     }
     /* other than that, no need to propagate error */
   } else {
@@ -5210,12 +5224,13 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
     }
   }
 
-  if (need_invalidate) {
+  if (need_invalidate || ! state->exists) {
     target->invalidate_state();
   }
 
-  if (r < 0)
+  if (r < 0) {
     return r;
+  }
 
   /* update quota cache */
   store->quota_handler->update_stats(params.bucket_owner, obj.bucket, -1, 0, obj_accounted_size);
