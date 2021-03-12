@@ -2117,23 +2117,29 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx,
     bufferlist cur_disk_bl;
     string cur_change_key;
     encode_obj_index_key(cur_change.key, &cur_change_key);
+CLS_LOG(0, "ERIC: getting map value of \"%s\"\n", cur_change_key.c_str());
     int ret = cls_cxx_map_get_val(hctx, cur_change_key, &cur_disk_bl);
-    if (ret < 0 && ret != -ENOENT)
-      return -EINVAL;
-
     if (ret == -ENOENT) {
+CLS_LOG(0, "ERIC: point A.0\n");
       continue;
+    } else if (ret < 0) {
+CLS_LOG(0, "ERIC: point A.1\n");
+      return -EINVAL;
     }
 
+CLS_LOG(0, "ERIC: point A.2\n");
     if (cur_disk_bl.length()) {
       auto cur_disk_iter = cur_disk_bl.cbegin();
       try {
+CLS_LOG(0, "ERIC: point A.3\n");
         decode(cur_disk, cur_disk_iter);
       } catch (ceph::buffer::error& error) {
+CLS_LOG(0, "ERIC: point A.4\n");
         CLS_LOG(1, "ERROR: rgw_dir_suggest_changes(): failed to decode cur_disk\n");
         return -EINVAL;
       }
 
+CLS_LOG(0, "ERIC: point A.5\n");
       real_time cur_time = real_clock::now();
       auto iter = cur_disk.pending_map.begin();
       while(iter != cur_disk.pending_map.end()) {
@@ -2149,7 +2155,9 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx,
 	    (int)cur_change.pending_map.size(), cur_change.exists);
 
     if (cur_disk.pending_map.empty()) {
+CLS_LOG(0, "ERIC: point B\n");
       if (cur_disk.exists) {
+CLS_LOG(0, "ERIC: point C\n");
         rgw_bucket_category_stats& old_stats = header.stats[cur_disk.meta.category];
         CLS_LOG(10, "total_entries: %" PRId64 " -> %" PRId64 "\n", old_stats.num_entries, old_stats.num_entries - 1);
         old_stats.num_entries--;
@@ -2163,6 +2171,7 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx,
       op &= CEPH_RGW_DIR_SUGGEST_OP_MASK;
       switch(op) {
       case CEPH_RGW_REMOVE:
+CLS_LOG(0, "ERIC: point D\n");
         CLS_LOG(10, "CEPH_RGW_REMOVE name=%s instance=%s\n", cur_change.key.name.c_str(), cur_change.key.instance.c_str());
 	ret = cls_cxx_map_remove_key(hctx, cur_change_key);
 	if (ret < 0)
