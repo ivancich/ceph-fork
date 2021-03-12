@@ -1545,4 +1545,10 @@ public:
    */
   static uint32_t calc_ordered_bucket_list_per_shard(uint32_t num_entries,
 						     uint32_t num_shards);
+
+  void bucket_index_remove(const DoutPrefixProvider* dpp,
+			   RGWRados::Bucket* bucket_op,
+			   const rgw_obj& obj,
+			   optional_yield y);
+
 }; // class RGWRados

@@ -6063,6 +6063,21 @@ int RGWRados::Object::Read::range_to_ofs(uint64_t obj_size, int64_t &ofs, int64_
   return 0;
 }
 
+void RGWRados::bucket_index_remove(const DoutPrefixProvider* dpp,
+				   RGWRados::Bucket* bucket_op,
+				   const rgw_obj& obj,
+				   optional_yield y) {
+#if 0
+    RGWRados *store;
+        RGWRados::Object *target;
+
+  int remove_objs_from_index
+      int delete_obj_index(c
+    rgw_obj obj;
+      BucketShard bs;
+#endif
+}
+
 int RGWRados::Bucket::UpdateIndex::guard_reshard(const DoutPrefixProvider *dpp, BucketShard **pbs, std::function<int(BucketShard *)> call)
 {
   RGWRados *store = target->get_store();
