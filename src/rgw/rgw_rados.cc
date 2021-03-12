@@ -5173,7 +5173,10 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
     // we have a situation where the head rados object does not exist
     // yet the bucket index entry does; we will log this situation and
     // clean up the bucket index
-    ldout(store->ctx(), 0) << "WARNING: " << __FUNCTION__ << " FIX THIS" << dendl;
+    ldout(store->ctx(), 0) << "WARNING: " << __FUNCTION__ <<
+      "(): during request to remove " << obj <<
+      " it was found that the head object does not exist; cleaning up "
+      "bucket index" << dendl;
 
     rgw_obj_index_key index_key;
     obj.key.get_index_key(&index_key);
@@ -5182,6 +5185,10 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
 
     store->remove_objs_from_index(bucket_info, singleton);
     // store->bucket_index_remove(dpp, &bop, obj, y);
+
+    target->invalidate_state();
+
+    return 0;
   }
 
   if (state->exists) {
