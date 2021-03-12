@@ -5193,7 +5193,7 @@ ldout(store->ctx(), 0) << "ERIC remove_objs_from_index " << index_key << dendl;
     return 0;
   }
 
-  if (state->exists) {
+  if (true || state->exists) {
     r = target->prepare_atomic_modification(
       dpp, op, false, NULL, NULL, NULL, true, false, y);
     if (r < 0) {
@@ -5213,7 +5213,7 @@ ldout(store->ctx(), 0) << "ERIC remove_objs_from_index " << index_key << dendl;
   }
 
   auto& ioctx = ref.pool.ioctx();
-  if (state->exists) {
+  if (true || state->exists) {
     store->remove_rgw_head_obj(op);
 
     r = rgw_rados_operate(ioctx, ref.obj.oid, &op, null_yield);
@@ -5234,7 +5234,7 @@ ldout(store->ctx(), 0) << "ERIC remove_objs_from_index " << index_key << dendl;
     }
     r = index_op.complete_del(dpp, poolid, ioctx.get_last_version(), state->mtime, params.remove_objs);
 
-    if (state->exists) {
+    if (true || state->exists) {
       int ret = target->complete_atomic_modification();
       if (ret < 0) {
 	ldpp_dout(dpp, 0) << "ERROR: complete_atomic_modification returned ret=" << ret << dendl;
