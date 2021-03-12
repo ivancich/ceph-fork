@@ -5163,19 +5163,35 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
     return -ENOENT;
   }
 #endif
-  
+
   ldout(store->ctx(), 0) << "ERIC: " << __FUNCTION__ << " POINT E" << dendl;
 
+  RGWBucketInfo& bucket_info = target->get_bucket_info();
+  RGWRados::Bucket bop(store, bucket_info);
+
+  if (!state->exists) {
+    // we have a situation where the head rados object does not exist
+    // yet the bucket index entry does; we will log this situation and
+    // clean up the bucket index
+    ldout(store->ctx(), 0) << "WARNING: " << __FUNCTION__ << " FIX THIS" << dendl;
+
+    rgw_obj_index_key index_key;
+    obj.key.get_index_key(&index_key);
+    std::list<rgw_obj_index_key> singleton;
+    singleton.push_back(index_key);
+
+    store->remove_objs_from_index(bucket_info, singleton);
+    // store->bucket_index_remove(dpp, &bop, obj, y);
+  }
+
   if (state->exists) {
-    r = target->prepare_atomic_modification(dpp, op, false, NULL, NULL, NULL, true, false, y);
+    r = target->prepare_atomic_modification(
+      dpp, op, false, NULL, NULL, NULL, true, false, y);
     if (r < 0) {
       return r;
     }
   }
 
-  RGWBucketInfo& bucket_info = target->get_bucket_info();
-
-  RGWRados::Bucket bop(store, bucket_info);
   RGWRados::Bucket::UpdateIndex index_op(&bop, obj);
   
   index_op.set_zones_trace(params.zones_trace);
