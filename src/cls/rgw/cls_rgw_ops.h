@@ -27,6 +27,24 @@ struct rgw_cls_tag_timeout_op
 };
 WRITE_CLASS_ENCODER(rgw_cls_tag_timeout_op)
 
+struct rgw_cls_bucket_index_remove_entry_op {
+  cls_rgw_obj_key key;
+
+  void encode(ceph::buffer::list &bl) const {
+    ENCODE_START(1, 1, bl);
+    encode(key, bl);
+    ENCODE_FINISH(bl);
+  }
+  void decode(ceph::buffer::list::const_iterator &bl) {
+    DECODE_START(1, bl);
+    decode(key, bl);
+    DECODE_FINISH(bl);
+  }
+  void dump(ceph::Formatter *f) const;
+  static void generate_test_instances(std::list<rgw_cls_bucket_index_remove_entry_op*>& ls);
+};
+WRITE_CLASS_ENCODER(rgw_cls_bucket_index_remove_entry_op)
+
 struct rgw_cls_obj_prepare_op
 {
   RGWModifyOp op;

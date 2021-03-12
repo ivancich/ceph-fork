@@ -378,7 +378,7 @@ int cls_rgw_bi_get(librados::IoCtx& io_ctx,
 		   const std::string& oid,
                    BIIndexType index_type,
 		   cls_rgw_obj_key& key,
-                   rgw_cls_bi_entry *entry);
+		   rgw_cls_bi_entry *entry);
 int cls_rgw_bi_put(librados::IoCtx& io_ctx,
 		   const std::string& oid,
 		   rgw_cls_bi_entry& entry);
@@ -392,6 +392,9 @@ int cls_rgw_bi_list(librados::IoCtx& io_ctx,
 		    uint32_t max,
 		    std::list<rgw_cls_bi_entry> *entries,
 		    bool *is_truncated);
+void cls_rgw_bi_remove(librados::ObjectWriteOperation& o,
+		       RGWModifyOp op,
+		       const cls_rgw_obj_key& key);
 
 void cls_rgw_bucket_link_olh(librados::ObjectWriteOperation& op,
                             const cls_rgw_obj_key& key, ceph::buffer::list& olh_tag,

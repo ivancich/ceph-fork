@@ -941,6 +941,49 @@ static int read_key_entry(cls_method_context_t hctx, cls_rgw_obj_key& key,
   return 0;
 }
 
+/* this is not the normal route to unlink an object, but is used in
+ * special cases; normal object removals use the transactional
+ * combination of rgw_bucket_prepare_op and rgw_bucket_complete_op to
+ * coordinate with the removal of a rados object */
+int rgw_bi_remove_op(cls_method_context_t hctx,
+		     bufferlist* in,
+		     bufferlist* out) {
+  int ret = 0;
+
+  rgw_cls_bucket_index_remove_entry_op op;
+  try {
+    auto iter = in->cbegin();
+    decode(op, iter);
+  } catch (ceph::buffer::error& err) {
+    CLS_LOG(0, "ERROR: %s(): failed to decode request\n", __func__);
+    return -EINVAL;
+  }
+  CLS_LOG(1, "%s(): request: key=%s\n",
+	  __FUNCTION__, op.key.name.c_str());
+
+  rgw_bucket_dir_entry entry;
+  std::string idx;
+
+  encode_obj_index_key(op.key, &idx);
+#if 0
+  int ret = read_key_entry(hctx, op.key, &idx, &entry);
+  if (ret < 0) {
+    CLS_LOG(0, "ERROR: %s(): failed to read bucket directory entry; ret=%d\n",
+	    __func__, ret);
+    return ret;
+  }
+#endif
+
+  ret = cls_cxx_map_remove_key(hctx, idx);
+  if (ret < 0) {
+    CLS_LOG(0, "ERROR: %s(): failed to remove bucket directory entry; ret=%d\n",
+	    __func__, ret);
+    return ret;
+  }
+
+  return 0;
+} // rgw_cls_bucket_index_remove_entry_op
+
 int rgw_bucket_complete_op(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 {
   // decode request
@@ -4088,6 +4131,7 @@ CLS_INIT(rgw)
   cls_method_handle_t h_rgw_bi_get_op;
   cls_method_handle_t h_rgw_bi_put_op;
   cls_method_handle_t h_rgw_bi_list_op;
+  cls_method_handle_t h_rgw_bi_remove_op;
   cls_method_handle_t h_rgw_bi_log_list_op;
   cls_method_handle_t h_rgw_bi_log_resync_op;
   cls_method_handle_t h_rgw_bi_log_stop_op;
@@ -4140,6 +4184,7 @@ CLS_INIT(rgw)
   cls_register_cxx_method(h_class, RGW_BI_GET, CLS_METHOD_RD, rgw_bi_get_op, &h_rgw_bi_get_op);
   cls_register_cxx_method(h_class, RGW_BI_PUT, CLS_METHOD_RD | CLS_METHOD_WR, rgw_bi_put_op, &h_rgw_bi_put_op);
   cls_register_cxx_method(h_class, RGW_BI_LIST, CLS_METHOD_RD, rgw_bi_list_op, &h_rgw_bi_list_op);
+  cls_register_cxx_method(h_class, RGW_BI_REMOVE, CLS_METHOD_WR, rgw_bi_remove_op, &h_rgw_bi_remove_op);
 
   cls_register_cxx_method(h_class, RGW_BI_LOG_LIST, CLS_METHOD_RD, rgw_bi_log_list, &h_rgw_bi_log_list_op);
   cls_register_cxx_method(h_class, RGW_BI_LOG_TRIM, CLS_METHOD_RD | CLS_METHOD_WR, rgw_bi_log_trim, &h_rgw_bi_log_list_op);

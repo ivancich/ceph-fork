@@ -387,6 +387,14 @@ int cls_rgw_bi_list(librados::IoCtx& io_ctx,
   return 0;
 }
 
+void cls_rgw_bi_remove(ObjectWriteOperation& op, const cls_rgw_obj_key& key) {
+  bufferlist in;
+  rgw_cls_bucket_index_remove_entry_op call;
+  call.key = key;
+  encode(call, in);
+  op.exec(RGW_CLASS, RGW_BI_REMOVE, in);
+}
+
 int cls_rgw_bucket_link_olh(librados::IoCtx& io_ctx, const string& oid, 
                             const cls_rgw_obj_key& key, bufferlist& olh_tag,
                             bool delete_marker, const string& op_tag, rgw_bucket_dir_entry_meta *meta,

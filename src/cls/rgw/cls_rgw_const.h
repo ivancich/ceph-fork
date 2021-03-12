@@ -31,6 +31,7 @@
 #define RGW_BI_GET "bi_get"
 #define RGW_BI_PUT "bi_put"
 #define RGW_BI_LIST "bi_list"
+#define RGW_BI_REMOVE "bi_remove"
 
 #define RGW_BI_LOG_LIST "bi_log_list"
 #define RGW_BI_LOG_TRIM "bi_log_trim"
