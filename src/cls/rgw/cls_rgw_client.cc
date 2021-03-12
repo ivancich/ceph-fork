@@ -300,8 +300,10 @@ void cls_rgw_obj_check_mtime(librados::ObjectOperation& o, const real_time& mtim
   o.exec(RGW_CLASS, RGW_OBJ_CHECK_MTIME, in);
 }
 
-int cls_rgw_bi_get(librados::IoCtx& io_ctx, const string oid,
-                   BIIndexType index_type, cls_rgw_obj_key& key,
+int cls_rgw_bi_get(librados::IoCtx& io_ctx,
+		   const std::string& oid,
+                   BIIndexType index_type,
+		   cls_rgw_obj_key& key,
                    rgw_cls_bi_entry *entry)
 {
   bufferlist in, out;
@@ -326,7 +328,9 @@ int cls_rgw_bi_get(librados::IoCtx& io_ctx, const string oid,
   return 0;
 }
 
-int cls_rgw_bi_put(librados::IoCtx& io_ctx, const string oid, rgw_cls_bi_entry& entry)
+int cls_rgw_bi_put(librados::IoCtx& io_ctx,
+		   const std::string& oid,
+		   rgw_cls_bi_entry& entry)
 {
   bufferlist in, out;
   rgw_cls_bi_put_op call;
@@ -339,7 +343,9 @@ int cls_rgw_bi_put(librados::IoCtx& io_ctx, const string oid, rgw_cls_bi_entry& 
   return 0;
 }
 
-void cls_rgw_bi_put(ObjectWriteOperation& op, const string oid, rgw_cls_bi_entry& entry)
+void cls_rgw_bi_put(ObjectWriteOperation& op,
+		    const std::string& oid,
+		    rgw_cls_bi_entry& entry)
 {
   bufferlist in, out;
   rgw_cls_bi_put_op call;
@@ -348,9 +354,13 @@ void cls_rgw_bi_put(ObjectWriteOperation& op, const string oid, rgw_cls_bi_entry
   op.exec(RGW_CLASS, RGW_BI_PUT, in);
 }
 
-int cls_rgw_bi_list(librados::IoCtx& io_ctx, const string oid,
-                   const string& name, const string& marker, uint32_t max,
-                   list<rgw_cls_bi_entry> *entries, bool *is_truncated)
+int cls_rgw_bi_list(librados::IoCtx& io_ctx,
+		    const std::string& oid,
+		    const string& name,
+		    const string& marker,
+		    uint32_t max,
+		    std::list<rgw_cls_bi_entry> *entries,
+		    bool *is_truncated)
 {
   bufferlist in, out;
   rgw_cls_bi_list_op call;
@@ -359,8 +369,9 @@ int cls_rgw_bi_list(librados::IoCtx& io_ctx, const string oid,
   call.max = max;
   encode(call, in);
   int r = io_ctx.exec(oid, RGW_CLASS, RGW_BI_LIST, in, out);
-  if (r < 0)
+  if (r < 0) {
     return r;
+  }
 
   rgw_cls_bi_list_ret op_ret;
   auto iter = out.cbegin();
