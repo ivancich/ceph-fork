@@ -2117,7 +2117,17 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx,
     bufferlist cur_disk_bl;
     string cur_change_key;
     encode_obj_index_key(cur_change.key, &cur_change_key);
-CLS_LOG(0, "ERIC: getting map value of \"%s\"\n", cur_change_key.c_str());
+#if 1
+    PrimaryLogPG::OpContext **pctx = (PrimaryLogPG::OpContext **)hctx;
+    const ObjectState* obs = (*hctx)->obs;
+    const object_info_t oi = obs->oi;
+
+    std::stringstream ss;
+    ss << oi;
+    std::string ois = oi.str();
+#endif
+    CLS_LOG(0, "ERIC: getting map value of \"%s\" from \"%s\"\n",
+	    cur_change_key.c_str(), ois.c_str());
     int ret = cls_cxx_map_get_val(hctx, cur_change_key, &cur_disk_bl);
     if (ret == -ENOENT) {
 CLS_LOG(0, "ERIC: point A.0\n");
