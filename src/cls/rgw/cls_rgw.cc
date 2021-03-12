@@ -942,7 +942,7 @@ static int read_key_entry(cls_method_context_t hctx, cls_rgw_obj_key& key,
 }
 
 /* this is not the normal route to unlink an object, but is used in
- * special cases; normal object removals use the transactional
+ * some special cases; normal object removal use the transactional
  * combination of rgw_bucket_prepare_op and rgw_bucket_complete_op to
  * coordinate with the removal of a rados object */
 int rgw_bi_remove_op(cls_method_context_t hctx,
@@ -958,8 +958,7 @@ int rgw_bi_remove_op(cls_method_context_t hctx,
     CLS_LOG(0, "ERROR: %s(): failed to decode request\n", __func__);
     return -EINVAL;
   }
-  CLS_LOG(1, "%s(): request: key=%s\n",
-	  __FUNCTION__, op.key.name.c_str());
+  CLS_LOG(1, "%s(): request: key=%s\n", __func__, op.key.name.c_str());
 
   rgw_bucket_dir_entry entry;
   std::string idx;
