@@ -5183,6 +5183,8 @@ int RGWRados::Object::Delete::delete_obj(optional_yield y, const DoutPrefixProvi
     std::list<rgw_obj_index_key> singleton;
     singleton.push_back(index_key);
 
+ldout(store->ctx(), 0) << "ERIC remove_objs_from_index " << index_key << dendl;
+
     store->remove_objs_from_index(bucket_info, singleton);
     // store->bucket_index_remove(dpp, &bop, obj, y);
 
