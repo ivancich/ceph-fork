@@ -1,8 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab ft=cpp
 
-#ifndef CEPH_RGWRADOS_H
-#define CEPH_RGWRADOS_H
+#pragma once
 
 #include <functional>
 #include <boost/container/flat_map.hpp>
@@ -886,8 +885,13 @@ public:
     int shard_id;
 
   public:
-    Bucket(RGWRados *_store, const RGWBucketInfo& _bucket_info) : store(_store), bucket_info(_bucket_info), bucket(bucket_info.bucket),
-                                                            shard_id(RGW_NO_SHARD) {}
+    Bucket(RGWRados *_store, const RGWBucketInfo& _bucket_info) :
+      store(_store),
+      bucket_info(_bucket_info),
+      bucket(bucket_info.bucket),
+      shard_id(RGW_NO_SHARD)
+    {}
+
     RGWRados *get_store() { return store; }
     rgw_bucket& get_bucket() { return bucket; }
     RGWBucketInfo& get_bucket_info() { return bucket_info; }
@@ -1446,8 +1450,10 @@ public:
                          map<RGWObjCategory, RGWStorageStats> *existing_stats,
                          map<RGWObjCategory, RGWStorageStats> *calculated_stats);
   int bucket_rebuild_index(RGWBucketInfo& bucket_info);
-  int bucket_set_reshard(const RGWBucketInfo& bucket_info, const cls_rgw_bucket_instance_entry& entry);
-  int remove_objs_from_index(RGWBucketInfo& bucket_info, list<rgw_obj_index_key>& oid_list);
+  int bucket_set_reshard(const RGWBucketInfo& bucket_info,
+			 const cls_rgw_bucket_instance_entry& entry);
+  int remove_objs_from_index(RGWBucketInfo& bucket_info,
+			     std::list<rgw_obj_index_key>& oid_list);
   int move_rados_obj(librados::IoCtx& src_ioctx,
 		     const string& src_oid, const string& src_locator,
 	             librados::IoCtx& dst_ioctx,
@@ -1539,6 +1545,4 @@ public:
    */
   static uint32_t calc_ordered_bucket_list_per_shard(uint32_t num_entries,
 						     uint32_t num_shards);
-};
-
-#endif
+}; // class RGWRados
