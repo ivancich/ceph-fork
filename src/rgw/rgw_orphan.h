@@ -264,8 +264,10 @@ class RGWRadosList {
 			 std::string& bucket_name,
 			 rgw_obj_key& obj_key,
 			 std::set<string>& obj_oids);
+
   int pop_and_handle_stat_op(RGWObjectCtx& obj_ctx,
-			     std::deque<std::unique_ptr<rgw::sal::RGWObject::StatOp>>& ops);
+			     std::deque<std::unique_ptr<rgw::sal::RGWObject::StatOp>>& ops,
+			     const bool pop_all_ready = false);
 
 public:
 

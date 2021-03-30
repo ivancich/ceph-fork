@@ -1046,50 +1046,74 @@ int RGWRadosList::handle_stat_result(rgw::sal::RGWObject::StatOp::Result& result
   return 0;
 } // RGWRadosList::handle_stat_result
 
+
 int RGWRadosList::pop_and_handle_stat_op(
   RGWObjectCtx& obj_ctx,
-  std::deque<std::unique_ptr<rgw::sal::RGWObject::StatOp>>& ops)
+      std::deque<std::unique_ptr<rgw::sal::RGWObject::StatOp>>& ops,
+  const bool pop_all_ready)
 {
   std::string bucket_name;
   rgw_obj_key obj_key;
+  bool is_first_op = true;
   std::set<std::string> obj_oids;
-  std::unique_ptr<rgw::sal::RGWObject::StatOp> front_op = std::move(ops.front());
 
-  int ret = front_op->wait();
-  if (ret < 0) {
-    if (ret != -ENOENT) {
-      lderr(store->ctx()) << "ERROR: stat_async() returned error: " <<
+  while (!ops.empty()) {
+    if (!is_first_op && !pop_all_ready) {
+      // leave if we're after first and we're not popping all
+      break;
+    }
+
+    std::unique_ptr<rgw::sal::RGWObject::StatOp> front_op = std::move(ops.front());
+    if (!is_first_op && !front_op.is_ready()) {
+      // once past the first op, continue only with ready ops
+      break;
+    }
+
+    auto clean =
+      [&front_op, &ops, &obj_ctx]() {
+	// invalidate object context for this object to avoid memory leak
+	// (see pr https://github.com/ceph/ceph/pull/30174)
+	obj_ctx.invalidate(front_op.result.obj);
+
+	ops.pop_front();
+      };
+
+    obj_oids.clear();
+
+    int ret = front_op.wait();
+    if (ret < 0) {
+      if (ret != -ENOENT) {
+	lderr(store->ctx()) << "ERROR: stat_async() returned error: " <<
+	  cpp_strerror(-ret) << dendl;
+      }
+
+      clean();
+      return ret;
+    }
+
+    ret = handle_stat_result(front_op.result, bucket_name, obj_key, obj_oids);
+    if (ret < 0) {
+      lderr(store->ctx()) << "ERROR: handle_stat_result() returned error: " <<
 	cpp_strerror(-ret) << dendl;
     }
-    goto done;
-  }
 
-  ret = handle_stat_result(front_op->result, bucket_name, obj_key, obj_oids);
-  if (ret < 0) {
-    lderr(store->ctx()) << "ERROR: handle_stat_result() returned error: " <<
-      cpp_strerror(-ret) << dendl;
-  }
-
-  // output results
-  for (const auto& o : obj_oids) {
-    if (include_rgw_obj_name) {
-      std::cout << o <<
-	field_separator << bucket_name <<
-	field_separator << obj_key <<
-	std::endl;
-    } else {
-      std::cout << o << std::endl;
+    // output results
+    for (const auto& o : obj_oids) {
+      if (include_rgw_obj_name) {
+	std::cout << o <<
+	  field_separator << bucket_name <<
+	  field_separator << obj_key <<
+	  std::endl;
+      } else {
+	std::cout << o << std::endl;
+      }
     }
-  }
 
-done:
+    clean();
+    is_first_op = false;
+  } // while ops not empty
 
-  // invalidate object context for this object to avoid memory leak
-  // (see pr https://github.com/ceph/ceph/pull/30174)
-  obj_ctx.invalidate(front_op->result.obj->get_obj());
-
-  ops.pop_front();
-  return ret;
+  return 0;
 }
 
 
@@ -1249,7 +1273,7 @@ int RGWRadosList::process_bucket(
 	  }
 
 	  if (stat_ops.size() >= max_concurrent_ios) {
-	    ret = pop_and_handle_stat_op(obj_ctx, stat_ops);
+	    ret = pop_and_handle_stat_op(obj_ctx, stat_ops, true);
 	    if (ret < 0) {
 	      if (ret != -ENOENT) {
 		lderr(store->ctx()) <<

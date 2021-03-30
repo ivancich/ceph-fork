@@ -865,16 +865,17 @@ public:
         librados::AioCompletion *completion;
         int ret;
 
-        State() : completion(NULL), ret(0) {}
+        State() : completion(nullptr), ret(0) {}
       } state;
-
 
       explicit Stat(RGWRados::Object *_source) : source(_source) {}
 
       int stat_async();
       int wait();
-      int stat();
+      bool is_ready(); // async is complete and callback made
+
     private:
+
       int finish();
     };
   };
