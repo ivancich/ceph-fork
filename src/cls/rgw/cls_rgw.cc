@@ -474,6 +474,8 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
     CLS_LOG(1, "ERROR: %s: failed to decode request\n", __func__);
     return -EINVAL;
   }
+  CLS_LOG(0, "ERIC %s: decoded op start_obj=%s num_entries=%d filter_prefix=%s list_versions=%d delimiter=%s",
+	  __func__, escape_str(op.start_obj.to_string()).c_str(), op.num_entries, op.filter_prefix.c_str(), op.list_versions, op.delimiter.c_str());
 
   rgw_cls_list_ret ret;
   rgw_bucket_dir& new_dir = ret.dir;
@@ -528,6 +530,7 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 	 !done &&
 	 name_entry_map.size() < op.num_entries;
        ++attempt) {
+    CLS_LOG(0, "ERIC %s: attempt %d\n", __func__, attempt);
     std::map<std::string, bufferlist> keys;
 
     // note: get_obj_vals skips past the "ugly namespace" (i.e.,
@@ -558,6 +561,8 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 
       start_after_omap_key = kiter->first;
       start_after_entry_key = entry.key;
+      CLS_LOG(0, "ERIC %s: POINT fox %s(%s)\n",
+	      __func__, entry.key.name.c_str(), entry.key.instance.c_str());
       CLS_LOG(20, "%s: working on key=%s len=%zu",
 	      __func__, kiter->first.c_str(), kiter->first.size());
 
@@ -628,10 +633,15 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 	// item and we can just fall through
       }
 
+      CLS_LOG(0, "ERIC %s: POINT goat %s(%s)\n",
+		__func__, key.name.c_str(), key.instance.c_str());
       if (name_entry_map.size() < op.num_entries &&
 	  kiter->first != prev_omap_key) {
         name_entry_map[kiter->first] = entry;
 	prev_omap_key = kiter->first;
+	CLS_LOG(0, "ERIC %s: got object entry %s[%s] num entries=%d\n",
+		__func__, key.name.c_str(), key.instance.c_str(),
+		int(name_entry_map.size()));
 	CLS_LOG(20, "%s: got object entry %s[%s] num entries=%d\n",
 		__func__, key.name.c_str(), key.instance.c_str(),
 		int(name_entry_map.size()));
@@ -641,16 +651,21 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 
   ret.is_truncated = more && !done;
   if (ret.is_truncated) {
+    CLS_LOG(0, "ERIC %s: marker set to '%s'", __func__, escape_str(start_after_entry_key.to_string()).c_str());
     ret.marker = start_after_entry_key;
   }
   CLS_LOG(20, "%s: normal exit returning %ld entries, is_truncated=%d\n",
 	  __func__, ret.dir.m.size(), ret.is_truncated);
   encode(ret, *out);
 
+  CLS_LOG(0, "ERIC %s: about to return, is_truncated=%d, marker=\"%s\", #entries=%ld\n",
+	  __func__, ret.is_truncated, escape_str(ret.marker.to_string()).c_str(), ret.dir.m.size());
   if (ret.is_truncated && name_entry_map.size() == 0) {
     CLS_LOG(5, "%s: returning value RGWBIAdvanceAndRetryError\n", __func__);
+    CLS_LOG(0, "ERIC %s: returning RGWBIAdvanceAndRetryError\n", __func__);
     return RGWBIAdvanceAndRetryError;
   } else {
+    CLS_LOG(0, "ERIC %s: returning 0\n", __func__);
     return 0;
   }
 } // rgw_bucket_list

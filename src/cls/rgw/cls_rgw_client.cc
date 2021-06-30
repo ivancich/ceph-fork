@@ -8,6 +8,8 @@
 
 #include "common/debug.h"
 
+#define dout_subsys ceph_subsys_rgw
+
 using std::list;
 using std::map;
 using std::pair;
@@ -24,10 +26,12 @@ const string BucketIndexShardsManager::SHARDS_SEPARATOR = ",";
 
 int CLSRGWConcurrentIO::operator()() {
   CephContext* dout = (CephContext*)io_ctx.cct();
+  ldout(dout, 0) << "ERIC " << __func__ << " entering, objs_container.size=" << objs_container.size() << dendl;
 
   int ret = 0;
   iter = objs_container.begin();
   for (; iter != objs_container.end() && max_aio-- > 0; ++iter) {
+    ldout(dout, 0) << "ERIC " << __func__ << " issue_op " << iter->first << " / " << iter->second << dendl;
     ret = issue_op(iter->first, iter->second);
     if (ret < 0)
       break;
@@ -53,19 +57,27 @@ int CLSRGWConcurrentIO::operator()() {
 
     // if we're at the end with this round, see if another round is needed
     if (iter == objs_container.end()) {
+      ldout(dout, 0) << "ERIC " << __func__ <<
+	" reached end of objs_container; completed_objs.size=" << completed_objs.size() <<
+	" retry_objs.size=" << retry_objs.size() << dendl;
       if (need_multiple_rounds() && !completed_objs.empty()) {
+	ldout(dout, 0) << "ERIC " << __func__ << " need_multiple_rounds is true" << dendl;
 	// For those objects which need another round, use them to reset
 	// the container
 	reset_container(completed_objs);
 	iter = objs_container.begin();
       } else if (! need_multiple_rounds() && !retry_objs.empty()) {
+	ldout(dout, 0) << "ERIC " << __func__ << " about to retry " << retry_objs.size() << " shards" << dendl;
 	reset_container(retry_objs);
 	iter = objs_container.begin();
       }
 
+      ldout(dout, 0) << "ERIC " << __func__ << " POINT XXX retry.size=" << retry_objs.size() << ", objs_container.size=" << objs_container.size() << dendl;
+
       // if container was reset above
       if (iter != objs_container.end()) {
 	for (; num_completions && iter != objs_container.end(); --num_completions, ++iter) {
+	  ldout(dout, 0) << "ERIC " << __func__ << " bottom issue_op " << iter->first << " / " << iter->second << dendl;
 	  int issue_ret = issue_op(iter->first, iter->second);
 	  if (issue_ret < 0) {
 	    ret = issue_ret;
@@ -79,6 +91,7 @@ int CLSRGWConcurrentIO::operator()() {
   if (ret < 0) {
     cleanup();
   }
+  ldout(dout, 0) << "ERIC " << __func__ << " exiting" << dendl;
   return ret;
 } // CLSRGWConcurrintIO::operator()()
 
@@ -137,6 +150,7 @@ bool BucketIndexAioManager::wait_for_completions(CephContext* dout,
 						 std::map<int, std::string> *completed_objs,
 						 std::map<int, std::string> *retry_objs)
 {
+  ldout(dout, 0) << "ERIC " << __func__ << " entering" << dendl;
   std::unique_lock locker{lock};
   if (pendings.empty() && completions.empty()) {
     return false;
@@ -163,7 +177,9 @@ bool BucketIndexAioManager::wait_for_completions(CephContext* dout,
 	if (r == RGWBIAdvanceAndRetryError) {
 	  r = 0;
 	  if (retry_objs) {
-	    (*retry_objs)[liter->first] = liter->second;
+	    ldout(dout, 0) << "ERIC " << __func__ << " retry id " << liter->first <<
+	      " adding " << liter->second.shard_id << "/" << liter->second.oid << " to retry_objs" << dendl;
+	    (*retry_objs)[liter->second.shard_id] = liter->second.oid;
 	  }
 	}
       } else {
@@ -350,6 +366,8 @@ static bool issue_bucket_list_op(librados::IoCtx& io_ctx,
 
 int CLSRGWIssueBucketList::issue_op(const int shard_id, const string& oid)
 {
+  CephContext* dout = (CephContext*)io_ctx.cct();
+
   // set the marker depending on whether we've already queried this
   // shard and gotten a RGWBIAdvanceAndRetryError (defined
   // constant) return value; if we have use the marker in the return
@@ -359,8 +377,10 @@ int CLSRGWIssueBucketList::issue_op(const int shard_id, const string& oid)
   auto iter = result.find(shard_id);
   if (iter != result.end()) {
     marker = iter->second.marker;
+    ldout(dout, 0) << "ERIC marker assigned from previous result to " << marker.to_string().c_str() << dendl;
   } else {
     marker = start_obj;
+    ldout(dout, 0) << "ERIC marker assigned from original parameter to " << marker.to_string().c_str() << dendl;
   }
 
   return issue_bucket_list_op(io_ctx, shard_id, oid,
@@ -372,6 +392,10 @@ int CLSRGWIssueBucketList::issue_op(const int shard_id, const string& oid)
 
 void CLSRGWIssueBucketList::reset_container(std::map<int, std::string>& objs)
 {
+#if 0
+  CephContext* dout = (CephContext*)io_ctx.cct();
+  ldout(dout, 0) << "ERIC " << __func__ << " RESETTING CONTAINER" << dendl;
+#endif
   objs_container.swap(objs);
   iter = objs_container.begin();
   objs.clear();

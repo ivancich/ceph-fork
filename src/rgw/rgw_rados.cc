@@ -8431,6 +8431,15 @@ int RGWRados::cls_bucket_list_ordered(const DoutPrefixProvider *dpp,
     return r;
   }
 
+  for (auto result : shard_list_results) {
+    ldpp_dout(dpp, 0) << "ERIC RGWRados::" << __func__ << " RESULT for shard " << result.first << " got results is_truncated=" << result.second.is_truncated << " entries.size=" << result.second.dir.m.size() << dendl;
+  }
+  
+  ldpp_dout(dpp, 0) << "ERIC RGWRados::" << __func__ << 
+    " request from each of " << shard_count <<
+    " shard(s) for " << num_entries_per_shard << " entries to get " <<
+    num_entries << " total entries" << dendl;
+
   // to manage the iterators through each shard's list results
   struct ShardTracker {
     const size_t shard_idx;
