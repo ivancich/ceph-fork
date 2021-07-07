@@ -2474,10 +2474,13 @@ static int list_plain_entries(cls_method_context_t hctx,
                               bool *end_key_reached,
                               bool *pmore)
 {
+  CLS_LOG(0, "AAA.2.a filter=\"%s\" start_after_key=\"%s\" end_key=\"%s\" max=%d",
+	  escape_str(filter).c_str(), escape_str(start_after_key).c_str(), escape_str(end_key).c_str(), max);
   int count = 0;
   map<string, bufferlist> keys;
   int ret = cls_cxx_map_get_vals(hctx, start_after_key, filter, max,
 				 &keys, pmore);
+  CLS_LOG(0, "AAA.2.b ret=%d keys.size=%ld pmore=%d", ret, keys.size(), *pmore);
   if (ret < 0) {
     return ret;
   }
@@ -2531,6 +2534,7 @@ static int list_plain_entries(cls_method_context_t hctx,
                               uint32_t max,
                               list<rgw_cls_bi_entry> *entries,
                               bool *pmore) {
+  CLS_LOG(0, "AAA.1.a name=\"%s\" marker=\"%s\" max=%d", escape_str(name).c_str(), escape_str(marker).c_str(), max);
   string start_after_key = marker;
   string end_key;
   bi_log_prefix(end_key);
@@ -2542,6 +2546,7 @@ static int list_plain_entries(cls_method_context_t hctx,
     // listing ascii plain namespace
     int r = list_plain_entries(hctx, name, start_after_key, end_key, max,
                                entries, &end_key_reached, &more);
+    CLS_LOG(0, "AAA.1.b r=%d entries.size=%ld end_key_reached=%d more=%d", r, entries->size(), end_key_reached, more);
     if (r < 0) {
       return r;
     }
@@ -2558,6 +2563,7 @@ static int list_plain_entries(cls_method_context_t hctx,
   // listing non-ascii plain namespace
   r = list_plain_entries(hctx, name, start_after_key, {}, max, entries,
                          &end_key_reached, &more);
+  CLS_LOG(0, "AAA.1.c r=%d entries.size=%ld end_key_reached=%d more=%d", r, entries->size(), end_key_reached, more);
   if (r < 0) {
     return r;
   }
