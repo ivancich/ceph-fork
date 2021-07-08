@@ -2491,6 +2491,7 @@ static int list_plain_entries(cls_method_context_t hctx,
     if (!end_key.empty() && iter->first >= end_key) {
       *end_key_reached = true;
       *pmore = true;
+      CLS_LOG(0, "AAA.2.c hit end key \"%s\" >= \"%s\"", escape_str(iter->first).c_str(), escape_str(end_key).c_str());
       return count;
     }
 
@@ -2506,6 +2507,7 @@ static int list_plain_entries(cls_method_context_t hctx,
       decode(e, biter);
     } catch (ceph::buffer::error& err) {
       CLS_LOG(0, "ERROR: %s(): failed to decode buffer", __func__);
+      CLS_LOG(0, "AAA.2.d failed to decode \"%s\"", escape_str(iter->first).c_str());
       return -EIO;
     }
 
@@ -2513,6 +2515,7 @@ static int list_plain_entries(cls_method_context_t hctx,
             escape_str(entry.idx).c_str(), escape_str(e.key.name).c_str());
 
     if (!filter.empty() && e.key.name != filter) {
+      CLS_LOG(0, "AAA.2.e passed filter \"%s\" != \"%s\"", escape_str(e.key.name).c_str(), escape_str(filter).c_str());
       /* we are skipping the rest of the entries */
       *pmore = false;
       return count;
@@ -2520,11 +2523,17 @@ static int list_plain_entries(cls_method_context_t hctx,
 
     entries->push_back(entry);
     count++;
+    CLS_LOG(0, "AAA.2.f adding entry %d entry.idx=\"%s\" e.key.name=\"%s\"",
+	    count,
+            escape_str(entry.idx).c_str(),
+	    escape_str(e.key.name).c_str());
     if (count >= (int)max) {
+      CLS_LOG(0, "AAA.2.g exiting early since count too high %d >= %d", count, int(max));
       return count;
     }
   }
 
+  CLS_LOG(0, "AAA.2.g exiting normally, count=%d", count);
   return count;
 }
 
