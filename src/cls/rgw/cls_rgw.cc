@@ -523,6 +523,8 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
     if (rc < 0) {
       return rc;
     }
+    CLS_LOG(20, "%s: on attempt %d get_obj_vls returned %ld entries, more=%d\n",
+	    __func__, attempt, keys.size(), more);
 
     done = keys.empty();
 
@@ -627,6 +629,8 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
   } // for (int attempt...
 
   ret.is_truncated = more && !done;
+  CLS_LOG(20, "%s: normal exit returning %ld entries, is_truncated=%d\n",
+	  __func__, ret.dir.m.size(), ret.is_truncated);
   encode(ret, *out);
   return 0;
 } // rgw_bucket_list
