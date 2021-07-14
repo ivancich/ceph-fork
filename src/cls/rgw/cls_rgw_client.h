@@ -12,6 +12,7 @@
 #include "include/compat.h"
 #include "common/ceph_time.h"
 #include "common/ceph_mutex.h"
+#include "common/debug.h"
 
 
 #define dout_subsys ceph_subsys_rgw
@@ -116,7 +117,8 @@ public:
    *
    * Return false if there is no pending AIO, true otherwise.
    */
-  bool wait_for_completions(int valid_ret_code,
+  bool wait_for_completions(CephContext* dout,
+			    int valid_ret_code,
 			    int *num_completions = nullptr,
 			    int *ret_code = nullptr,
 			    std::map<int, std::string> *completed_objs = nullptr,
