@@ -485,6 +485,12 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
     return rc;
   }
 
+  // some calls just want the header and request 0 entries
+  if (op.num_entries <= 0) {
+    ret.is_truncated = false;
+    return 0;
+  }
+
   // key that we can start listing at, one of a) sent in by caller, b)
   // last item visited, or c) when delimiter present, a key that will
   // move past the subdirectory
@@ -642,8 +648,8 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
   encode(ret, *out);
 
   if (ret.is_truncated && name_entry_map.size() == 0) {
-    CLS_LOG(5, "%s: returning value -EAGAIN\n", __func__);
-    return -EAGAIN;
+    CLS_LOG(5, "%s: returning value RGWBucketListAdvanceRetryError\n", __func__);
+    return RGWBucketListAdvanceRetryError;
   } else {
     return 0;
   }
