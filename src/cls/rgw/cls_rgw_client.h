@@ -13,6 +13,10 @@
 #include "common/ceph_time.h"
 #include "common/ceph_mutex.h"
 
+
+#define dout_subsys ceph_subsys_rgw
+
+
 // Forward declaration
 class BucketIndexAioManager;
 /*
@@ -428,6 +432,7 @@ class CLSRGWIssueBucketList : public CLSRGWConcurrentIO {
 
 protected:
   int issue_op(const int shard_id, const std::string& oid) override;
+  void reset_container(std::map<int, std::string>& objs) override;
 
 public:
   CLSRGWIssueBucketList(librados::IoCtx& io_ctx,
