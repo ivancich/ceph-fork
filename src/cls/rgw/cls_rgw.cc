@@ -2891,10 +2891,15 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
     return -EINVAL;
   }
 
+  constexpr uint32_t MAX_BI_LIST_ENTRIES = 1000;
+  const uint32_t max = std::min(op.max, MAX_BI_LIST_ENTRIES);
+
+  CLS_LOG(20, "INFO: %s: op.marker=%s, op.name_filter=%s, op.max=%u max=%u\n",
+	  __func__, escape_str(op.marker).c_str(), escape_str(op.name_filter).c_str(),
+	  op.max, max);
+
   int ret;
-  int count = 0;
-  constexpr int MAX_BI_LIST_ENTRIES = 1000;
-  const int32_t max = (op.max < MAX_BI_LIST_ENTRIES ? op.max : MAX_BI_LIST_ENTRIES);
+  uint32_t count = 0;
   bool more = false;
   rgw_cls_bi_list_ret op_ret;
 
@@ -2907,7 +2912,7 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
   }
 
   count = ret;
-  CLS_LOG(20, "found %d plain ascii (low) entries", count);
+  CLS_LOG(20, "INFO: %s: found %d plain ascii (low) entries, count=%u", __func__, ret, count);
 
   if (!more) {
     ret = list_instance_entries(hctx, op.name_filter, op.marker, max - count, &op_ret.entries, &more);
@@ -2917,6 +2922,7 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
     }
 
     count += ret;
+    CLS_LOG(20, "INFO: %s: found %d instance entries, count=%u", __func__, ret, count);
   }
 
   if (!more) {
@@ -2927,6 +2933,7 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
     }
 
     count += ret;
+    CLS_LOG(20, "INFO: %s: found %d olh entries, count=%u", __func__, ret, count);
   }
 
   if (!more) {
@@ -2938,8 +2945,8 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
       return ret;
     }
 
-    count = ret;
-    CLS_LOG(20, "found %d non-ascii (high) plain entries", count);
+    count += ret;
+    CLS_LOG(20, "INFO: %s: found %d non-ascii (high) plain entries, count=%u", __func__, ret, count);
   }
 
   op_ret.is_truncated = (count > max) || more;
@@ -2948,10 +2955,11 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
     count--;
   }
 
+  CLS_LOG(20, "INFO: %s: returning %lu entries, is_truncated=%d\n", __func__, op_ret.entries.size(), op_ret.is_truncated);
   encode(op_ret, *out);
 
   return 0;
-}
+} // rgw_bi_list_op
 
 
 int bi_log_record_decode(bufferlist& bl, rgw_bi_log_entry& e)
