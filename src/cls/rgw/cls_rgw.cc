@@ -384,12 +384,20 @@ static void split_key(const string& key, list<string>& vals)
   }
 }
 
-static string escape_str(const string& s)
+static std::string escape_str(const std::string& s)
 {
   int len = escape_json_attr_len(s.c_str(), s.size());
   std::string escaped(len, 0);
   escape_json_attr(s.c_str(), s.size(), escaped.data());
   return escaped;
+}
+
+static std::string quote_escape(const std::string& s) {
+  std::string escaped(escape_str(s));
+  std::string result;
+  result.reserve(2 + escaped.length());
+  result.append("\"").append(escaped).append("\"");
+  return result;
 }
 
 /*
@@ -2565,10 +2573,15 @@ static int list_plain_entries_help(cls_method_context_t hctx,
 				   bool& end_key_reached,
 				   bool& more)
 {
+  CLS_LOG(10, "Entered %s: name_filter=%s, start_after_key=%s, end_key=%s, max=%d\n",
+	  __func__, quote_escape(name_filter).c_str(), quote_escape(start_after_key).c_str(),
+	  quote_escape(end_key).c_str(), max);
   int count = 0;
   std::map<std::string, bufferlist> raw_entries;
   int ret = cls_cxx_map_get_vals(hctx, start_after_key, name_filter, max,
 				 &raw_entries, &more);
+  CLS_LOG(20, "%s: cls_cxx_map_get_vals ret=%d, raw_entries.size()=%lu, more=%d\n",
+	  __func__, ret, raw_entries.size(), more);
   if (ret < 0) {
     return ret;
   }
@@ -2576,6 +2589,8 @@ static int list_plain_entries_help(cls_method_context_t hctx,
   end_key_reached = false;
   for (auto iter : raw_entries) {
     if (!end_key.empty() && iter.first >= end_key) {
+      CLS_LOG(20, "%s: end key reached at %s\n",
+	      __func__, quote_escape(iter.first).c_str());
       end_key_reached = true;
       more = false;
       return count;
@@ -2586,17 +2601,17 @@ static int list_plain_entries_help(cls_method_context_t hctx,
     try {
       decode(e, biter);
     } catch (ceph::buffer::error& err) {
-      CLS_LOG(0, "ERROR: %s: failed to decode buffer for plain bucket index entry \"%s\"",
-	      __func__, escape_str(iter.first).c_str());
+      CLS_LOG(0, "ERROR: %s: failed to decode buffer for plain bucket index entry %s",
+	      __func__, quote_escape(iter.first).c_str());
       return -EIO;
     }
 
     if (!name_filter.empty() && e.key.name > name_filter) {
-      CLS_LOG(20, "%s: due to filter \"%s\", skipping entry.idx=\"%s\" e.key.name=\"%s\"",
+      CLS_LOG(20, "%s: due to filter %s, skipping entry.idx=%s e.key.name=%s",
 	      __func__,
-	      escape_str(name_filter).c_str(),
-	      escape_str(iter.first).c_str(),
-	      escape_str(e.key.name).c_str());
+	      quote_escape(name_filter).c_str(),
+	      quote_escape(iter.first).c_str(),
+	      quote_escape(e.key.name).c_str());
       // skip the rest of the entries
       more = false;
 #if 0
@@ -2614,11 +2629,11 @@ static int list_plain_entries_help(cls_method_context_t hctx,
     entries->push_back(entry);
     count++;
 
-    CLS_LOG(20, "%s: adding entry %d entry.idx=\"%s\" e.key.name=\"%s\"",
+    CLS_LOG(20, "%s: adding entry %d entry.idx=%s e.key.name=%s",
 	    __func__,
 	    count,
-            escape_str(entry.idx).c_str(),
-	    escape_str(e.key.name).c_str());
+            quote_escape(entry.idx).c_str(),
+	    quote_escape(e.key.name).c_str());
 
     if (count >= int(max)) {
       // NB: this looks redundant, but leave in for time being
@@ -2646,6 +2661,8 @@ static int list_plain_entries(cls_method_context_t hctx,
                               bool* pmore,
 			      const PlainEntriesRegion region = PlainEntriesRegion::Both)
 {
+  CLS_LOG(10, "entered %s: name_filter=%s, marker=%s, max=%d, region=%d\n",
+	  __func__, quote_escape(name_filter).c_str(), quote_escape(marker).c_str(), max, static_cast<int>(region));
   int r;
   bool end_key_reached;
   bool more = false;
@@ -2655,6 +2672,8 @@ static int list_plain_entries(cls_method_context_t hctx,
     // listing ascii plain namespace
     int r = list_plain_entries_help(hctx, name_filter, marker, BI_PREFIX_BEGIN, max,
 				    entries, end_key_reached, more);
+    CLS_LOG(20, "%s: first list_plain_entries_help r=%d, end_key_reached=%d, more=%d\n",
+	    __func__, r, end_key_reached, more);
     if (r < 0) {
       return r;
     }
@@ -2677,6 +2696,8 @@ static int list_plain_entries(cls_method_context_t hctx,
     // listing non-ascii plain namespace
     r = list_plain_entries_help(hctx, name_filter, start_after_key, {}, max,
 				entries, end_key_reached, more);
+    CLS_LOG(20, "%s: second list_plain_entries_help r=%d, end_key_reached=%d, more=%d\n",
+	    __func__, r, end_key_reached, more);
     if (r < 0) {
       return r;
     }
@@ -2726,8 +2747,8 @@ static int list_instance_entries(cls_method_context_t hctx,
     ret = cls_cxx_map_get_vals(hctx, start_after_key, string(), max,
 			       &keys, pmore);
     CLS_LOG(20, "%s(): start_after_key=%s first_instance_idx=%s keys.size()=%d",
-	    __func__, escape_str(start_after_key).c_str(),
-	    escape_str(first_instance_idx).c_str(), (int)keys.size());
+	    __func__, quote_escape(start_after_key).c_str(),
+	    quote_escape(first_instance_idx).c_str(), (int)keys.size());
     if (ret < 0) {
       return ret;
     }
@@ -2750,7 +2771,7 @@ static int list_instance_entries(cls_method_context_t hctx,
       return count;
     }
 
-    CLS_LOG(20, "%s(): entry.idx=%s", __func__, escape_str(entry.idx).c_str());
+    CLS_LOG(20, "%s(): entry.idx=%s", __func__, quote_escape(entry.idx).c_str());
 
     auto biter = entry.data.cbegin();
 
@@ -2816,8 +2837,8 @@ static int list_olh_entries(cls_method_context_t hctx,
     ret = cls_cxx_map_get_vals(hctx, start_after_key, string(), max,
 			       &keys, pmore);
     CLS_LOG(20, "%s(): start_after_key=%s first_instance_idx=%s keys.size()=%d",
-	    __func__, escape_str(start_after_key).c_str(),
-	    escape_str(first_instance_idx).c_str(), (int)keys.size());
+	    __func__, quote_escape(start_after_key).c_str(),
+	    quote_escape(first_instance_idx).c_str(), (int)keys.size());
     if (ret < 0) {
       return ret;
     }
@@ -2841,7 +2862,7 @@ static int list_olh_entries(cls_method_context_t hctx,
       return count;
     }
 
-    CLS_LOG(20, "%s(): entry.idx=%s", __func__, escape_str(entry.idx).c_str());
+    CLS_LOG(20, "%s(): entry.idx=%s", __func__, quote_escape(entry.idx).c_str());
 
     auto biter = entry.data.cbegin();
 
@@ -2908,6 +2929,9 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
   constexpr uint32_t MAX_BI_LIST_ENTRIES = 1000;
   const uint32_t max = std::min(op.max, MAX_BI_LIST_ENTRIES);
 
+  CLS_LOG(20, "%s: op.marker=%s, op.name_filter=%s, op.max=%u max=%u\n",
+	  __func__, quote_escape(op.marker).c_str(), quote_escape(op.name_filter).c_str(),
+	  op.max, max);
 
   int ret;
   uint32_t count = 0;
@@ -2917,13 +2941,13 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
   ret = list_plain_entries(hctx, op.name_filter, op.marker, max,
 			   &op_ret.entries, &more, PlainEntriesRegion::Low);
   if (ret < 0) {
-    CLS_LOG(0, "ERROR: %s: list_plain_entries (low) returned ret=%d, marker=\"%s\", filter=\"%s\", max=%d",
-	    __func__, ret, escape_str(op.marker).c_str(), escape_str(op.name_filter).c_str(), max);
+    CLS_LOG(0, "ERROR: %s: list_plain_entries (low) returned ret=%d, marker=%s, filter=%s, max=%d",
+	    __func__, ret, quote_escape(op.marker).c_str(), quote_escape(op.name_filter).c_str(), max);
     return ret;
   }
 
   count = ret;
-  CLS_LOG(20, "found %d plain ascii (low) entries", count);
+  CLS_LOG(20, "%s: found %d plain ascii (low) entries, count=%u", __func__, ret, count);
 
   if (!more) {
     ret = list_instance_entries(hctx, op.name_filter, op.marker, max - count, &op_ret.entries, &more);
@@ -2933,6 +2957,7 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
     }
 
     count += ret;
+    CLS_LOG(20, "%s: found %d instance entries, count=%u", __func__, ret, count);
   }
 
   if (!more) {
@@ -2943,19 +2968,20 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
     }
 
     count += ret;
+    CLS_LOG(20, "%s: found %d olh entries, count=%u", __func__, ret, count);
   }
 
   if (!more) {
     ret = list_plain_entries(hctx, op.name_filter, op.marker, max,
 			     &op_ret.entries, &more, PlainEntriesRegion::High);
     if (ret < 0) {
-      CLS_LOG(0, "ERROR: %s: list_plain_entries (high) returned ret=%d, marker=\"%s\", filter=\"%s\", max=%d",
-	      __func__, ret, escape_str(op.marker).c_str(), escape_str(op.name_filter).c_str(), max);
+      CLS_LOG(0, "ERROR: %s: list_plain_entries (high) returned ret=%d, marker=%s, filter=%s, max=%d",
+	      __func__, ret, quote_escape(op.marker).c_str(), quote_escape(op.name_filter).c_str(), max);
       return ret;
     }
 
     count += ret;
-    CLS_LOG(20, "found %d non-ascii (high) plain entries", count);
+    CLS_LOG(20, "%s: found %d non-ascii (high) plain entries, count=%u", __func__, ret, count);
   }
 
   op_ret.is_truncated = (count > max) || more;
@@ -2964,6 +2990,7 @@ static int rgw_bi_list_op(cls_method_context_t hctx,
     count--;
   }
 
+  CLS_LOG(20, "%s: returning %lu entries, is_truncated=%d\n", __func__, op_ret.entries.size(), op_ret.is_truncated);
   encode(op_ret, *out);
 
   return 0;
