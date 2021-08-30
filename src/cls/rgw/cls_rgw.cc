@@ -2614,10 +2614,7 @@ static int list_plain_entries_help(cls_method_context_t hctx,
 	      quote_escape(e.key.name).c_str());
       // skip the rest of the entries
       more = false;
-#if 0
-#warning extra test
       end_key_reached = true;
-#endif
       return count;
     }
 
@@ -2642,7 +2639,7 @@ static int list_plain_entries_help(cls_method_context_t hctx,
   } // iter for loop
 
   return count;
-}
+} // list_plain_entries_help
 
 /*
  * Lists plain entries in either or both regions, the region of those
