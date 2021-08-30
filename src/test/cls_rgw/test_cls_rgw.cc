@@ -652,6 +652,49 @@ TEST_F(cls_rgw, bi_list)
     ASSERT_EQ(entries.size(), 0u);
     ASSERT_EQ(is_truncated, false);
   }
+
+  // test with name filters; pairs contain filter and expected number of elements returned
+  const std::list<std::pair<const std::string,unsigned>> filters_results =
+    { { str_int("obj", 9), 1 },
+      { str_int("об'єкт", 8), 1 },
+      { str_int("obj", 8), 0 } };
+  for (const auto& filter_result : filters_results) {
+    is_truncated = true;
+    entries.clear();
+    marker.clear();
+
+    ret = cls_rgw_bi_list(ioctx, bucket_oid, filter_result.first, marker, max,
+			  &entries, &is_truncated);
+
+    ASSERT_EQ(ret, 0) << "bi list test with name filters should succeed";
+    ASSERT_EQ(entries.size(), filter_result.second) <<
+      "bi list test with filters should return the correct number of results";
+    ASSERT_EQ(is_truncated, false) <<
+      "bi list test with filters should return correct truncation indicator";
+  }
+
+  // test whether combined segment count is correcgt
+  is_truncated = false;
+  entries.clear();
+  marker.clear();
+
+  ret = cls_rgw_bi_list(ioctx, bucket_oid, empty_name_filter, marker, num_objs - 1,
+			&entries, &is_truncated);
+  ASSERT_EQ(ret, 0) << "combined segment count should succeed";
+  ASSERT_EQ(entries.size(), num_objs - 1) <<
+    "combined segment count should return the correct number of results";
+  ASSERT_EQ(is_truncated, true) <<
+    "combined segment count should return correct truncation indicator";
+
+
+  marker = entries.back().idx; // advance marker
+  ret = cls_rgw_bi_list(ioctx, bucket_oid, empty_name_filter, marker, num_objs - 1,
+			&entries, &is_truncated);
+  ASSERT_EQ(ret, 0) << "combined segment count should succeed";
+  ASSERT_EQ(entries.size(), 1) <<
+    "combined segment count should return the correct number of results";
+  ASSERT_EQ(is_truncated, false) <<
+    "combined segment count should return correct truncation indicator";
 }
 
 /* test garbage collection */
