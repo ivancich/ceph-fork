@@ -1786,8 +1786,8 @@ int RGWRados::Bucket::update_bucket_id(const string& new_bucket_id, const DoutPr
 int RGWRados::Bucket::List::list_objects_ordered(
   const DoutPrefixProvider *dpp,
   int64_t max_p,
-  vector<rgw_bucket_dir_entry> *result,
-  map<string, bool> *common_prefixes,
+  std::vector<rgw_bucket_dir_entry> *result,
+  std::map<std::string, bool> *common_prefixes,
   bool *is_truncated,
   optional_yield y)
 {
@@ -1821,8 +1821,8 @@ int RGWRados::Bucket::List::list_objects_ordered(
 
   rgw_obj_key prefix_obj(params.prefix);
   prefix_obj.set_ns(params.ns);
-  string cur_prefix = prefix_obj.get_index_key_name();
-  string after_delim_s; /* needed in !params.delim.empty() AND later */
+  std::string cur_prefix = prefix_obj.get_index_key_name();
+  std::string after_delim_s; /* needed in !params.delim.empty() AND later */
 
   if (!params.delim.empty()) {
     after_delim_s = cls_rgw_after_delim(params.delim);
@@ -2114,9 +2114,9 @@ done:
  */
 int RGWRados::Bucket::List::list_objects_unordered(const DoutPrefixProvider *dpp,
                                                    int64_t max_p,
-						   vector<rgw_bucket_dir_entry> *result,
-						   map<string, bool> *common_prefixes,
-						   bool *is_truncated,
+						   std::vector<rgw_bucket_dir_entry>* result,
+						   std::map<std::string, bool>* common_prefixes,
+						   bool* is_truncated,
                                                    optional_yield y)
 {
   RGWRados *store = target->get_store();
@@ -2153,7 +2153,7 @@ int RGWRados::Bucket::List::list_objects_unordered(const DoutPrefixProvider *dpp
 
   rgw_obj_key prefix_obj(params.prefix);
   prefix_obj.set_ns(params.ns);
-  string cur_prefix = prefix_obj.get_index_key_name();
+  std::string cur_prefix = prefix_obj.get_index_key_name();
 
   while (truncated && count <= max) {
     std::vector<rgw_bucket_dir_entry> ent_list;
@@ -2237,7 +2237,7 @@ int RGWRados::Bucket::List::list_objects_unordered(const DoutPrefixProvider *dpp
 	  (0 != obj.name.compare(0, params.prefix.size(), params.prefix))) {
         ldpp_dout(dpp, 20) << __func__ <<
 	  ": skippping \"" << index_key <<
-	  "\" because doesn't match prefix" << dendl; 
+	  "\" because doesn't match prefix" << dendl;
 	continue;
       }
 
@@ -8433,15 +8433,15 @@ int RGWRados::cls_bucket_list_ordered(const DoutPrefixProvider *dpp,
                                       RGWBucketInfo& bucket_info,
 				      const int shard_id,
 				      const rgw_obj_index_key& start_after,
-				      const string& prefix,
-				      const string& delimiter,
+				      const std::string& prefix,
+				      const std::string& delimiter,
 				      const uint32_t num_entries,
 				      const bool list_versions,
 				      const uint16_t expansion_factor,
 				      ent_map_t& m,
 				      bool* is_truncated,
 				      bool* cls_filtered,
-				      rgw_obj_index_key *last_entry,
+				      rgw_obj_index_key* last_entry,
                                       optional_yield y,
 				      check_filter_t force_check_filter)
 {
@@ -8468,7 +8468,7 @@ int RGWRados::cls_bucket_list_ordered(const DoutPrefixProvider *dpp,
   // key   - oid (for different shards if there is any)
   // value - list result for the corresponding oid (shard), it is filled by
   //         the AIO callback
-  map<int, string> shard_oids;
+  std::map<int, std::string> shard_oids;
   int r = svc.bi_rados->open_bucket_index(dpp, bucket_info, shard_id,
 					  &index_pool, &shard_oids,
 					  nullptr);
@@ -8499,7 +8499,7 @@ int RGWRados::cls_bucket_list_ordered(const DoutPrefixProvider *dpp,
     num_entries << " total entries" << dendl;
 
   auto& ioctx = index_pool.ioctx();
-  map<int, rgw_cls_list_ret> shard_list_results;
+  std::map<int, rgw_cls_list_ret> shard_list_results;
   cls_rgw_obj_key start_after_key(start_after.name, start_after.instance);
   r = CLSRGWIssueBucketList(ioctx, start_after_key, prefix, delimiter,
 			    num_entries_per_shard,
@@ -8595,7 +8595,7 @@ int RGWRados::cls_bucket_list_ordered(const DoutPrefixProvider *dpp,
 
   rgw_bucket_dir_entry*
     last_entry_visited = nullptr; // to set last_entry (marker)
-  map<string, bufferlist> updates;
+  std::map<std::string, bufferlist> updates;
   uint32_t count = 0;
   while (count < num_entries && !candidates.empty()) {
     r = 0;
@@ -8605,7 +8605,7 @@ int RGWRados::cls_bucket_list_ordered(const DoutPrefixProvider *dpp,
     tracker_idx = candidates.begin()->second;
     auto& tracker = results_trackers.at(tracker_idx);
 
-    const string& name = tracker.entry_name();
+    const std::string& name = tracker.entry_name();
     rgw_bucket_dir_entry& dirent = tracker.dir_entry();
 
     ldpp_dout(dpp, 20) << __func__ << ": currently processing " <<
@@ -8741,7 +8741,7 @@ int RGWRados::cls_bucket_list_unordered(const DoutPrefixProvider *dpp,
                                         RGWBucketInfo& bucket_info,
 					int shard_id,
 					const rgw_obj_index_key& start_after,
-					const string& prefix,
+					const std::string& prefix,
 					uint32_t num_entries,
 					bool list_versions,
 					std::vector<rgw_bucket_dir_entry>& ent_list,
@@ -8765,7 +8765,7 @@ int RGWRados::cls_bucket_list_unordered(const DoutPrefixProvider *dpp,
   *is_truncated = false;
   RGWSI_RADOS::Pool index_pool;
 
-  map<int, string> oids;
+  std::map<int, std::string> oids;
   int r = svc.bi_rados->open_bucket_index(dpp, bucket_info, shard_id, &index_pool, &oids, nullptr);
   if (r < 0) {
     return r;
@@ -8825,7 +8825,7 @@ int RGWRados::cls_bucket_list_unordered(const DoutPrefixProvider *dpp,
   }
 
   uint32_t count = 0u;
-  map<string, bufferlist> updates;
+  std::map<std::string, bufferlist> updates;
   rgw_obj_index_key last_added_entry;
   while (count <= num_entries &&
 	 ((shard_id >= 0 && current_shard == uint32_t(shard_id)) ||
@@ -8900,7 +8900,7 @@ int RGWRados::cls_bucket_list_unordered(const DoutPrefixProvider *dpp,
 check_updates:
 
   // suggest updates if there is any
-  map<string, bufferlist>::iterator miter = updates.begin();
+  std::map<std::string, bufferlist>::iterator miter = updates.begin();
   for (; miter != updates.end(); ++miter) {
     if (miter->second.length()) {
       ObjectWriteOperation o;
