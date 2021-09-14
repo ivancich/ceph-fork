@@ -2,6 +2,8 @@ overrides:
   ceph:
     wait-for-scrub: false
     conf:
+      osd:
+        debug objclass: 20
       client:
         setuser: ceph
         setgroup: ceph
