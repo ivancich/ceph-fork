@@ -270,6 +270,7 @@ int RadosBucket::remove_bucket(const DoutPrefixProvider* dpp,
 
   /* If there's a prefix, then we are aborting multiparts as well */
   if (!prefix.empty()) {
+#warning "why only if there's a prefix?"
     ret = abort_multiparts(dpp, store->ctx(), prefix, delimiter);
     if (ret < 0) {
       return ret;
