@@ -692,6 +692,9 @@ EOF
         ; needed for passing lc time based s3-tests (can be verbose)
         ; rgw lc debug interval = 10
         $(format_conf "${extra_conf}")
+        rgw_max_objs_per_shard = 200
+        rgw_reshard_thread_interval = 90
+        rgw_reshard_num_logs = 2
 EOF
 	do_rgw_conf
 	wconf << EOF
