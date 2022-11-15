@@ -274,6 +274,7 @@ int RGWBucketReshard::set_resharding_status(const DoutPrefixProvider *dpp,
   cls_rgw_bucket_instance_entry instance_entry;
   instance_entry.set_status(new_instance_id, num_shards, status);
 
+  ldpp_dout(dpp, 0) << "TEMP_WATCH: " << __func__ << " calling bucket_set_reshard with bucket_info=" << &bucket_info << " and instance_entry=" << instance_entry << dendl;
   int ret = store->getRados()->bucket_set_reshard(dpp, bucket_info, instance_entry);
   if (ret < 0) {
     ldpp_dout(dpp, 0) << "RGWReshard::" << __func__ << " ERROR: error setting bucket resharding flag on bucket index: "
@@ -293,6 +294,7 @@ int RGWBucketReshard::clear_resharding(const DoutPrefixProvider *dpp,
   // default constructed = NOT_RESHARDING
   cls_rgw_bucket_instance_entry instance_entry;
 
+  ldpp_dout(dpp, 0) << "TEMP_WATCH: " << __func__ << " calling bucket_set_reshard with bucket_info=" << &bucket_info << " and instance_entry=" << instance_entry << dendl;
   ret = store->getRados()->bucket_set_reshard(dpp, bucket_info, instance_entry);
   if (ret < 0) {
     ldpp_dout(dpp, 0) << "RGWReshard::" << __func__ <<

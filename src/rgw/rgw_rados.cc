@@ -4957,6 +4957,7 @@ int RGWRados::bucket_set_reshard(const DoutPrefixProvider *dpp, const RGWBucketI
   }
 
   r = CLSRGWIssueSetBucketResharding(index_pool.ioctx(), bucket_objs, entry, cct->_conf->rgw_bucket_index_max_aio)();
+  ldpp_dout(dpp, 0) << __func__ << ": TEMP_WATCH: CLSRGWIssueSetBucketResharding returned: " << r << dendl;
   return r;
 }
 
@@ -6844,6 +6845,9 @@ int RGWRados::block_while_resharding(RGWRados::BucketShard *bs,
       RGWBucketReshardLock reshard_lock(this->store, bucket_info, true);
       ret = reshard_lock.lock();
       if (ret == -ENOENT) {
+	ldpp_dout(dpp, 20) << __func__ <<
+	  " TEMP_WATCH INFO: failed to take reshard lock for bucket " <<
+	  bucket_id << " because the shard no longer appears to exist; retrying" << dendl;
 	continue;
       } else if (ret < 0) {
 	ldpp_dout(dpp, 20) << __func__ <<
