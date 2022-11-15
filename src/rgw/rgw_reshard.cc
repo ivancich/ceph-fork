@@ -266,6 +266,7 @@ int RGWBucketReshard::set_resharding_status(const DoutPrefixProvider *dpp,
 					    int32_t num_shards,
 					    cls_rgw_reshard_status status)
 {
+#warning point C
   if (new_instance_id.empty()) {
     ldpp_dout(dpp, 0) << __func__ << " missing new bucket instance id" << dendl;
     return -EINVAL;
@@ -289,6 +290,7 @@ int RGWBucketReshard::clear_resharding(const DoutPrefixProvider *dpp,
                                        rgw::sal::RGWRadosStore* store,
 				       const RGWBucketInfo& bucket_info)
 {
+#warning point B
   int ret;
 
   // default constructed = NOT_RESHARDING

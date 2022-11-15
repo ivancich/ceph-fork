@@ -4948,6 +4948,7 @@ int RGWRados::bucket_rebuild_index(const DoutPrefixProvider *dpp, RGWBucketInfo&
 
 int RGWRados::bucket_set_reshard(const DoutPrefixProvider *dpp, const RGWBucketInfo& bucket_info, const cls_rgw_bucket_instance_entry& entry)
 {
+#warning POINT D
   RGWSI_RADOS::Pool index_pool;
   map<int, string> bucket_objs;
 
@@ -6836,6 +6837,7 @@ int RGWRados::block_while_resharding(RGWRados::BucketShard *bs,
     // lock then it means no other resharding should be taking place,
     // and we're free to clear the flags.
     {
+#warning POINT A.0
       // since we expect to do this rarely, we'll do our work in a
       // block and erase our work after each try
 
@@ -6858,6 +6860,7 @@ int RGWRados::block_while_resharding(RGWRados::BucketShard *bs,
 	  " INFO: was able to take reshard lock for bucket " <<
 	  bucket_id << dendl;
 
+#warning Point A
 	ret = RGWBucketReshard::clear_resharding(dpp, this->store, bucket_info);
 	reshard_lock.unlock();
 
