@@ -122,6 +122,12 @@ which are as follows:
 :command:`bucket sync enable`
   Enable bucket sync.
 
+:command:`bucket versioning enable`
+  Enable bucket versioning.
+
+:command:`bucket versioning suspend`
+  Suspend bucket versioning.
+
 :command:`bi get`
   Retrieve bucket index object entries.
 

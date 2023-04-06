@@ -875,10 +875,10 @@ inline std::ostream& operator<<(std::ostream& out, const RGWObjVersionTracker &o
 
 enum RGWBucketFlags {
   BUCKET_SUSPENDED = 0x1,
-  BUCKET_VERSIONED = 0x2,
-  BUCKET_VERSIONS_SUSPENDED = 0x4,
+  BUCKET_VERSIONED = 0x2,          // bucket uses S3 versioning
+  BUCKET_VERSIONS_SUSPENDED = 0x4, // S3 versioning has been suspended
   BUCKET_DATASYNC_DISABLED = 0X8,
-  BUCKET_MFA_ENABLED = 0X10,
+  BUCKET_MFA_ENABLED = 0X10,       // bucket requires multi-factor authentication to delete objes
   BUCKET_OBJ_LOCK_ENABLED = 0X20,
 };
 
@@ -930,6 +930,8 @@ struct RGWBucketInfo {
   bool versioned() const { return (flags & BUCKET_VERSIONED) != 0; }
   int versioning_status() const { return flags & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED | BUCKET_MFA_ENABLED); }
   bool versioning_enabled() const { return (versioning_status() & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED)) == BUCKET_VERSIONED; }
+  bool versioning_suspended() const { return (versioning_status() & (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED)) ==
+      (BUCKET_VERSIONED | BUCKET_VERSIONS_SUSPENDED); }
   bool mfa_enabled() const { return (versioning_status() & BUCKET_MFA_ENABLED) != 0; }
   bool datasync_flag_enabled() const { return (flags & BUCKET_DATASYNC_DISABLED) == 0; }
   bool obj_lock_enabled() const { return (flags & BUCKET_OBJ_LOCK_ENABLED) != 0; }

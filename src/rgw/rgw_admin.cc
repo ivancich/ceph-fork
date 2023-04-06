@@ -159,6 +159,8 @@ void usage()
   cout << "  bucket chown               link bucket to specified user and update its object ACLs\n";
   cout << "  bucket reshard             reshard bucket\n";
   cout << "  bucket rewrite             rewrite all objects in the specified bucket\n";
+  cout << "  bucket versioning enable   enable bucket versioning on a non-versioned or versioning-suspended bucket\n";
+  cout << "  bucket versioning suspend  suspend bucket versioning on a versioning-enabled bucket\n";
   cout << "  bucket sync checkpoint     poll a bucket's sync status until it catches up to its remote\n";
   cout << "  bucket sync disable        disable bucket sync\n";
   cout << "  bucket sync enable         enable bucket sync\n";
@@ -674,6 +676,8 @@ enum class OPT {
   BUCKET_RADOS_LIST,
   BUCKET_SHARD_OBJECTS,
   BUCKET_OBJECT_SHARD,
+  BUCKET_VERSIONING_ENABLE,
+  BUCKET_VERSIONING_SUSPEND,
   POLICY,
   POOL_ADD,
   POOL_RM,
@@ -893,6 +897,8 @@ static SimpleCmd::Commands all_cmds = {
   { "bucket shard objects", OPT::BUCKET_SHARD_OBJECTS },
   { "bucket shard object", OPT::BUCKET_SHARD_OBJECTS },
   { "bucket object shard", OPT::BUCKET_OBJECT_SHARD },
+  { "bucket versioning enable", OPT::BUCKET_VERSIONING_ENABLE },
+  { "bucket versioning suspend", OPT::BUCKET_VERSIONING_SUSPEND },
   { "policy", OPT::POLICY },
   { "pool add", OPT::POOL_ADD },
   { "pool rm", OPT::POOL_RM },
@@ -8317,6 +8323,74 @@ next:
 	return 1;
       }
       RGWBucketAdminOp::remove_bucket(driver, bucket_op, null_yield, dpp(), bypass_gc, false);
+    }
+  }
+
+  if (opt_cmd == OPT::BUCKET_VERSIONING_ENABLE) {
+    if (bucket_name.empty()) {
+      cerr << "ERROR: --bucket not specified" << std::endl;
+      return EINVAL;
+    }
+
+    std::unique_ptr<rgw::sal::Bucket> bucket;
+    int r = driver->get_bucket(dpp(), nullptr, tenant, bucket_name, &bucket, null_yield);
+    if (r < 0) {
+      cerr << "ERROR: failed reading bucket instance info for bucket = " << bucket_name << ": " << cpp_strerror(-r) << std::endl;
+      return -r;
+    }
+
+    RGWBucketInfo& bucket_info = bucket->get_info();
+    if (bucket_info.versioning_suspended()) {
+      // versioned+suspended -> versioned
+      bucket_info.flags &= ~RGWBucketFlags::BUCKET_VERSIONS_SUSPENDED; // clear suspended flag
+    } else if (bucket_info.versioning_enabled()) {
+      cerr << "ERROR: bucket versioning is already enabled and not suspended" << std::endl;
+      return EINVAL;
+    } else {
+      // non-versioned -> versioned
+      bucket_info.flags |= RGWBucketFlags::BUCKET_VERSIONED;
+    }
+
+    r = bucket->put_info(dpp(), false, real_time());
+    if (r < 0) {
+      cerr << "ERROR: failed writing bucket instance info for bucket = " << bucket_name << ": " << cpp_strerror(-r) << std::endl;
+      return -r;
+    }
+  }
+
+  if (opt_cmd == OPT::BUCKET_VERSIONING_SUSPEND) {
+    if (bucket_name.empty()) {
+      cerr << "ERROR: --bucket not specified" << std::endl;
+      return EINVAL;
+    }
+
+    std::unique_ptr<rgw::sal::Bucket> bucket;
+    int r = driver->get_bucket(dpp(), nullptr, tenant, bucket_name, &bucket, null_yield);
+    if (r < 0) {
+      cerr << "ERROR: failed reading bucket instance info for bucket = " << bucket_name << ": " << cpp_strerror(-r) << std::endl;
+      return -r;
+    }
+
+    RGWBucketInfo& bucket_info = bucket->get_info();
+    if (bucket_info.versioning_suspended()) {
+      cerr << "ERROR: bucket is already enabled and not suspended" << std::endl;
+      return EINVAL;
+    } else if (bucket_info.versioning_enabled()) {
+      // versioned -> versioned+suspended
+      bucket_info.flags |= RGWBucketFlags::BUCKET_VERSIONS_SUSPENDED; // clear suspended flag
+    } else if (yes_i_really_mean_it) {
+      // enable and suspend bucket versioning simultaneously
+      // non-versioned -> versioned+suspended
+      bucket_info.flags |= (RGWBucketFlags::BUCKET_VERSIONED & RGWBucketFlags::BUCKET_VERSIONS_SUSPENDED);
+    } else {
+      cerr << "ERROR: bucket versioning is not enabled; either enable it first or add --yes-i-really-mean-it" << std::endl;
+      return EINVAL;
+    }
+
+    r = bucket->put_info(dpp(), false, real_time());
+    if (r < 0) {
+      cerr << "ERROR: failed writing bucket instance info for bucket = " << bucket_name << ": " << cpp_strerror(-r) << std::endl;
+      return -r;
     }
   }
 
