@@ -10065,6 +10065,7 @@ int RGWRados::cls_bucket_head_async(const DoutPrefixProvider *dpp, const RGWBuck
   return r;
 }
 
+#warning HERE
 int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
 				  uint64_t num_objs,
                                   const DoutPrefixProvider *dpp,

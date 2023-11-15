@@ -21,6 +21,7 @@
 #include "common/RefCountedObj.h"
 #include "common/Thread.h"
 #include "common/ceph_mutex.h"
+#include "common/BackTrace.h"
 
 #include "rgw_common.h"
 #include "rgw_sal.h"
@@ -968,6 +969,10 @@ public:
                            uint64_t num_shards, uint64_t num_objs, bool is_multisite,
                            bool& need_resharding, uint32_t *suggested_num_shards) override
   {
+    ldpp_dout(dpp, 0) << __func__ << ": TEMPORARY ERIC, num_objs=" << num_objs << dendl;
+    ClibBackTrace bt(0);
+    ldpp_dout(dpp, 0) << bt << dendl;
+
     if (num_objs > num_shards * max_objs_per_shard) {
       ldpp_dout(dpp, 0) << __func__ << ": resharding needed: stats.num_objects=" << num_objs
              << " shard max_objects=" <<  max_objs_per_shard * num_shards << dendl;
