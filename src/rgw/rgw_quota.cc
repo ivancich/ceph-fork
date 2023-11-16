@@ -14,7 +14,9 @@
  */
 
 
+#include <atomic>
 #include "include/utime.h"
+
 #include "common/lru_map.h"
 #include "common/RefCountedObj.h"
 #include "common/Thread.h"
@@ -30,7 +32,6 @@
 #include "services/svc_sys_obj.h"
 #include "services/svc_meta.h"
 
-#include <atomic>
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
@@ -985,7 +986,7 @@ public:
       need_resharding = false;
     }
   }
-};
+}; // RGWQuotaHandlerImpl
 
 
 RGWQuotaHandler *RGWQuotaHandler::generate_handler(const DoutPrefixProvider *dpp, rgw::sal::Driver* driver, bool quota_threads)

@@ -10067,7 +10067,8 @@ int RGWRados::cls_bucket_head_async(const DoutPrefixProvider *dpp, const RGWBuck
 
 int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
 				  uint64_t num_objs,
-                                  const DoutPrefixProvider *dpp, optional_yield y)
+                                  const DoutPrefixProvider *dpp,
+				  optional_yield y)
 {
   if (! cct->_conf.get_val<bool>("rgw_dynamic_resharding")) {
       return 0;
@@ -10108,15 +10109,20 @@ int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
     return 0;
   }
 
-  ldpp_dout(dpp, 1) << "RGWRados::" << __func__ << " bucket " << bucket_info.bucket.name <<
-    " needs resharding; current num shards " << bucket_info.layout.current_index.layout.normal.num_shards <<
+  ldpp_dout(dpp, 1) << "RGWRados::" << __func__ << " bucket " <<
+    bucket_info.bucket.name << " needs resharding; current num shards " <<
+    bucket_info.layout.current_index.layout.normal.num_shards <<
     "; new num shards " << final_num_shards << " (suggested " <<
     suggested_num_shards << ")" << dendl;
 
   return add_bucket_to_reshard(dpp, bucket_info, final_num_shards, y);
 }
 
-int RGWRados::add_bucket_to_reshard(const DoutPrefixProvider *dpp, const RGWBucketInfo& bucket_info, uint32_t new_num_shards, optional_yield y)
+
+int RGWRados::add_bucket_to_reshard(const DoutPrefixProvider *dpp,
+				    const RGWBucketInfo& bucket_info,
+				    uint32_t new_num_shards,
+				    optional_yield y)
 {
   RGWReshard reshard(this->driver, dpp);
 
@@ -10124,7 +10130,9 @@ int RGWRados::add_bucket_to_reshard(const DoutPrefixProvider *dpp, const RGWBuck
 
   new_num_shards = std::min(new_num_shards, get_max_bucket_shards());
   if (new_num_shards <= num_source_shards) {
-    ldpp_dout(dpp, 20) << "not resharding bucket name=" << bucket_info.bucket.name << ", orig_num=" << num_source_shards << ", new_num_shards=" << new_num_shards << dendl;
+    ldpp_dout(dpp, 20) << "not resharding bucket name=" <<
+      bucket_info.bucket.name << ", orig_num=" << num_source_shards <<
+      ", new_num_shards=" << new_num_shards << dendl;
     return 0;
   }
 

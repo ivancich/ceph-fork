@@ -4499,7 +4499,7 @@ static int rgw_reshard_get(cls_method_context_t hctx, bufferlist *in,  bufferlis
   }
 
   string key;
-  cls_rgw_reshard_entry  entry;
+  cls_rgw_reshard_entry entry;
   op.entry.get_key(&key);
   int ret = read_omap_entry(hctx, key, &entry);
   if (ret < 0) {
@@ -4526,7 +4526,7 @@ static int rgw_reshard_remove(cls_method_context_t hctx, bufferlist *in, bufferl
   }
 
   string key;
-  cls_rgw_reshard_entry  entry;
+  cls_rgw_reshard_entry entry;
   cls_rgw_reshard_entry::generate_key(op.tenant, op.bucket_name, &key);
   int ret = read_omap_entry(hctx, key, &entry);
   if (ret < 0) {
