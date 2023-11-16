@@ -8119,7 +8119,7 @@ next:
 
     RGWReshard reshard(static_cast<rgw::sal::RadosStore*>(driver), dpp());
     cls_rgw_reshard_entry entry;
-    entry.time = real_clock::now();
+    entry.req_time = real_clock::now();
     entry.tenant = tenant;
     entry.bucket_name = bucket_name;
     entry.bucket_id = bucket->get_info().bucket.bucket_id;

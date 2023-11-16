@@ -10137,7 +10137,7 @@ int RGWRados::add_bucket_to_reshard(const DoutPrefixProvider *dpp,
   }
 
   cls_rgw_reshard_entry entry;
-  entry.time = real_clock::now();
+  entry.req_time = real_clock::now();
   entry.tenant = bucket_info.owner.tenant;
   entry.bucket_name = bucket_info.bucket.name;
   entry.bucket_id = bucket_info.bucket.bucket_id;

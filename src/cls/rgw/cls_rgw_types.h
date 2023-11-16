@@ -1286,29 +1286,34 @@ WRITE_CLASS_ENCODER(cls_rgw_lc_entry);
 
 struct cls_rgw_reshard_entry
 {
-  ceph::real_time time;
+  ceph::real_time req_time;
   std::string tenant;
   std::string bucket_name;
   std::string bucket_id;
   uint32_t old_num_shards{0};
   uint32_t new_num_shards{0};
+  ceph::real_time earliest_exec;
 
-  cls_rgw_reshard_entry() {}
+  cls_rgw_reshard_entry() :
+    // earliest_exec(ceph::real_clock::zero()),
+    earliest_exec(real_clock::zero())
+  {}
 
   void encode(ceph::buffer::list& bl) const {
-    ENCODE_START(2, 1, bl);
-    encode(time, bl);
+    ENCODE_START(3, 1, bl);
+    encode(req_time, bl);
     encode(tenant, bl);
     encode(bucket_name, bl);
     encode(bucket_id, bl);
     encode(old_num_shards, bl);
     encode(new_num_shards, bl);
+    encode(earliest_exec, bl);
     ENCODE_FINISH(bl);
   }
 
   void decode(ceph::buffer::list::const_iterator& bl) {
-    DECODE_START(2, bl);
-    decode(time, bl);
+    DECODE_START(3, bl);
+    decode(req_time, bl);
     decode(tenant, bl);
     decode(bucket_name, bl);
     decode(bucket_id, bl);
@@ -1318,6 +1323,9 @@ struct cls_rgw_reshard_entry
     }
     decode(old_num_shards, bl);
     decode(new_num_shards, bl);
+    if (struct_v >= 3) {
+      decode(earliest_exec, bl);
+    }
     DECODE_FINISH(bl);
   }
 

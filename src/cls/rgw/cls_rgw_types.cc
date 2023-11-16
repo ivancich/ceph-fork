@@ -804,20 +804,22 @@ void cls_rgw_reshard_entry::get_key(string *key) const
 
 void cls_rgw_reshard_entry::dump(Formatter *f) const
 {
-  utime_t ut(time);
-  encode_json("time",ut, f);
+  utime_t rt(req_time);
+  encode_json("time", rt, f);
   encode_json("tenant", tenant, f);
   encode_json("bucket_name", bucket_name, f);
   encode_json("bucket_id", bucket_id, f);
   encode_json("old_num_shards", old_num_shards, f);
   encode_json("tentative_new_num_shards", new_num_shards, f);
+  utime_t eet(earliest_exec);
+  encode_json("earliest_exec_time", eet, f);
 }
 
 void cls_rgw_reshard_entry::generate_test_instances(list<cls_rgw_reshard_entry*>& ls)
 {
   ls.push_back(new cls_rgw_reshard_entry);
   ls.push_back(new cls_rgw_reshard_entry);
-  ls.back()->time = ceph::real_clock::from_ceph_timespec({ceph_le32(2), ceph_le32(3)});
+  ls.back()->req_time = ceph::real_clock::from_ceph_timespec({ceph_le32(2), ceph_le32(3)});
   ls.back()->tenant = "tenant";
   ls.back()->bucket_name = "bucket1""";
   ls.back()->bucket_id = "bucket_id";
