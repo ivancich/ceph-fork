@@ -1077,6 +1077,7 @@ class RGWCreateBucket : public RGWOp {
   rgw::sal::Bucket::CreateParams createparams;
   RGWAccessControlPolicy policy;
   std::string location_constraint;
+  uint32_t min_num_shards {default_min_num_shards};
   bool has_cors = false;
   bool relaxed_region_enforcement = false;
   RGWCORSConfiguration cors_config;

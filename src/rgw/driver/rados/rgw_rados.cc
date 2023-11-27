@@ -10079,24 +10079,32 @@ int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
     return 0;
   }
 
-  bool need_resharding = false;
-  uint32_t num_source_shards = rgw::current_num_shards(bucket_info.layout);
   const uint32_t max_dynamic_shards =
     uint32_t(cct->_conf.get_val<uint64_t>("rgw_max_dynamic_shards"));
-
-  if (num_source_shards >= max_dynamic_shards) {
-    return 0;
-  }
-
-  uint32_t suggested_num_shards = 0;
+  const uint32_t decrease_threshold =
+    uint32_t(cct->_conf.get_val<uint64_t>("rgw_dynamic_reshard_decrease_threshold"));
   const uint64_t max_objs_per_shard =
     cct->_conf.get_val<uint64_t>("rgw_max_objs_per_shard");
+  const uint32_t num_source_shards =
+    rgw::current_num_shards(bucket_info.layout);
+  const uint32_t bucket_min_shards = bucket_info.min_num_shards;
+
+  // variables altered by check
+  bool need_resharding = false;
+  uint32_t suggested_num_shards = 0;
 
   // TODO: consider per-bucket sync policy here?
   const bool is_multisite = svc.zone->need_to_log_data();
 
-  quota_handler->check_bucket_shards(dpp, max_objs_per_shard, num_source_shards,
-				     num_objs, is_multisite, need_resharding,
+  quota_handler->check_bucket_shards(dpp,
+				     max_objs_per_shard,
+				     num_source_shards,
+				     num_objs,
+				     is_multisite,
+				     bucket_min_shards,
+				     max_dynamic_shards,
+				     decrease_threshold,
+				     need_resharding,
 				     &suggested_num_shards);
   if (! need_resharding) {
     return 0;

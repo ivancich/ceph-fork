@@ -321,6 +321,8 @@ static inline const char* to_mime_type(const RGWFormat f)
 #define UINT32_MAX (0xffffffffu)
 #endif
 
+constexpr uint32_t default_min_num_shards = 11;
+
 typedef void *RGWAccessHandle;
 
 /* Helper class used for RGWHTTPArgs parsing */
@@ -901,6 +903,10 @@ struct RGWBucketInfo {
 
   // layout of bucket index objects
   rgw::BucketLayout layout;
+
+  // minimum # of shards used when dynamic reharding downsizes; 0
+  // means no resharding downsize allowed
+  uint32_t min_num_shards{11};
 
   // Represents the shard number for blind bucket.
   const static uint32_t NUM_SHARDS_BLIND_BUCKET;

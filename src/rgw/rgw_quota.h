@@ -34,9 +34,16 @@ public:
                           RGWQuota& quota,
 			  uint64_t num_objs, uint64_t size, optional_yield y) = 0;
 
-  virtual void check_bucket_shards(const DoutPrefixProvider *dpp, uint64_t max_objs_per_shard,
-                                   uint64_t num_shards, uint64_t num_objs, bool is_multisite,
-                                   bool& need_resharding, uint32_t *suggested_num_shards) = 0;
+  virtual void check_bucket_shards(const DoutPrefixProvider* dpp,
+				   uint64_t max_objs_per_shard,
+                                   uint64_t num_shards,
+				   uint64_t num_objs,
+				   bool is_multisite,
+				   uint64_t min_shards,
+				   uint64_t max_shards,
+				   uint32_t decrease_theshold,
+                                   bool& need_resharding,
+				   uint32_t* suggested_num_shards) = 0;
 
   virtual void update_stats(const rgw_user& bucket_owner, rgw_bucket& bucket, int obj_delta, uint64_t added_bytes, uint64_t removed_bytes) = 0;
 

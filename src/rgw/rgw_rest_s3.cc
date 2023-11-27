@@ -2415,6 +2415,7 @@ public:
   RGWCreateBucketParser() {}
   ~RGWCreateBucketParser() override {}
 
+#if 0
   bool get_location_constraint(string& zone_group) {
     XMLObj *config = find_first("CreateBucketConfiguration");
     if (!config)
@@ -2427,6 +2428,40 @@ public:
     zone_group = constraint->get_data();
 
     return true;
+  }
+#endif
+
+  // set data at double-pointers when found, otherwwise set pointer to
+  // nullptr to indicate data not found
+  bool get_configs(std::string** zone_group, uint32_t** min_num_shards) {
+    XMLObj* config = find_first("CreateBucketConfiguration");
+    if (!config) {
+      return false;
+    }
+
+    bool found = false; // true if any expected data found
+
+    XMLObj *constraint = config->find_first("LocationConstraint");
+    if (constraint) {
+      **zone_group = constraint->get_data();
+      found = true;
+    } else {
+      *zone_group = nullptr;
+    }
+
+    XMLObj* shards = config->find_first("MinimumShards");
+    if (shards) {
+      try {
+	**min_num_shards = std::strtoul(shards->get_data().c_str(), nullptr, 0);
+	found = true;
+      } catch (const std::invalid_argument& ia) {
+	return false;
+      }
+    } else {
+      *min_num_shards = nullptr;
+    }
+
+    return found;
   }
 };
 
@@ -2453,9 +2488,11 @@ int RGWCreateBucket_ObjStore_S3::get_params(optional_yield y)
   bufferlist data;
   std::tie(op_ret, data) = read_all_input(s, max_size, false);
 
-  if ((op_ret < 0) && (op_ret != -ERR_LENGTH_REQUIRED))
+  if ((op_ret < 0) && (op_ret != -ERR_LENGTH_REQUIRED)) {
     return op_ret;
+  }
 
+  // if data attached, parse it as XML config settings
   if (data.length()) {
     RGWCreateBucketParser parser;
 
@@ -2473,13 +2510,23 @@ int RGWCreateBucket_ObjStore_S3::get_params(optional_yield y)
       return -EINVAL;
     }
 
-    if (!parser.get_location_constraint(location_constraint)) {
-      ldpp_dout(this, 0) << "provided input did not specify location constraint correctly" << dendl;
+    std::string* location_constraint_p = &location_constraint;
+    uint32_t* min_num_shards_p = &min_num_shards;
+
+    if (!parser.get_configs(&location_constraint_p, &min_num_shards_p)) {
+      ldpp_dout(this, 0) << "provided input did not specify bucket creation parameters correctly" << dendl;
       return -EINVAL;
     }
 
-    ldpp_dout(this, 10) << "create bucket location constraint: "
-		      << location_constraint << dendl;
+    // display config settings in XML
+    if (location_constraint_p) {
+      ldpp_dout(this, 10) << "create bucket location constraint: "
+			  << location_constraint << dendl;
+    }
+    if (min_num_shards_p) {
+      ldpp_dout(this, 10) << "minimum number of shards: "
+			  << min_num_shards << dendl;
+    }
   }
 
   size_t pos = location_constraint.find(':');

@@ -965,30 +965,53 @@ public:
     user_stats_cache.adjust_stats(user, bucket, obj_delta, added_bytes, removed_bytes);
   }
 
-  void check_bucket_shards(const DoutPrefixProvider *dpp, uint64_t max_objs_per_shard,
-                           uint64_t num_shards, uint64_t num_objs, bool is_multisite,
-                           bool& need_resharding, uint32_t *suggested_num_shards) override
+  void check_bucket_shards(const DoutPrefixProvider *dpp,
+			   uint64_t max_objs_per_shard,
+                           uint64_t num_shards,
+			   uint64_t num_objs,
+			   bool is_multisite,
+			   uint64_t min_shards, // 0 means no decrease
+			   uint64_t max_shards,
+			   uint32_t decrease_threshold,
+                           bool& need_resharding,
+			   uint32_t *suggested_num_shards) override
   {
     ldpp_dout(dpp, 0) << __func__ << ": TEMPORARY ERIC, num_objs=" << num_objs << dendl;
     ClibBackTrace bt(0);
     ldpp_dout(dpp, 0) << bt << dendl;
 
+    // if we're maintaining bilogs for multisite, reshards are significantly
+    // more expensive. scale up the shard count much faster to minimize the
+    // number of reshard events during a write workload
+    const uint32_t obj_multiplier = is_multisite ? 8 : 2;
+
+    need_resharding = false; // assume fine
+
     if (num_objs > num_shards * max_objs_per_shard) {
       ldpp_dout(dpp, 0) << __func__ << ": resharding needed: stats.num_objects=" << num_objs
              << " shard max_objects=" <<  max_objs_per_shard * num_shards << dendl;
+      if (num_shards >= max_shards) {
+	return;
+      }
+
       need_resharding = true;
       if (suggested_num_shards) {
-        uint32_t obj_multiplier = 2;
-        if (is_multisite) {
-          // if we're maintaining bilogs for multisite, reshards are significantly
-          // more expensive. scale up the shard count much faster to minimize the
-          // number of reshard events during a write workload
-          obj_multiplier = 8;
-        }
         *suggested_num_shards = num_objs * obj_multiplier / max_objs_per_shard;
       }
-    } else {
-      need_resharding = false;
+    } else if (min_shards && // decrease allowed
+	       num_objs * decrease_threshold < num_shards * max_objs_per_shard) {
+      // we now know we're under the lower threshold, but given
+      // varying obj_multiplier, we want to know if we'd change shard
+      // count
+      const uint64_t calculated_num_shards =
+	std::max(num_objs * obj_multiplier / max_objs_per_shard,
+		 min_shards);
+      if (calculated_num_shards * decrease_threshold < num_shards) {
+	need_resharding = true;
+	if (suggested_num_shards) {
+	  *suggested_num_shards = calculated_num_shards;
+	}
+      }
     }
   }
 }; // RGWQuotaHandlerImpl

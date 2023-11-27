@@ -1323,6 +1323,8 @@ static int bucket_stats(rgw::sal::Driver* driver,
   formatter->dump_int("index_generation", bucket->get_info().layout.current_index.gen);
   formatter->dump_int("num_shards",
 		      bucket->get_info().layout.current_index.layout.normal.num_shards);
+  formatter->dump_int("min_num_shards",
+		      bucket->get_info().min_num_shards);
   formatter->dump_bool("object_lock_enabled", bucket_info.obj_lock_enabled());
   formatter->dump_bool("mfa_enabled", bucket_info.mfa_enabled());
   ::encode_json("owner", bucket->get_info().owner, formatter);
