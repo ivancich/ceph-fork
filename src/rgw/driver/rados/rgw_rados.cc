@@ -9741,6 +9741,7 @@ int RGWRados::cls_bucket_list_unordered(const DoutPrefixProvider *dpp,
 
     librados::ObjectReadOperation op;
     const std::string empty_delimiter;
+#warning HERE
     cls_rgw_bucket_list_op(op, marker, prefix, empty_delimiter,
 			   num_entries,
                            list_versions, &result);
@@ -9753,6 +9754,8 @@ int RGWRados::cls_bucket_list_unordered(const DoutPrefixProvider *dpp,
 	": error in rgw_rados_operate (bucket list op), r=" << r << dendl;
       return r;
     }
+
+#warning "check for RGWBIAdvanceAndRetryError"
 
     for (auto& entry : result.dir.m) {
       rgw_bucket_dir_entry& dirent = entry.second;
