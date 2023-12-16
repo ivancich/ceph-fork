@@ -9746,10 +9746,7 @@ int RGWRados::cls_bucket_list_unordered(const DoutPrefixProvider *dpp,
 			   num_entries,
                            list_versions, &result);
     r = rgw_rados_operate(dpp, ioctx, oid, &op, nullptr, y);
-    if (r == RGWBIAdvanceAndRetryError) {
-      marker = result.marker;
-      continue;
-    } else if (r < 0) {
+    if (r < 0) {
       ldpp_dout(dpp, 0) << "ERROR: " << __func__ <<
 	": error in rgw_rados_operate (bucket list op), r=" << r << dendl;
       return r;
