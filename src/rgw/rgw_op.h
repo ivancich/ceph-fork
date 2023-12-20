@@ -103,6 +103,7 @@ public:
   }
 
   virtual int retarget(RGWOp* op, RGWOp** new_op, optional_yield) {
+    ldpp_dout(s, 0) << "ERIC " << __PRETTY_FUNCTION__ << " point A" << dendl;
     *new_op = op;
     return 0;
   }

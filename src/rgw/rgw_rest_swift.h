@@ -434,6 +434,7 @@ public:
   }
 
   int retarget(RGWOp* op, RGWOp** new_op, optional_yield) override {
+    ldpp_dout(s, 0) << "ERIC " << __PRETTY_FUNCTION__ << " point A" << dendl;
     return website_handler->retarget_bucket(op, new_op);
   }
 
@@ -473,6 +474,7 @@ public:
   }
 
   int retarget(RGWOp* op, RGWOp** new_op, optional_yield) override {
+    ldpp_dout(s, 0) << "ERIC " << __PRETTY_FUNCTION__ << " point A" << dendl;
     return website_handler->retarget_object(op, new_op);
   }
 

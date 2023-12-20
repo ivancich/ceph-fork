@@ -170,6 +170,7 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
                               rgw::sal::Driver* driver,
                               const bool skip_retarget)
 {
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point A" << dendl;
   ldpp_dout(op, 2) << "init permissions" << dendl;
   int ret = handler->init_permissions(op, y);
   if (ret < 0) {
@@ -181,6 +182,7 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
    * if you are using the REST endpoint either (ergo, no authenticated access)
    */
   if (! skip_retarget) {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point D" << dendl;
     ldpp_dout(op, 2) << "recalculating target" << dendl;
     ret = handler->retarget(op, &op, y);
     if (ret < 0) {
@@ -188,8 +190,10 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
     }
     req->op = op;
   } else {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point G" << dendl;
     ldpp_dout(op, 2) << "retargeting skipped because of SubOp mode" << dendl;
   }
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point J" << dendl;
 
   /* If necessary extract object ACL and put them into req_state. */
   ldpp_dout(op, 2) << "reading permissions" << dendl;
@@ -281,6 +285,7 @@ int process_request(const RGWProcessEnv& penv,
 
   req_state rstate(g_ceph_context, penv, &rgw_env, req->id);
   req_state *s = &rstate;
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point A" << dendl;
 
   s->ratelimit_data = penv.ratelimiting->get_active();
 
@@ -354,6 +359,7 @@ int process_request(const RGWProcessEnv& penv,
   ldpp_dout(op, 10) << "op=" << typeid(*op).name() << dendl;
   s->op_type = op->get_type();
 
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point G" << dendl;
   try {
     ldpp_dout(op, 2) << "verifying requester" << dendl;
     ret = op->verify_requester(*penv.auth_registry, yield);
@@ -386,6 +392,7 @@ int process_request(const RGWProcessEnv& penv,
     s->trace = tracing::rgw::tracer.start_trace(op->name(), s->trace_enabled);
     s->trace->SetAttribute(tracing::rgw::TRANS_ID, s->trans_id);
 
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point J" << dendl;
     ret = rgw_process_authenticated(handler, op, req, s, yield, driver);
     if (ret < 0) {
       abort_early(s, op, ret, handler, yield);

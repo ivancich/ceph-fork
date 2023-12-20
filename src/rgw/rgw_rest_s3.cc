@@ -5302,6 +5302,7 @@ int RGWHandler_REST_S3Website::init(rgw::sal::Driver* driver, req_state *s,
 }
 
 int RGWHandler_REST_S3Website::retarget(RGWOp* op, RGWOp** new_op, optional_yield y) {
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point A" << dendl;
   *new_op = op;
   ldpp_dout(s, 10) << __func__ << " Starting retarget" << dendl;
 

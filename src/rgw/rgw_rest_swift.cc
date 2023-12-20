@@ -2419,31 +2419,40 @@ int RGWSwiftWebsiteHandler::error_handler(const int err_no,
 
 bool RGWSwiftWebsiteHandler::is_web_mode() const
 {
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point A" << dendl;
   const std::string_view webmode = s->info.env->get("HTTP_X_WEB_MODE", "");
   return boost::algorithm::iequals(webmode, "true");
 }
 
 bool RGWSwiftWebsiteHandler::can_be_website_req() const
 {
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point A" << dendl;
   /* Static website works only with the GET or HEAD method. Nothing more. */
   static const std::set<std::string_view> ws_methods = { "GET", "HEAD" };
   if (ws_methods.count(s->info.method) == 0) {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point D" << dendl;
+
     return false;
   }
 
   /* We also need to handle early failures from the auth system. In such cases
    * req_state::auth.identity may be empty. Let's treat that the same way as
    * the anonymous access. */
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point G" << dendl;
   if (! s->auth.identity) {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point J" << dendl;
     return true;
   }
 
   /* Swift serves websites only for anonymous requests unless client explicitly
    * requested this behaviour by supplying X-Web-Mode HTTP header set to true. */
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point M" << dendl;
   if (s->auth.identity->is_anonymous() || is_web_mode()) {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point P" << dendl;
     return true;
   }
 
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point S" << dendl;
   return false;
 }
 
@@ -2630,35 +2639,45 @@ int RGWSwiftWebsiteHandler::retarget_bucket(RGWOp* op, RGWOp** new_op)
 
   /* In Swift static web content is served if the request is anonymous or
    * has X-Web-Mode HTTP header specified to true. */
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point A" << dendl;
   if (can_be_website_req()) {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point E" << dendl;
     const auto& ws_conf = s->bucket->get_info().website_conf;
     const auto& index = s->bucket->get_info().website_conf.get_index_doc();
 
     if (s->decoded_uri.back() != '/') {
+      ldpp_dout(s, 0) << "ERIC " << __func__ << " point I" << dendl;
       op_override = get_ws_redirect_op();
     } else if (! index.empty() && is_index_present(index)) {
+      ldpp_dout(s, 0) << "ERIC " << __func__ << " point M" << dendl;
       op_override = get_ws_index_op();
     } else if (ws_conf.listing_enabled) {
+      ldpp_dout(s, 0) << "ERIC " << __func__ << " point Q" << dendl;
       op_override = get_ws_listing_op();
     }
   }
 
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point S" << dendl;
   if (op_override) {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point T" << dendl;
     handler->put_op(op);
     op_override->init(driver, s, handler);
 
     *new_op = op_override;
   } else {
+    ldpp_dout(s, 0) << "ERIC " << __func__ << " point W" << dendl;
     *new_op = op;
   }
 
   /* Return 404 Not Found is the request has web mode enforced but we static web
    * wasn't able to serve it accordingly. */
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point Z" << dendl;
   return ! op_override && is_web_mode() ? -ENOENT : 0;
 }
 
 int RGWSwiftWebsiteHandler::retarget_object(RGWOp* op, RGWOp** new_op)
 {
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " point A" << dendl;
   ldpp_dout(s, 10) << "Starting object retarget" << dendl;
   RGWOp* op_override = nullptr;
 
