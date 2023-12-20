@@ -680,6 +680,7 @@ int rgw_build_bucket_policies(const DoutPrefixProvider *dpp, rgw::sal::Driver* d
 int rgw_build_object_policies(const DoutPrefixProvider *dpp, rgw::sal::Driver* driver,
 			      req_state *s, bool prefetch_data, optional_yield y)
 {
+  ldpp_dout(s, 0) << "ERIC " << __func__ << " POINT A, object=" << s->object << dendl;
   if (rgw::sal::Object::empty(s->object)) {
     return 0;
   }
