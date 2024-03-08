@@ -11,9 +11,11 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <mutex>
 #include <map>
 #include <algorithm>
+#include <type_traits>
 
 #include "arrow/type.h"
 #include "arrow/buffer.h"
@@ -24,19 +26,96 @@
 #include "arrow/flight/server.h"
 
 #include "parquet/arrow/reader.h"
+#include "parquet/arrow/schema.h"
 
 #include "common/dout.h"
 #include "rgw_op.h"
 
 #include "rgw_flight.h"
 #include "rgw_flight_frontend.h"
+#include "rgw_flight_random_access.h"
 
 
 namespace rgw::flight {
 
-// Ticket and FlightKey
 
-std::atomic<FlightKey> next_flight_key = null_flight_key;
+std::string ObjectDescriptor::to_string() const {
+  if (tenant.empty()) {
+    return bucket + "/" + object;
+  } else {
+    return tenant + ":" + bucket + "/" + object;
+  }
+}
+
+arw::Result<ObjectDescriptor> ObjectDescriptor::from_flight_descriptor(const flt::FlightDescriptor& d) {
+
+  if (d.type != flt::FlightDescriptor::DescriptorType::PATH) {
+    return arw::Status::Invalid("did not provide PATH type FlightDescriptor");
+  }
+
+  std::string_view tenant_str;
+  std::string_view bucket_str;
+  std::stringstream object_ss;
+
+  auto i = d.path.cbegin();
+  if (i == d.path.cend()) {
+    return arw::Status::Invalid("path provided is invalid; no bucket");
+  }
+
+  auto colon = i->find_first_of(":");
+  auto slash = i->find_first_of("/");
+  if (colon != std::string::npos) {
+    tenant_str = std::string_view(i->data(), colon);
+    if (slash != std::string::npos) {
+      if (slash < colon) {
+	return arw::Status::Invalid("colon delimiter (for tenant) appears after slash delimiter (for path)");
+      }
+      bucket_str = std::string_view(1 + colon + i->data(), slash - colon - 1);
+      object_ss << (slash + i->data());
+    } else {
+      bucket_str = std::string_view(1 + colon + i->data());
+    }
+  } else {
+    if (slash != std::string::npos) {
+      bucket_str = std::string_view(i->data(), slash);
+      object_ss << std::string_view(1 + slash + i->data());
+    } else {
+      bucket_str = *i;
+    }
+  }
+
+  while (++i != d.path.cend()) {
+    object_ss << "/" << *i;
+  }
+
+  const std::string object_str = object_ss.str();
+  const std::string_view object_sv =
+    (!object_str.empty() && object_str[0] == '/') ?
+    object_str.data() + 1 :
+    object_str.data();
+
+  if (object_sv.empty()) {
+    return arw::Status::Invalid("no object provided");
+  }
+
+  return ObjectDescriptor(bucket_str, object_sv, tenant_str);
+} // from_flight_descriptor()
+
+
+arw::Result<FlightKey> key_from_descriptor(const flt::FlightDescriptor& d) {
+  switch (d.type) {
+  case flt::FlightDescriptor::DescriptorType::PATH:
+  {
+    ARROW_ASSIGN_OR_RAISE(ObjectDescriptor desc, ObjectDescriptor::from_flight_descriptor(d));
+    return desc.get_flight_key();
+  }
+  case flt::FlightDescriptor::DescriptorType::CMD:
+    return key_from_str(d.cmd);
+
+  default:
+    return arw::Status::Invalid("did not understand FlightDescriptor provided");
+  }
+}
 
 flt::Ticket FlightKeyToTicket(const FlightKey& key) {
   flt::Ticket result;
@@ -58,29 +137,58 @@ arw::Result<FlightKey> TicketToFlightKey(const flt::Ticket& t) {
   }
 }
 
+// Endpoints
+
+std::vector<flt::FlightEndpoint> make_endpoints(const FlightKey& key) {
+  flt::FlightEndpoint endpoint;
+  endpoint.ticket = FlightKeyToTicket(key);
+  return { endpoint };
+  // return std::vector<flt::FlightEndpoint> endpoints { endpoint };
+}
+
+arw::Result<std::unique_ptr<flt::FlightInfo>>
+make_flight_info(const FlightKey& key,
+		 const flt::FlightDescriptor& d,
+		 const FlightData& fd) {
+  ARROW_ASSIGN_OR_RAISE(flt::FlightInfo info_obj,
+			flt::FlightInfo::Make(*fd.schema,
+					      d,
+					      make_endpoints(fd.key),
+					      fd.num_records,
+					      fd.obj_size));
+  return std::make_unique<flt::FlightInfo>(std::move(info_obj));
+}
+
+
 // FlightData
 
-FlightData::FlightData(const std::string& _uri,
-		       const std::string& _tenant_name,
-		       const std::string& _bucket_name,
-		       const rgw_obj_key& _object_key,
-		       uint64_t _num_records,
-		       uint64_t _obj_size,
+FlightData::FlightData(const FlightKey& _key,
+		       const flt::FlightDescriptor& _descriptor,
 		       std::shared_ptr<arw::Schema>& _schema,
 		       std::shared_ptr<const arw::KeyValueMetadata>& _kv_metadata,
-		       rgw_user _user_id) :
-  key(++next_flight_key),
-  /* expires(coarse_real_clock::now() + lifespan), */
-  uri(_uri),
-  tenant_name(_tenant_name),
-  bucket_name(_bucket_name),
-  object_key(_object_key),
-  num_records(_num_records),
-  obj_size(_obj_size),
+		       const rgw_user& _user_id,
+		       uint64_t _num_records,
+		       uint64_t _obj_size) :
+  key(_key),
+  descriptor(_descriptor),
   schema(_schema),
   kv_metadata(_kv_metadata),
-  user_id(_user_id)
+  user_id(_user_id),
+  num_records(_num_records),
+  obj_size(_obj_size)
 { }
+
+
+arw::Result<FlightData> FlightData::create(const flt::FlightDescriptor& descriptor,
+					   std::shared_ptr<arw::Schema>& schema,
+					   std::shared_ptr<const arw::KeyValueMetadata>& kv_metadata,
+					   const rgw_user& user_id,
+					   uint64_t num_records,
+					   uint64_t obj_size) {
+  ARROW_ASSIGN_OR_RAISE(FlightKey key, key_from_descriptor(descriptor));
+  return FlightData(key, descriptor, schema, kv_metadata, user_id, num_records, obj_size);
+}
+
 
 /**** FlightStore ****/
 
@@ -98,23 +206,25 @@ MemoryFlightStore::MemoryFlightStore(const DoutPrefix& _dp) :
 
 MemoryFlightStore::~MemoryFlightStore() { }
 
-FlightKey MemoryFlightStore::add_flight(FlightData&& flight) {
+arw::Result<FlightKey> MemoryFlightStore::add_flight(FlightData&& flight) {
   std::pair<decltype(map)::iterator,bool> result;
   {
     const std::lock_guard lock(mtx);
-    result = map.insert( {flight.key, std::move(flight)} );
+    result = map.insert({ flight.key, std::move(flight) });
   }
-  ceph_assertf(result.second,
-	       "unable to add FlightData to MemoryFlightStore"); // temporary until error handling
+  if (!result.second) {
+    return arw::Status::IOError("unable to add flight with key %" PRIu64,
+				flight.key);
+  }
 
-  return result.first->second.key;
+  return flight.key;
 }
 
 arw::Result<FlightData> MemoryFlightStore::get_flight(const FlightKey& key) const {
   const std::lock_guard lock(mtx);
   auto i = map.find(key);
   if (i == map.cend()) {
-    return arw::Status::KeyError("could not find Flight with Key %" PRIu32,
+    return arw::Status::KeyError("could not find flight with key %" PRIu64,
 				 key);
   } else {
     return i->second;
@@ -144,6 +254,20 @@ int MemoryFlightStore::expire_flights() {
 
 /**** FlightServer ****/
 
+  /** Actions **/
+
+  arw::Status HealthCheckAction(const flt::ServerCallContext& context,
+				const flt::Action& action,
+				std::unique_ptr<flt::ResultStream>* result) {
+    *result = std::unique_ptr<arrow::flight::ResultStream>(
+      new arrow::flight::SimpleResultStream({}));
+
+    return arw::Status::OK();
+  }
+
+
+  /** Implementation **/
+
 FlightServer::FlightServer(RGWProcessEnv& _env,
 			   FlightStore* _flight_store,
 			   const DoutPrefix& _dp) :
@@ -151,7 +275,11 @@ FlightServer::FlightServer(RGWProcessEnv& _env,
   driver(env.driver),
   dp(_dp),
   flight_store(_flight_store)
-{ }
+{
+  add_action("healthcheck",
+	     "evaluate the health of the arrow flight server",
+	     HealthCheckAction);
+}
 
 FlightServer::~FlightServer()
 { }
@@ -160,7 +288,7 @@ FlightServer::~FlightServer()
 arw::Status FlightServer::ListFlights(const flt::ServerCallContext& context,
 				      const flt::Criteria* criteria,
 				      std::unique_ptr<flt::FlightListing>* listings) {
-
+  FINFO << "entered" << dendl;
   // function local class to implement FlightListing interface
   class RGWFlightListing : public flt::FlightListing {
 
@@ -171,23 +299,14 @@ arw::Status FlightServer::ListFlights(const flt::ServerCallContext& context,
 
     RGWFlightListing(FlightStore* flight_store) :
       flight_store(flight_store),
-      previous_key(null_flight_key)
+      previous_key(0)
       { }
 
     arrow::Result<std::unique_ptr<flt::FlightInfo>> Next() override {
       std::optional<FlightData> fd = flight_store->after_key(previous_key);
       if (fd) {
 	previous_key = fd->key;
-	auto descriptor =
-	  flt::FlightDescriptor::Path(
-	    { fd->tenant_name, fd->bucket_name, fd->object_key.name, fd->object_key.instance, fd->object_key.ns });
-	flt::FlightEndpoint endpoint;
-	endpoint.ticket = FlightKeyToTicket(fd->key);
-	std::vector<flt::FlightEndpoint> endpoints { endpoint };
-
-	ARROW_ASSIGN_OR_RAISE(flt::FlightInfo info_obj,
-			      flt::FlightInfo::Make(*fd->schema, descriptor, endpoints, fd->num_records, fd->obj_size));
-	return std::make_unique<flt::FlightInfo>(std::move(info_obj));
+	return make_flight_info(fd->key, fd->descriptor, *fd);
       } else {
 	return nullptr;
       }
@@ -199,468 +318,130 @@ arw::Status FlightServer::ListFlights(const flt::ServerCallContext& context,
 } // FlightServer::ListFlights
 
 
-arw::Status FlightServer::GetFlightInfo(const flt::ServerCallContext &context,
-					const flt::FlightDescriptor &request,
-					std::unique_ptr<flt::FlightInfo> *info) {
-  return arw::Status::OK();
+static arw::Result<FlightData> create_flight_from_path(rgw::sal::Driver* driver,
+						       FlightStore* flight_store,
+						       const flt::FlightDescriptor& descriptor,
+						       const DoutPrefix& dp)
+{
+  int ret;
+
+  std::shared_ptr<const arw::KeyValueMetadata> kv_metadata;
+  std::shared_ptr<arw::Schema> aw_schema;
+  int64_t num_rows = 0;
+
+  ARROW_ASSIGN_OR_RAISE(ObjectDescriptor od, ObjectDescriptor::from_flight_descriptor(descriptor));
+
+  std::unique_ptr<rgw::sal::Bucket> sal_bucket;
+  ret = driver->load_bucket(&dp, od.get_rgw_bucket(), &sal_bucket, null_yield);
+  if (ret) {
+    FERROR << "unable to load bucket for object " << od << dendl;
+    return arw::Status::IOError("unable to load bucket for %s",
+				od.to_string().c_str());
+  }
+
+  auto sal_obj = sal_bucket->get_object(od.get_rgw_obj_key());
+  if (! sal_obj) {
+    FERROR << "unable to get object from bucket " << od << dendl;
+    return arw::Status::IOError("unable to retrieve object from bucket for %s",
+				od.to_string().c_str());
+  }
+
+  ret = sal_obj->load_obj_state(&dp, null_yield);
+  if (ret) {
+    FERROR << "unable to load object state " << od << dendl;
+    return arw::Status::IOError("unable to load object state for %s",
+				od.to_string().c_str());
+  }
+
+  uint64_t obj_size = sal_obj->get_size();
+  auto readable_obj = std::make_shared<RandomAccessObject>(dp, sal_obj);
+
+  ARROW_RETURN_NOT_OK(readable_obj->Open());
+
+  auto metadata_result = process_pq_metadata(readable_obj, kv_metadata, aw_schema, num_rows, dp, descriptor.ToString());
+
+  // if there's an issue with closing, we'll push log and push forward
+  auto close_status = readable_obj->Close();
+  if (! close_status.ok()) {
+    FWARN << "unable to cleanly close object after metadata scan; object:" <<
+      od << ", error:" << close_status << dendl;
+  }
+
+  if (! metadata_result.ok()) {
+    FERROR << "unable to read metadata for " << descriptor.ToString() << dendl;
+    return metadata_result;
+  }
+
+  ARROW_ASSIGN_OR_RAISE(FlightData flight_data,
+			FlightData::create(descriptor,
+					    aw_schema, kv_metadata,
+					   rgw_user(), // NB: figure this out later
+					   num_rows, obj_size));
+  ARROW_ASSIGN_OR_RAISE(FlightKey key, flight_store->add_flight(std::move(flight_data)));
+  FINFO << "flight added to store with key: " << key << dendl;
+
+  return flight_data;
+} // create_flight_from_path()
+
+
+arw::Status FlightServer::GetFlightInfo(const flt::ServerCallContext& context,
+					const flt::FlightDescriptor& request,
+					std::unique_ptr<flt::FlightInfo>* info) {
+  auto describe = [&request] () -> std::string {
+    std::stringstream ss;
+    if (request.type == flt::FlightDescriptor::DescriptorType::PATH) {
+      ss << "path: \"";
+      bool first = true;
+      for (const auto& p : request.path) {
+	ss << (first ? "" : "/") << p;
+	first = false;
+      }
+      ss << "\"";
+    } else if (request.type == flt::FlightDescriptor::DescriptorType::CMD) {
+      ss << "command: \"" << request.cmd << "\"";
+    } else {
+      ss << "unknown request type " << request.type;
+    }
+    return ss.str();
+  };
+  FINFO << "entered: " << describe() << dendl;
+
+  ARROW_ASSIGN_OR_RAISE(const auto key,
+			key_from_descriptor(request));
+
+  auto r = flight_store->get_flight(key);
+  if (r.ok()) {
+    FINFO << "found flight for key " << key << dendl;
+    const FlightData& fd = r.ValueOrDie();
+    ARROW_ASSIGN_OR_RAISE(*info,
+			  make_flight_info(key, request, fd));
+    return arw::Status::OK();
+  } if (r.status().IsKeyError()) {
+    FWARN << "request for key " << key << " needs to be generated" << dendl;
+    if (request.type == flt::FlightDescriptor::DescriptorType::PATH) {
+      ARROW_ASSIGN_OR_RAISE(FlightData flight_data,
+			    create_flight_from_path(driver, flight_store, request, dp));
+
+      // extract flight info
+      return arw::Status::OK();
+    } else if (request.type == flt::FlightDescriptor::DescriptorType::CMD) {
+      return arw::Status::NotImplemented("generating flight from command not yet implemented");
+    } else {
+      return arw::Status::Invalid("do not understand FlightDescriptor type %d", request.type);
+    }
+  } else {
+    return r.status();
+  }
 } // FlightServer::GetFlightInfo
 
 
 arw::Status FlightServer::GetSchema(const flt::ServerCallContext &context,
 				    const flt::FlightDescriptor &request,
 				    std::unique_ptr<flt::SchemaResult> *schema) {
-  return arw::Status::OK();
+  FWARN << "NOT IMPLEMENTED" << dendl;
+  return arw::Status::NotImplemented("Not Implemented");
 } // FlightServer::GetSchema
 
-  // A Buffer that owns its memory and frees it when the Buffer is
-  // destructed
-class OwnedBuffer : public arw::Buffer {
-
-  uint8_t* buffer;
-
-protected:
-
-  OwnedBuffer(uint8_t* _buffer, int64_t _size) :
-    Buffer(_buffer, _size),
-    buffer(_buffer)
-    { }
-
-public:
-
-  ~OwnedBuffer() override {
-    delete[] buffer;
-  }
-
-  static arw::Result<std::shared_ptr<OwnedBuffer>> make(int64_t size) {
-    uint8_t* buffer = new (std::nothrow) uint8_t[size];
-    if (!buffer) {
-      return arw::Status::OutOfMemory("could not allocated buffer of size %" PRId64, size);
-    }
-
-    OwnedBuffer* ptr = new OwnedBuffer(buffer, size);
-    std::shared_ptr<OwnedBuffer> result;
-    result.reset(ptr);
-    return result;
-  }
-
-  // if what's read in is less than capacity
-  void set_size(int64_t size) {
-    size_ = size;
-  }
-
-  // pointer that can be used to write into buffer
-  uint8_t* writeable_data() {
-    return buffer;
-  }
-}; // class OwnedBuffer
-
-#if 0 // remove classes used for testing and incrementally building
-
-// make local to DoGet eventually
-class LocalInputStream : public arw::io::InputStream {
-
-  std::iostream::pos_type position;
-  std::fstream file;
-  std::shared_ptr<const arw::KeyValueMetadata> kv_metadata;
-  const DoutPrefix dp;
-
-public:
-
-  LocalInputStream(std::shared_ptr<const arw::KeyValueMetadata> _kv_metadata,
-		   const DoutPrefix _dp) :
-    kv_metadata(_kv_metadata),
-    dp(_dp)
-    {}
-
-  arw::Status Open() {
-    file.open("/tmp/green_tripdata_2022-04.parquet", std::ios::in);
-    if (!file.good()) {
-      return arw::Status::IOError("unable to open file");
-    }
-
-    INFO << "file opened successfully" << dendl;
-    position = file.tellg();
-    return arw::Status::OK();
-  }
-
-  arw::Status Close() override {
-    file.close();
-    INFO << "file closed" << dendl;
-    return arw::Status::OK();
-  }
-
-  arw::Result<int64_t> Tell() const override {
-    if (position < 0) {
-      return arw::Status::IOError(
-	"could not query file implementaiton with tellg");
-    } else {
-      return int64_t(position);
-    }
-  }
-
-  bool closed() const override {
-    return file.is_open();
-  }
-
-  arw::Result<int64_t> Read(int64_t nbytes, void* out) override {
-    INFO << "entered: asking for " << nbytes << " bytes" << dendl;
-    if (file.read(reinterpret_cast<char*>(out),
-		  reinterpret_cast<std::streamsize>(nbytes))) {
-      const std::streamsize bytes_read = file.gcount();
-      INFO << "Point A: read bytes " << bytes_read << dendl;
-      position = file.tellg();
-      return bytes_read;
-    } else {
-      ERROR << "unable to read from file" << dendl;
-      return arw::Status::IOError("unable to read from offset %" PRId64,
-				  int64_t(position));
-    }
-  }
-
-  arw::Result<std::shared_ptr<arw::Buffer>> Read(int64_t nbytes) override {
-    INFO << "entered: " << ": asking for " << nbytes << " bytes" << dendl;
-
-    std::shared_ptr<OwnedBuffer> buffer;
-    ARROW_ASSIGN_OR_RAISE(buffer, OwnedBuffer::make(nbytes));
-
-    if (file.read(reinterpret_cast<char*>(buffer->writeable_data()),
-		  reinterpret_cast<std::streamsize>(nbytes))) {
-      const auto bytes_read = file.gcount();
-      INFO << "Point B: read bytes " << bytes_read << dendl;
-      // buffer->set_size(bytes_read);
-      position = file.tellg();
-      return buffer;
-    } else if (file.rdstate() & std::ifstream::failbit &&
-	       file.rdstate() & std::ifstream::eofbit) {
-      const auto bytes_read = file.gcount();
-      INFO << "3 read bytes " << bytes_read << " and reached EOF" << dendl;
-      // buffer->set_size(bytes_read);
-      position = file.tellg();
-      return buffer;
-    } else {
-      ERROR << "unable to read from file" << dendl;
-      return arw::Status::IOError("unable to read from offset %ld", position);
-    }
-  }
-
-  arw::Result<std::string_view> Peek(int64_t nbytes) override {
-    INFO << "called, not implemented" << dendl;
-    return arw::Status::NotImplemented("peek not currently allowed");
-  }
-
-  bool supports_zero_copy() const override {
-    return false;
-  }
-
-  arw::Result<std::shared_ptr<const arw::KeyValueMetadata>> ReadMetadata() override {
-    INFO << "called" << dendl;
-    return kv_metadata;
-  }
-}; // class LocalInputStream
-
-class LocalRandomAccessFile : public arw::io::RandomAccessFile {
-
-  FlightData flight_data;
-  const DoutPrefix dp;
-
-  std::iostream::pos_type position;
-  std::fstream file;
-
-public:
-  LocalRandomAccessFile(const FlightData& _flight_data, const DoutPrefix _dp) :
-    flight_data(_flight_data),
-    dp(_dp)
-    { }
-
-  // implement InputStream
-
-  arw::Status Open() {
-    file.open("/tmp/green_tripdata_2022-04.parquet", std::ios::in);
-    if (!file.good()) {
-      return arw::Status::IOError("unable to open file");
-    }
-
-    INFO << "file opened successfully" << dendl;
-    position = file.tellg();
-    return arw::Status::OK();
-  }
-
-  arw::Status Close() override {
-    file.close();
-    INFO << "file closed" << dendl;
-    return arw::Status::OK();
-  }
-
-  arw::Result<int64_t> Tell() const override {
-    if (position < 0) {
-      return arw::Status::IOError(
-	"could not query file implementaiton with tellg");
-    } else {
-      return int64_t(position);
-    }
-  }
-
-  bool closed() const override {
-    return file.is_open();
-  }
-
-  arw::Result<int64_t> Read(int64_t nbytes, void* out) override {
-    INFO << "entered: asking for " << nbytes << " bytes" << dendl;
-    if (file.read(reinterpret_cast<char*>(out),
-		  reinterpret_cast<std::streamsize>(nbytes))) {
-      const std::streamsize bytes_read = file.gcount();
-      INFO << "Point A: read bytes " << bytes_read << dendl;
-      position = file.tellg();
-      return bytes_read;
-    } else {
-      ERROR << "unable to read from file" << dendl;
-      return arw::Status::IOError("unable to read from offset %" PRId64,
-				  int64_t(position));
-    }
-  }
-
-  arw::Result<std::shared_ptr<arw::Buffer>> Read(int64_t nbytes) override {
-    INFO << "entered: asking for " << nbytes << " bytes" << dendl;
-
-    std::shared_ptr<OwnedBuffer> buffer;
-    ARROW_ASSIGN_OR_RAISE(buffer, OwnedBuffer::make(nbytes));
-
-    if (file.read(reinterpret_cast<char*>(buffer->writeable_data()),
-		  reinterpret_cast<std::streamsize>(nbytes))) {
-      const auto bytes_read = file.gcount();
-      INFO << "Point B: read bytes " << bytes_read << dendl;
-      // buffer->set_size(bytes_read);
-      position = file.tellg();
-      return buffer;
-    } else if (file.rdstate() & std::ifstream::failbit &&
-	       file.rdstate() & std::ifstream::eofbit) {
-      const auto bytes_read = file.gcount();
-      INFO << "3 read bytes " << bytes_read << " and reached EOF" << dendl;
-      // buffer->set_size(bytes_read);
-      position = file.tellg();
-      return buffer;
-    } else {
-      ERROR << "unable to read from file" << dendl;
-      return arw::Status::IOError("unable to read from offset %ld", position);
-    }
-  }
-
-  bool supports_zero_copy() const override {
-    return false;
-  }
-
-  // implement Seekable
-
-  arw::Result<int64_t> GetSize() override {
-    return flight_data.obj_size;
-  }
-
-  arw::Result<std::string_view> Peek(int64_t nbytes) override {
-    std::iostream::pos_type here = file.tellg();
-    if (here == -1) {
-      return arw::Status::IOError(
-	"unable to determine current position ahead of peek");
-    }
-
-    ARROW_ASSIGN_OR_RAISE(OwningStringView result,
-			  OwningStringView::make(nbytes));
-
-    // read
-    ARROW_ASSIGN_OR_RAISE(int64_t bytes_read,
-			  Read(nbytes, (void*) result.writeable_data()));
-    (void) bytes_read; // silence unused variable warnings
-
-    // return offset to original
-    ARROW_RETURN_NOT_OK(Seek(here));
-
-    return result;
-  }
-
-  arw::Result<std::shared_ptr<const arw::KeyValueMetadata>> ReadMetadata() {
-    return flight_data.kv_metadata;
-  }
-
-  arw::Future<std::shared_ptr<const arw::KeyValueMetadata>> ReadMetadataAsync(
-    const arw::io::IOContext& io_context) override {
-    return arw::Future<std::shared_ptr<const arw::KeyValueMetadata>>::MakeFinished(ReadMetadata());
-  }
-
-  // implement Seekable interface
-
-  arw::Status Seek(int64_t position) {
-    file.seekg(position);
-    if (file.fail()) {
-      return arw::Status::IOError(
-	"error encountered during seek to %" PRId64, position);
-    } else {
-      return arw::Status::OK();
-    }
-  }
-}; // class LocalRandomAccessFile
-#endif
-
-class RandomAccessObject : public arw::io::RandomAccessFile {
-
-  FlightData flight_data;
-  const DoutPrefix dp;
-
-  int64_t position;
-  bool is_closed;
-  std::unique_ptr<rgw::sal::Object::ReadOp> op;
-
-public:
-
-  RandomAccessObject(const FlightData& _flight_data,
-		     std::unique_ptr<rgw::sal::Object>& obj,
-		     const DoutPrefix _dp) :
-    flight_data(_flight_data),
-    dp(_dp),
-    position(-1),
-    is_closed(false)
-    {
-      op = obj->get_read_op();
-    }
-
-  arw::Status Open() {
-    int ret = op->prepare(null_yield, &dp);
-    if (ret < 0) {
-      return arw::Status::IOError(
-	"unable to prepare object with error %d", ret);
-    }
-    INFO << "file opened successfully" << dendl;
-    position = 0;
-    return arw::Status::OK();
-  }
-
-  // implement InputStream
-
-  arw::Status Close() override {
-    position = -1;
-    is_closed = true;
-    (void) op.reset();
-    INFO << "object closed" << dendl;
-    return arw::Status::OK();
-  }
-
-  arw::Result<int64_t> Tell() const override {
-    if (position < 0) {
-      return arw::Status::IOError("could not determine position");
-    } else {
-      return position;
-    }
-  }
-
-  bool closed() const override {
-    return is_closed;
-  }
-
-  arw::Result<int64_t> Read(int64_t nbytes, void* out) override {
-    INFO << "entered: asking for " << nbytes << " bytes" << dendl;
-
-    if (position < 0) {
-      ERROR << "error, position indicated error" << dendl;
-      return arw::Status::IOError("object read op is in bad state");
-    }
-
-    // note: read function reads through end_position inclusive
-    int64_t end_position = position + nbytes - 1;
-
-    bufferlist bl;
-
-    const int64_t bytes_read =
-      op->read(position, end_position, bl, null_yield, &dp);
-    if (bytes_read < 0) {
-      const int64_t former_position = position;
-      position = -1;
-      ERROR << "read operation returned " << bytes_read << dendl;
-      return arw::Status::IOError(
-	"unable to read object at position %" PRId64 ", error code: %" PRId64,
-	former_position,
-	bytes_read);
-    }
-
-    // TODO: see if there's a way to get rid of this copy, perhaps
-    // updating rgw::sal::read_op
-    bl.cbegin().copy(bytes_read, reinterpret_cast<char*>(out));
-
-    position += bytes_read;
-
-    if (nbytes != bytes_read) {
-      INFO << "partial read: nbytes=" << nbytes <<
-	", bytes_read=" << bytes_read << dendl;
-    }
-    INFO << bytes_read << " bytes read" << dendl;
-    return bytes_read;
-  }
-
-  arw::Result<std::shared_ptr<arw::Buffer>> Read(int64_t nbytes) override {
-    INFO << "entered: asking for " << nbytes << " bytes" << dendl;
-
-    std::shared_ptr<OwnedBuffer> buffer;
-    ARROW_ASSIGN_OR_RAISE(buffer, OwnedBuffer::make(nbytes));
-
-    ARROW_ASSIGN_OR_RAISE(const int64_t bytes_read,
-			  Read(nbytes, buffer->writeable_data()));
-    buffer->set_size(bytes_read);
-
-    return buffer;
-  }
-
-  bool supports_zero_copy() const override {
-    return false;
-  }
-
-  // implement Seekable
-
-  arw::Result<int64_t> GetSize() override {
-    INFO << "entered: " << flight_data.obj_size << " returned" << dendl;
-    return flight_data.obj_size;
-  }
-
-  arw::Result<std::string_view> Peek(int64_t nbytes) override {
-    INFO << "entered: " << nbytes << " bytes" << dendl;
-
-    int64_t saved_position = position;
-
-    ARROW_ASSIGN_OR_RAISE(OwningStringView buffer,
-			  OwningStringView::make(nbytes));
-
-    ARROW_ASSIGN_OR_RAISE(const int64_t bytes_read,
-			  Read(nbytes, (void*) buffer.writeable_data()));
-
-    // restore position for a peek
-    position = saved_position;
-
-    if (bytes_read < nbytes) {
-      // create new OwningStringView with moved buffer
-      return OwningStringView::shrink(std::move(buffer), bytes_read);
-    } else {
-      return buffer;
-    }
-  }
-
-  arw::Result<std::shared_ptr<const arw::KeyValueMetadata>> ReadMetadata() {
-    return flight_data.kv_metadata;
-  }
-
-  arw::Future<std::shared_ptr<const arw::KeyValueMetadata>> ReadMetadataAsync(
-    const arw::io::IOContext& io_context) override {
-    return arw::Future<std::shared_ptr<const arw::KeyValueMetadata>>::MakeFinished(ReadMetadata());
-  }
-
-  // implement Seekable interface
-
-  arw::Status Seek(int64_t new_position) {
-    INFO << "entered: position: " << new_position << dendl;
-    if (position < 0) {
-      ERROR << "error, position indicated error" << dendl;
-      return arw::Status::IOError("object read op is in bad state");
-    } else {
-      position = new_position;
-      return arw::Status::OK();
-    }
-  }
-}; // class RandomAccessObject
 
 arw::Status FlightServer::DoGet(const flt::ServerCallContext &context,
 				const flt::Ticket &request,
@@ -677,30 +458,33 @@ arw::Status FlightServer::DoGet(const flt::ServerCallContext &context,
    */
   std::unique_ptr<rgw::sal::User> user = driver->get_user(fd.user_id);
   if (user->empty()) {
-    INFO << "user is empty" << dendl;
+    FINFO << "user is empty" << dendl;
   } else {
     // TODO: test what happens if user is not loaded
     ret = user->load_user(&dp, null_yield);
     if (ret < 0) {
-      ERROR << "load_user returned " << ret << dendl;
+      FERROR << "load_user returned " << ret << dendl;
       // TODO return something
     }
-    INFO << "user is " << user->get_display_name() << dendl;
+    FINFO << "user is " << user->get_display_name() << dendl;
   }
 #endif
 
+  ARROW_ASSIGN_OR_RAISE(ObjectDescriptor obj_desc,
+			ObjectDescriptor::from_flight_descriptor(fd.descriptor));
+
   std::unique_ptr<rgw::sal::Bucket> bucket;
   ret = driver->load_bucket(&dp,
-			    rgw_bucket(fd.tenant_name, fd.bucket_name),
+			    obj_desc.get_rgw_bucket(),
                             &bucket, null_yield);
   if (ret < 0) {
-    ERROR << "get_bucket returned " << ret << dendl;
+    FERROR << "get_bucket returned " << ret << dendl;
     // TODO return something
   }
 
-  std::unique_ptr<rgw::sal::Object> object = bucket->get_object(fd.object_key);
+  std::unique_ptr<rgw::sal::Object> object = bucket->get_object(obj_desc.get_rgw_obj_key());
 
-  auto input = std::make_shared<RandomAccessObject>(fd, object, dp);
+  auto input = std::make_shared<RandomAccessObject>(dp, object);
   ARROW_RETURN_NOT_OK(input->Open());
 
   std::unique_ptr<parquet::arrow::FileReader> reader;
@@ -730,5 +514,76 @@ arw::Status FlightServer::DoGet(const flt::ServerCallContext &context,
 
   return arw::Status::OK();
 } // flightServer::DoGet
+
+arw::Status FlightServer::DoPut(const flt::ServerCallContext& context,
+				std::unique_ptr<flt::FlightMessageReader> reader,
+				std::unique_ptr<flt::FlightMetadataWriter> writer) {
+  FWARN << "NOT IMPLEMENTED" << dendl;
+  return arw::Status::NotImplemented("Not Implemented");
+}
+
+arw::Status FlightServer::DoExchange(const flt::ServerCallContext& context,
+				     std::unique_ptr<flt::FlightMessageReader> reader,
+				     std::unique_ptr<flt::FlightMessageWriter> writer) {
+  FWARN << "NOT IMPLEMENTED" << dendl;
+  return arw::Status::NotImplemented("Not Implemented");
+}
+
+arw::Status FlightServer::DoAction(const flt::ServerCallContext& context,
+				   const flt::Action& action,
+				   std::unique_ptr<flt::ResultStream>* result) {
+  auto i = action_map.find(action.type);
+  if (i == action_map.end()) {
+    FWARN << "action " << action.type << " NOT IMPLEMENTED" << dendl;
+    return arw::Status::NotImplemented(
+      "action " + action.type + " not implemented");
+//      std::string("action ") + action.type + " not implemented");
+  }
+
+  FINFO << "executing action " << action.type << dendl;
+  return i->second.func(context, action, result);
+}
+
+arw::Status FlightServer::ListActions(const flt::ServerCallContext& context,
+				      std::vector<flt::ActionType>* actions) {
+  FINFO << "entered" << dendl;
+  for (const auto& i : action_map) {
+    actions->push_back(flt::ActionType({ i.first, i.second.description }));
+  }
+  return arw::Status::OK();
+}
+
+
+arw::Status process_pq_metadata(const std::shared_ptr<arw::io::RandomAccessFile>& reader,
+				std::shared_ptr<const arw::KeyValueMetadata>& kv_metadata,
+				std::shared_ptr<arw::Schema>& aw_schema,
+				int64_t& num_rows,
+				const DoutPrefix& dp,
+				const std::string& description) {
+  try {
+    const std::shared_ptr<parquet::FileMetaData> metadata = parquet::ReadMetaData(reader);
+
+    if (metadata) {
+      num_rows = metadata->num_rows();
+      kv_metadata = metadata->key_value_metadata();
+      const parquet::SchemaDescriptor* pq_schema = metadata->schema();
+      ARROW_RETURN_NOT_OK(parquet::arrow::FromParquetSchema(pq_schema, &aw_schema));
+      return arrow::Status::OK();
+    } else {
+      const std::string error = "unable to read metadata" +
+	(description.empty() ? "" : " for " + description);
+      FERROR << error << dendl;
+      return arw::Status::IOError(error);
+    }
+  } catch (const parquet::ParquetException& e) {
+    std::stringstream ss;
+    ss << "unable to read metadata due to " << e.what();
+    if (!description.empty()) {
+      ss << " for " << description;
+    }
+    FERROR << ss.str() << dendl;
+    return arw::Status::IOError(ss.str());
+  }
+}
 
 } // namespace rgw::flight

@@ -21,7 +21,9 @@
 #include "parquet/arrow/schema.h"
 #include "parquet/stream_reader.h"
 
+#include "rgw_flight_common.h"
 #include "rgw_flight_frontend.h"
+#include "rgw_flight_random_access.h"
 #include "rgw_flight.h"
 
 
@@ -31,8 +33,6 @@ constexpr const char* dout_prefix_str = "rgw arrow_flight: ";
 
 
 namespace rgw::flight {
-
-const FlightKey null_flight_key = 0;
 
 FlightFrontend::FlightFrontend(RGWProcessEnv& _env,
 			       RGWFrontendConfig* _config,
@@ -44,17 +44,22 @@ FlightFrontend::FlightFrontend(RGWProcessEnv& _env,
 {
   env.flight_store = new MemoryFlightStore(dp);
   env.flight_server = new FlightServer(env, env.flight_store, dp);
-  INFO << "flight server started" << dendl;
+  FINFO << "flight server started" << dendl;
 }
 
 FlightFrontend::~FlightFrontend() {
+  FINFO << "Point A" << dendl;
   delete env.flight_server;
+  FINFO << "Point B" << dendl;
   env.flight_server = nullptr;
 
+  FINFO << "Point C" << dendl;
   delete env.flight_store;
+  FINFO << "Point D" << dendl;
   env.flight_store = nullptr;
+  FINFO << "Point E" << dendl;
 
-  INFO << "flight server shut down" << dendl;
+  FINFO << "flight server shut down" << dendl;
 }
 
 int FlightFrontend::init() {
@@ -65,20 +70,21 @@ int FlightFrontend::init() {
     std::string("grpc+tcp://localhost:") + std::to_string(port);
   auto r = flt::Location::Parse(url);
   if (!r.ok()) {
-    ERROR << "could not parse server uri: " << url << dendl;
+    FERROR << "could not parse server uri: " << url << dendl;
     return -EINVAL;
   }
   flt::Location location = *r;
 
+#warning "This is where we set up the server's authentication."
   flt::FlightServerOptions options(location);
   options.verify_client = false;
   auto s = env.flight_server->Init(options);
   if (!s.ok()) {
-    ERROR << "couldn't init flight server; status=" << s << dendl;
+    FERROR << "couldn't init flight server; status=" << s << dendl;
     return -EINVAL;
   }
 
-  INFO << "FlightServer inited; will use port " << port << dendl;
+  FINFO << "FlightServer inited; will use port " << port << dendl;
   return 0;
 }
 
@@ -88,12 +94,12 @@ int FlightFrontend::run() {
 				      &FlightServer::ServeAlt,
 				      env.flight_server);
 
-    INFO << "FlightServer thread started, id=" <<
+    FINFO << "FlightServer thread started, id=" <<
       flight_thread.get_id() <<
       ", joinable=" << flight_thread.joinable() << dendl;
     return 0;
   } catch (std::system_error& e) {
-    ERROR << "FlightServer thread failed to start" << dendl;
+    FERROR << "FlightServer thread failed to start" << dendl;
     return -e.code().value();
   }
 }
@@ -102,22 +108,22 @@ void FlightFrontend::stop() {
   arw::Status s;
   s = env.flight_server->Shutdown();
   if (!s.ok()) {
-    ERROR << "call to Shutdown failed; status=" << s << dendl;
+    FERROR << "call to Shutdown failed; status=" << s << dendl;
     return;
   }
 
   s = env.flight_server->Wait();
   if (!s.ok()) {
-    ERROR << "call to Wait failed; status=" << s << dendl;
+    FERROR << "call to Wait failed; status=" << s << dendl;
     return;
   }
 
-  INFO << "FlightServer shut down" << dendl;
+  FINFO << "FlightServer shut down" << dendl;
 }
 
 void FlightFrontend::join() {
   flight_thread.join();
-  INFO << "FlightServer thread joined" << dendl;
+  FINFO << "FlightServer thread joined" << dendl;
 }
 
 void FlightFrontend::pause_for_new_config() {
@@ -141,117 +147,113 @@ FlightGetObj_Filter::FlightGetObj_Filter(const req_state* request,
   tenant_name(request->bucket->get_tenant()),
   bucket_name(request->bucket->get_name()),
   object_key(request->object->get_key()),
-  // note: what about object namespace and instance?
-  schema_status(arrow::StatusCode::Cancelled,
-		"schema determination incomplete"),
   user_id(request->user->get_id())
 {
 #warning "TODO: fix use of tmpnam"
   char name[L_tmpnam];
   const char* namep = std::tmpnam(name);
-  if (!namep) {
-    //
-  }
-  temp_file_name = namep;
 
-  temp_file.open(temp_file_name);
+  if (namep) {
+    temp_file_name = namep;
+    temp_file.open(temp_file_name);
+    FINFO << "temporary file with path " << temp_file_name <<
+      " used for object " << object_key.name << dendl;
+  } else {
+    FERROR << "unable to generate temporary file name for \"" << name << "\"" << dendl;
+  }
 }
 
 FlightGetObj_Filter::~FlightGetObj_Filter() {
   if (temp_file.is_open()) {
     temp_file.close();
   }
+
+  // remove temporary file
   std::error_code error;
   std::filesystem::remove(temp_file_name, error);
   if (error) {
-    ERROR << "FlightGetObj_Filter got error when removing temp file; "
+    FWARN << "FlightGetObj_Filter got error when removing temp file; "
       "error=" << error.value() <<
       ", temp_file_name=" << temp_file_name << dendl;
-  } else {
-    INFO << "parquet/arrow schema determination status: " <<
-      schema_status << dendl;
   }
 }
 
 int FlightGetObj_Filter::handle_data(bufferlist& bl,
-				     off_t bl_ofs, off_t bl_len) {
-  INFO << "flight handling data from offset " <<
+				     off_t bl_ofs,
+				     off_t bl_len)
+{
+  FINFO << "flight handling data from offset " <<
     current_offset << " (" << bl_ofs << ") of size " << bl_len << dendl;
 
   current_offset += bl_len;
 
+  // this is a best-effort; if we fail to create a flight, we do not
+  // introduce any erros into the chain of filters; we instead simply
+  // log the issues
   if (temp_file.is_open()) {
     bl.write_stream(temp_file);
 
     if (current_offset >= expected_size) {
-      INFO << "data read is completed, current_offset=" <<
+      FINFO << "data read is completed, current_offset=" <<
 	current_offset << ", expected_size=" << expected_size << dendl;
       temp_file.close();
 
+      // metadata to extract
       std::shared_ptr<const arw::KeyValueMetadata> kv_metadata;
       std::shared_ptr<arw::Schema> aw_schema;
       int64_t num_rows = 0;
 
-      auto process_metadata = [&aw_schema, &num_rows, &kv_metadata, this]() -> arrow::Status {
-	ARROW_ASSIGN_OR_RAISE(std::shared_ptr<arrow::io::ReadableFile> file,
-			      arrow::io::ReadableFile::Open(temp_file_name));
-	const std::shared_ptr<parquet::FileMetaData> metadata = parquet::ReadMetaData(file);
+      ObjectDescriptor obj_desc(bucket_name, object_key.get_oid(), tenant_name);
 
-	ARROW_RETURN_NOT_OK(file->Close());
+      // read the metadata in
+      {
+	auto result_open = arrow::io::ReadableFile::Open(temp_file_name);
+	if (! result_open.ok()) {
+	  FERROR << "unable to open file for reading; path: " << temp_file_name << dendl;
+	  goto chain;
+	}
+	std::shared_ptr<arrow::io::ReadableFile> file = result_open.ValueOrDie();
 
-	num_rows = metadata->num_rows();
-	kv_metadata = metadata->key_value_metadata();
-	const parquet::SchemaDescriptor* pq_schema = metadata->schema();
-	ARROW_RETURN_NOT_OK(parquet::arrow::FromParquetSchema(pq_schema, &aw_schema));
+      auto shim = std::make_shared<RandomAccessShim>(dp, file);
+	auto metadata_result =
+	  process_pq_metadata(shim, kv_metadata, aw_schema, num_rows, dp, obj_desc.to_string());
 
-	return arrow::Status::OK();
-      };
+      auto close_status = shim->Close();
+	if (! close_status.ok()) {
+	  FWARN << "closing of shim layer resulted in error: " << close_status << dendl;
+	}
 
-      schema_status = process_metadata();
-      if (!schema_status.ok()) {
-	ERROR << "reading metadata to access schema, error=" << schema_status << dendl;
+	if (! metadata_result.ok()) {
+	  FERROR << "metadata issue, error: " << metadata_result << dendl;
+	  goto chain;
+	}
+      }
+
+      auto flight_data_result = FlightData::create(obj_desc.get_flight_descriptor(),
+						   aw_schema, kv_metadata, user_id,
+						   num_rows, expected_size);
+      if (! flight_data_result.ok()) {
+	FERROR << "unable to create FlightData record for " << obj_desc << dendl;
+	goto chain;
+      }
+
+      FlightStore* store = penv.flight_store;
+      auto add_flight_result = store->add_flight(std::move(flight_data_result.ValueOrDie()));
+      if (add_flight_result.ok()) {
+	FINFO << "added flight with key " << add_flight_result.ValueOrDie() << dendl;
       } else {
-	// INFO << "arrow_schema=" << *aw_schema << dendl;
-	FlightStore* store = penv.flight_store;
-	auto key =
-	  store->add_flight(FlightData(uri, tenant_name, bucket_name,
-				       object_key, num_rows,
-				       expected_size, aw_schema,
-				       kv_metadata, user_id));
-	(void) key; // suppress unused variable warning
+	FERROR << "unable to add flight for " << obj_desc << dendl;
       }
     } // if last block
   } // if file opened
 
-    // chain to next filter in stream
-  int ret = RGWGetObj_Filter::handle_data(bl, bl_ofs, bl_len);
+  // we must chain to the other GetObj_Filter's
+chain:
+
+  // chain to next filter in stream
+  const int ret = RGWGetObj_Filter::handle_data(bl, bl_ofs, bl_len);
 
   return ret;
-}
-
-#if 0
-void code_snippets() {
-  INFO << "num_columns:" << md->num_columns() <<
-    " num_schema_elements:" << md->num_schema_elements() <<
-    " num_rows:" << md->num_rows() <<
-    " num_row_groups:" << md->num_row_groups() << dendl;
-
-
-  INFO << "file schema: name=" << schema1->name() << ", ToString:" << schema1->ToString() << ", num_columns=" << schema1->num_columns() << dendl;
-  for (int c = 0; c < schema1->num_columns(); ++c) {
-    const parquet::ColumnDescriptor* cd = schema1->Column(c);
-    // const parquet::ConvertedType::type t = cd->converted_type;
-    const std::shared_ptr<const parquet::LogicalType> lt = cd->logical_type();
-    INFO << "column " << c << ": name=" << cd->name() << ", ToString=" << cd->ToString() << ", logical_type=" << lt->ToString() << dendl;
-  }
-
-  INFO << "There are " << md->num_rows() << " rows and " << md->num_row_groups() << " row groups" << dendl;
-  for (int rg = 0; rg < md->num_row_groups(); ++rg) {
-    INFO << "Row Group " << rg << dendl;
-    auto rg_md = md->RowGroup(rg);
-    auto schema2 = rg_md->schema();
-  }
-}
-#endif
+} // FlightGetObj_Filter::handle_data()
 
 } // namespace rgw::flight

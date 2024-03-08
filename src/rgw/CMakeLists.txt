@@ -253,7 +253,8 @@ endif()
 if(WITH_RADOSGW_ARROW_FLIGHT)
   # NOTE: eventually don't want this in common but just in radosgw daemon
   # list(APPEND radosgw_srcs rgw_flight.cc rgw_flight_frontend.cc)
-  list(APPEND librgw_common_srcs rgw_flight.cc rgw_flight_frontend.cc)
+  list(APPEND librgw_common_srcs
+    rgw_flight.cc rgw_flight_frontend.cc rgw_flight_random_access.cc)
 endif(WITH_RADOSGW_ARROW_FLIGHT)
 
 if(WITH_RADOSGW_D4N)

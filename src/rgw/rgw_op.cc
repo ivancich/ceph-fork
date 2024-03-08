@@ -2314,8 +2314,11 @@ void RGWGetObj::execute(optional_yield y)
 
 #ifdef WITH_ARROW_FLIGHT
   if (s->penv.flight_store) {
-    if (ofs == 0) {
+    if (ofs == 0 && s->object->get_obj().key.name.ends_with(".parquet")) {
       // insert a GetObj_Filter to monitor and create flight
+      ldpp_dout(this, 20) << "INFO: getting at start of parquet file, "
+	"so inserting a flight filter into stack" << dendl;
+
       flight_filter.emplace(s, filter);
       filter = &*flight_filter;
     }

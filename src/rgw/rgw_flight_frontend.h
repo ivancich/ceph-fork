@@ -21,9 +21,6 @@
 
 namespace rgw::flight {
 
-using FlightKey = uint32_t;
-extern const FlightKey null_flight_key;
-
 class FlightServer;
 
 class FlightFrontend : public RGWFrontend {
@@ -54,11 +51,12 @@ public:
   void unpause_with_new_config() override;
 }; // class FlightFrontend
 
+
+// this is a getobj filter that creates an arrow flight when an object is retrieved
 class FlightGetObj_Filter : public RGWGetObj_Filter {
 
   const RGWProcessEnv& penv;
   const DoutPrefix dp;
-  FlightKey key;
   uint64_t current_offset;
   uint64_t expected_size;
   std::string uri;
@@ -81,6 +79,6 @@ public:
   // this would allow the range to be modified if necessary;
   int fixup_range(off_t& ofs, off_t& end) override;
 #endif
-};
+}; // class FlightGetObj_Filter
 
 } // namespace rgw::flight
