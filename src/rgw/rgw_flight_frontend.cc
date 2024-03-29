@@ -63,16 +63,16 @@ int FlightFrontend::init() {
   }
   const std::string url =
     std::string("grpc+tcp://localhost:") + std::to_string(port);
-  flt::Location location;
-  arw::Status s = flt::Location::Parse(url, &location);
-  if (!s.ok()) {
-    ERROR << "couldn't parse url=" << url << ", status=" << s << dendl;
+  auto r = flt::Location::Parse(url);
+  if (!r.ok()) {
+    ERROR << "could not parse server uri: " << url << dendl;
     return -EINVAL;
   }
+  flt::Location location = *r;
 
   flt::FlightServerOptions options(location);
   options.verify_client = false;
-  s = env.flight_server->Init(options);
+  auto s = env.flight_server->Init(options);
   if (!s.ok()) {
     ERROR << "couldn't init flight server; status=" << s << dendl;
     return -EINVAL;
@@ -99,8 +99,19 @@ int FlightFrontend::run() {
 }
 
 void FlightFrontend::stop() {
-  env.flight_server->Shutdown();
-  env.flight_server->Wait();
+  arw::Status s;
+  s = env.flight_server->Shutdown();
+  if (!s.ok()) {
+    ERROR << "call to Shutdown failed; status=" << s << dendl;
+    return;
+  }
+
+  s = env.flight_server->Wait();
+  if (!s.ok()) {
+    ERROR << "call to Wait failed; status=" << s << dendl;
+    return;
+  }
+
   INFO << "FlightServer shut down" << dendl;
 }
 
