@@ -153,24 +153,26 @@ options:
   with_legacy: true
 # override max bucket index shards in zone configuration (if not zero)
 #
-# Represents the number of shards for the bucket index object, a value of zero
-# indicates there is no sharding. By default (no sharding, the name of the object
-# is '.dir.{marker}', with sharding, the name is '.dir.{markder}.{sharding_id}',
-# sharding_id is zero-based value. It is not recommended to set a too large value
-# (e.g. thousand) as it increases the cost for bucket listing.
+# Represents the initial number of shards for a bucket's index, a
+# value of zero indicates there is no sharding. By default (no
+# sharding) the name of the object is '.dir.{marker}'. With sharding,
+# the names are '.dir.{marker}.{shard_id}' (shard_id is
+# zero-based). It is not recommended to set too large a value (e.g.,
+# 1000) as it increases the cost of bucket listing.
 - name: rgw_override_bucket_index_max_shards
   type: uint
   level: dev
-  desc: The default number of bucket index shards for newly-created buckets. This
-    value overrides bucket_index_max_shards stored in the zone. Setting this value
-    in the zone is preferred, because it applies globally to all radosgw daemons running
-    in the zone.
-  fmt_desc: Represents the number of shards for the bucket index object,
-    a value of zero indicates there is no sharding. It is not
-    recommended to set a value too large (e.g. thousand) as it
-    increases the cost for bucket listing.
-    This variable should be set in the client or global sections
-    so that it is automatically applied to radosgw-admin commands.
+  desc: Values other than zero will override the zone parameter
+    "bucket_index_max_shards". This value represents the default number
+    of bucket index shards for newly-created buckets. Setting the zone
+    parameter is generally preferred since it applies globally to all
+    radosgw daemons running in the zone.
+  fmt_desc: Represents the number of bucket index shards for a new bucket.
+    A value of zero indicates that no override will take place. It is not
+    recommended to set too large a value (e.g., 1000) as it increases the
+    cost of bucket listing. This configuration option should be set in
+    the "client" or "global" sections so it's automatically applied to
+    radosgw-admin commands.
   default: 0
   services:
   - rgw
