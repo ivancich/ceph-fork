@@ -349,3 +349,20 @@ if(WITH_RADOSGW_POSIX)
   target_link_libraries(unittest_posix_bucket_cache  ${UNITTEST_LIBS}
     ${rgw_libs} ${LMDB_LIBRARIES})
 endif(WITH_RADOSGW_POSIX)
+
+# test_rgw_flight
+if(WITH_RADOSGW_ARROW_FLIGHT)
+  add_executable(test_rgw_flight
+    test_rgw_flight.cc
+  )
+  target_include_directories(test_rgw_flight
+    SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/src/rgw/driver/rados"
+    SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/src/arrow/cpp/src"
+  )
+  target_link_libraries(test_rgw_flight
+    rgw
+    ceph-common
+    ${UNITTEST_LIBS}
+    ${EXTRALIBS}
+  )
+endif(WITH_RADOSGW_ARROW_FLIGHT)
