@@ -32,7 +32,7 @@ const string reshard_lock_name = "reshard_process";
 const string bucket_instance_lock_name = "bucket_instance_lock";
 
 // key reduction values; NB maybe expose some in options
-constexpr uint64_t min_objs_per_shard = 10000;
+constexpr uint64_t default_min_objs_per_shard = 10000;
 constexpr uint32_t min_dynamic_shards = 11;
 
 /* All primes up to 2000 used to attempt to make dynamic sharding use
@@ -108,6 +108,10 @@ void RGWBucketReshard::calculate_preferred_shards(
   // to reduce number of reshards in multisite, increase number of shards more aggressively
   constexpr uint32_t multisite_multiplier = 8;
   const char* verb = "n/a";
+
+  // in case admin lowers max_objs_per_shard, we need to avoid thrashing
+  const uint64_t min_objs_per_shard = std::min(default_min_objs_per_shard,
+					       (uint64_t) std::ceil(max_objs_per_shard / 100.0));
 
   ldpp_dout(dpp, 0) << "ERIC obs=" << num_objs << ", shards=" << current_num_shards << ", max_objs_shard=" << max_objs_per_shard << dendl;
 
