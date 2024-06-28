@@ -10473,6 +10473,7 @@ int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
 				  uint64_t num_objs,
                                   const DoutPrefixProvider* dpp, optional_yield y)
 {
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " " << cct->_conf.get_val<bool>("rgw_dynamic_resharding") << dendl;
   if (! cct->_conf.get_val<bool>("rgw_dynamic_resharding")) {
     return 0;
   }
@@ -10488,18 +10489,24 @@ int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
   const uint32_t num_source_shards =
     rgw::current_num_shards(bucket_info.layout);
 
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point a" << dendl;
   calculate_preferred_shards(dpp, num_objs, num_source_shards,
 			     need_resharding, &suggested_num_shards);
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point b" << dendl;
   if (! need_resharding) {
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point c" << dendl;
     return 0;
   }
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point d" << dendl;
 
   // final verification, so we don't reduce number of shards
   const bool may_reduce =
     uint32_t(cct->_conf.get_val<bool>("rgw_dynamic_resharding_may_reduce"));
   if (! may_reduce && suggested_num_shards <= num_source_shards) {
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point e" << dendl;
     return 0;
   }
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point f" << dendl;
 
   ldpp_dout(dpp, 1) << "RGWRados::" << __func__ <<
     " bucket " << bucket_info.bucket.name <<
@@ -10514,6 +10521,7 @@ int RGWRados::add_bucket_to_reshard(const DoutPrefixProvider *dpp,
 				    uint32_t new_num_shards,
 				    optional_yield y)
 {
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " entered" << dendl;
   RGWReshard reshard(this->driver, dpp);
 
   const uint32_t num_source_shards = rgw::current_num_shards(bucket_info.layout);

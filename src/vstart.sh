@@ -912,6 +912,14 @@ $CCLIENTDEBUG
         log file = $CEPH_OUT_CLIENT_DIR/\$name.\$pid.log
         admin socket = $CEPH_ASOK_DIR/\$name.\$pid.asok
 
+        rgw_max_objs_per_shard = 2500
+        rgw_dynamic_resharding = true
+        rgw_dynamic_resharding_may_reduce = true
+        rgw_reshard_thread_interval = 15
+        rgw_user_quota_sync_interval = 30
+        rgw_user_quota_sync_wait_time = 30
+        rgw_user_quota_sync_idle_users = true
+
         ; needed for s3tests
         rgw crypt s3 kms backend = testing
         rgw crypt s3 kms encryption keys = testkey-1=YmluCmJvb3N0CmJvb3N0LWJ1aWxkCmNlcGguY29uZgo= testkey-2=aWIKTWFrZWZpbGUKbWFuCm91dApzcmMKVGVzdGluZwo=

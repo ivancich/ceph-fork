@@ -109,6 +109,8 @@ void RGWBucketReshard::calculate_preferred_shards(
   constexpr uint32_t multisite_multiplier = 8;
   const char* verb = "n/a";
 
+  ldpp_dout(dpp, 0) << "ERIC obs=" << num_objs << ", shards=" << current_num_shards << ", max_objs_shard=" << max_objs_per_shard << dendl;
+
   if (current_num_shards < max_dynamic_shards &&
       num_objs > current_num_shards * max_objs_per_shard) {
     need_resharding = true;
@@ -145,6 +147,7 @@ void RGWBucketReshard::calculate_preferred_shards(
     "; suggesting " << calculated_num_shards << " shards" << dendl;
 
   if (suggested_num_shards) {
+    ldpp_dout(dpp, 0) << "ERIC calculated num shards=" << calculated_num_shards << dendl;
     *suggested_num_shards = calculated_num_shards;
   }
 } // RGWBucketReshard::check_bucket_shards

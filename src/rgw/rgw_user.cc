@@ -1,6 +1,9 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab ft=cpp
 
+#include <sstream>
+#include "common/BackTrace.h"
+
 #include "rgw_sal_rados.h"
 
 #include "include/types.h"
@@ -17,6 +20,11 @@ int rgw_sync_all_stats(const DoutPrefixProvider *dpp,
                        optional_yield y, rgw::sal::Driver* driver,
                        const rgw_owner& owner, const std::string& tenant)
 {
+  ldpp_dout(dpp, 0) << "ERIC entered " << __func__ << dendl;
+  ClibBackTrace bt(0);
+  std::stringstream ss;
+  bt.print(ss);
+  ldpp_dout(dpp, 0) << "ERIC backtrace " << __func__ << " " << ss.str() << dendl;
   size_t max_entries = dpp->get_cct()->_conf->rgw_list_buckets_max_chunk;
 
   rgw::sal::BucketList listing;
@@ -29,11 +37,12 @@ int rgw_sync_all_stats(const DoutPrefixProvider *dpp,
       return ret;
     }
 
+    ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point a" << dendl;
     for (auto& ent : listing.buckets) {
       std::unique_ptr<rgw::sal::Bucket> bucket;
       ret = driver->load_bucket(dpp, ent.bucket, &bucket, y);
       if (ret < 0) {
-        ldpp_dout(dpp, 0) << "ERROR: could not read bucket info: bucket=" << bucket << " ret=" << ret << dendl;
+	ldpp_dout(dpp, 0) << "ERROR: could not read bucket info: bucket=" << bucket << " ret=" << ret << dendl;
         continue;
       }
       ret = bucket->sync_owner_stats(dpp, y, &ent);
@@ -41,6 +50,7 @@ int rgw_sync_all_stats(const DoutPrefixProvider *dpp,
         ldpp_dout(dpp, 0) << "ERROR: could not sync bucket stats: ret=" << ret << dendl;
         return ret;
       }
+ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point b " << ent.bucket << dendl;
       ret = bucket->check_bucket_shards(dpp, ent.count, y);
       if (ret < 0) {
 	ldpp_dout(dpp, 0) << "ERROR in check_bucket_shards: " << cpp_strerror(-ret)<< dendl;

@@ -436,6 +436,7 @@ class RGWOwnerStatsCache : public RGWQuotaCache<rgw_owner> {
     void *entry() override {
       ldout(cct, 20) << "OwnerSyncThread: start" << dendl;
       do {
+	ldout(cct, 0) << "ERIC " << __func__ << " top of loop" << dendl;
         const DoutPrefix dp(cct, dout_subsys, "rgw user sync thread: ");
         int ret = stats->sync_all_owners(&dp, metadata_section);
         if (ret < 0) {
@@ -644,16 +645,19 @@ static int get_owner_tenant(const DoutPrefixProvider* dpp,
 int RGWOwnerStatsCache::sync_owner(const DoutPrefixProvider *dpp,
                                    const rgw_owner& owner, optional_yield y)
 {
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " entered, owner=" << owner << dendl;
   RGWStorageStats stats;
   ceph::real_time last_stats_sync;
   ceph::real_time last_stats_update;
 
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point a" << dendl;
   int ret = driver->load_stats(dpp, y, owner, stats, last_stats_sync, last_stats_update);
   if (ret < 0) {
     ldpp_dout(dpp, 5) << "ERROR: can't read owner stats: ret=" << ret << dendl;
     return ret;
   }
 
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point d" << dendl;
   if (!driver->ctx()->_conf->rgw_user_quota_sync_idle_users &&
       last_stats_update < last_stats_sync) {
     ldpp_dout(dpp, 20) << "owner is idle, not doing a full sync (owner=" << owner << ")" << dendl;
@@ -663,23 +667,27 @@ int RGWOwnerStatsCache::sync_owner(const DoutPrefixProvider *dpp,
   real_time when_need_full_sync = last_stats_sync;
   when_need_full_sync += make_timespan(driver->ctx()->_conf->rgw_user_quota_sync_wait_time);
   
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point h" << dendl;
   // check if enough time passed since last full sync
   if (when_need_full_sync > ceph::real_clock::now()) {
     return 0;
   }
 
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point l" << dendl;
   std::string tenant;
   ret = get_owner_tenant(dpp, y, driver, owner, tenant);
   if (ret < 0) {
     return ret;
   }
 
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point p" << dendl;
   ret = rgw_sync_all_stats(dpp, y, driver, owner, tenant);
   if (ret < 0) {
     ldpp_dout(dpp, 0) << "ERROR: failed user stats sync, ret=" << ret << dendl;
     return ret;
   }
 
+  ldpp_dout(dpp, 0) << "ERIC " << __func__ << " point t" << dendl;
   return 0;
 }
 
@@ -697,6 +705,7 @@ int RGWOwnerStatsCache::sync_all_owners(const DoutPrefixProvider *dpp,
   int max = 1000;
 
   do {
+    ldpp_dout(dpp, 0) << "ERIC " << __func__ << " top of outer loop" << dendl;
     list<string> keys;
     ret = driver->meta_list_keys_next(dpp, handle, max, keys, &truncated);
     if (ret < 0) {
@@ -706,6 +715,7 @@ int RGWOwnerStatsCache::sync_all_owners(const DoutPrefixProvider *dpp,
     for (list<string>::iterator iter = keys.begin();
          iter != keys.end() && !going_down(); 
          ++iter) {
+      ldpp_dout(dpp, 0) << "ERIC " << __func__ << " top of inner loop, key=" << *iter << dendl;
       const rgw_owner owner = parse_owner(*iter);
       ldpp_dout(dpp, 20) << "RGWOwnerStatsCache: sync owner=" << owner << dendl;
       int r = sync_owner(dpp, owner, null_yield);
