@@ -184,14 +184,9 @@ public:
 
 }; //end class aws_response_handler
 
-class RGWSelectObj_ObjStore_S3 : public RGWGetObj_ObjStore_S3
-{
 
-private:
+struct RGWSelectParams {
   s3selectEngine::s3select s3select_syntax;
-  std::string m_s3select_query;
-  std::string m_s3select_input;
-  std::string m_s3select_output;
   s3selectEngine::csv_object m_s3_csv_object;
 #ifdef _ARROW_EXIST
   s3selectEngine::parquet_object m_s3_parquet_object;
@@ -218,6 +213,7 @@ private:
   int64_t m_object_size_for_processing;
   aws_response_handler m_aws_response_handler;
   bool enable_progress;
+  bool m_is_trino_request;
 
   //parquet request
   bool m_parquet_type;
@@ -227,6 +223,35 @@ private:
 #ifdef _ARROW_EXIST
   s3selectEngine::rgw_s3select_api m_rgw_api;
 #endif
+
+  RGWSelectParams() :
+    m_is_trino_request(false)
+  { }
+};  
+
+
+class RGWSelectExecutor {
+
+public:
+
+  size_t m_requested_range;
+  size_t m_scan_offset;
+  bool m_skip_next_chunk;
+
+  RGWSelectExecutor(RGWSelectParams& params) :
+    params(params)
+  {}
+
+  virtual ~RGWSelectExecutor();
+
+  virtual int send_response_data(bufferlist& bl, off_t ofs, off_t len);
+
+  virtual void execute(optional_yield);
+
+private:
+
+  RGWSelectParams& params;
+  
   //a request for range may satisfy by several calls to send_response_date;
   size_t m_request_range;
   std::string requested_buffer;
@@ -243,24 +268,7 @@ private:
   const char* s3select_resource_id = "resourcse-id";
   const char* s3select_json_error = "json-Format-Error";
 
-public:
-  unsigned int chunk_number;
-  size_t m_requested_range;
-  size_t m_scan_offset;
-  bool m_skip_next_chunk;
-  bool m_is_trino_request;
-
-  RGWSelectObj_ObjStore_S3();
-  virtual ~RGWSelectObj_ObjStore_S3();
-
-  virtual int send_response_data(bufferlist& bl, off_t ofs, off_t len) override;
-
-  virtual int get_params(optional_yield y) override;
-
-  virtual void execute(optional_yield) override;
-
-private:
-
+  
   int csv_processing(bufferlist& bl, off_t ofs, off_t len);
 
   int parquet_processing(bufferlist& bl, off_t ofs, off_t len);
@@ -273,18 +281,42 @@ private:
 
   int run_s3select_on_json(const char* query, const char* input, size_t input_length);
 
-  int extract_by_tag(std::string input, std::string tag_name, std::string& result);
-
   void convert_escape_seq(std::string& esc);
 
-  int handle_aws_cli_parameters(std::string& sql_query);
-
-  int range_request(int64_t start, int64_t len, void*, optional_yield);
-
-  size_t get_obj_size();
   std::function<int(int64_t, int64_t, void*, optional_yield*)> fp_range_req;
   std::function<size_t(void)> fp_get_obj_size;
 
   void shape_chunk_per_trino_requests(const char*, off_t& ofs, off_t& len);
-};
+}; // class RGWS3SelectExecutor
 
+
+class RGWSelectObj_ObjStore_S3 : public RGWGetObj_ObjStore_S3 {
+
+  RGWSelectParams params;
+
+  RGWSelectExecutor executor;
+
+  unsigned int chunk_number;
+  std::string m_s3select_query;
+  std::string m_s3select_input;
+  std::string m_s3select_output;
+
+public:
+  
+  RGWSelectObj_ObjStore_S3();
+  virtual ~RGWSelectObj_ObjStore_S3();
+
+  virtual int get_params(optional_yield y) override;
+
+  virtual void execute(optional_yield) override;
+
+  virtual int send_response_data(bufferlist& bl, off_t ofs, off_t len) override;
+
+  int handle_aws_cli_parameters(std::string& sql_query);
+
+  int extract_by_tag(std::string input, std::string tag_name, std::string& result);
+
+  int range_request(int64_t start, int64_t len, void*, optional_yield);
+
+  size_t get_obj_size();
+}; // class RGWSelectObj_Objtore_S3

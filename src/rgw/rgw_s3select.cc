@@ -280,7 +280,7 @@ void aws_response_handler::send_stats_response()
   rgw_flush_formatter_and_reset(s, s->formatter);
 }
 
-RGWSelectObj_ObjStore_S3::RGWSelectObj_ObjStore_S3():
+RGWSelectExecutor::RGWSelectExecutor():
   m_scan_range_ind(false),
   m_start_scan_sz(0),
   m_end_scan_sz(0),
@@ -291,9 +291,8 @@ RGWSelectObj_ObjStore_S3::RGWSelectObj_ObjStore_S3():
   m_requested_range(0),
   m_scan_offset(1024),
   m_skip_next_chunk(false),
-  m_is_trino_request(false)
 {
-  set_get_data(true);
+//  set_get_data(true);
   fp_get_obj_size = [&]() {
     return get_obj_size();
   };
@@ -339,53 +338,10 @@ RGWSelectObj_ObjStore_S3::RGWSelectObj_ObjStore_S3():
 
 }
 
-RGWSelectObj_ObjStore_S3::~RGWSelectObj_ObjStore_S3()
+RGWSelectExexutor::~RGWSelectExecutor()
 {}
 
-int RGWSelectObj_ObjStore_S3::get_params(optional_yield y)
-{
-  if(m_s3select_query.empty() == false) {
-    return 0;
-  }
-#ifndef _ARROW_EXIST
-    m_parquet_type = false;
-    ldpp_dout(this, 10) << "arrow library is not installed" << dendl;
-#endif
-  
-  //retrieve s3-select query from payload
-  bufferlist data;
-  int ret;
-  int max_size = 4096;
-  std::tie(ret, data) = read_all_input(s, max_size, false);
-  if (ret != 0) {
-    ldpp_dout(this, 10) << "s3-select query: failed to retrieve query; ret = " << ret << dendl;
-    return ret;
-  }
-  m_s3select_query = data.to_str();
-  if (m_s3select_query.length() > 0) {
-    ldpp_dout(this, 10) << "s3-select query: " << m_s3select_query << dendl;
-  } else {
-    ldpp_dout(this, 10) << "s3-select query: failed to retrieve query;" << dendl;
-    return -1;
-  }
-  const auto& m = s->info.env->get_map();
-  auto user_agent = m.find("HTTP_USER_AGENT"); {
-  if (user_agent != m.end()){
-    if (user_agent->second.find("Trino") != std::string::npos){
-	m_is_trino_request = true;
-	ldpp_dout(this, 10) << "s3-select query: request sent by Trino." << dendl;
-      }
-    }
-  }
-
-  int status = handle_aws_cli_parameters(m_sql_query);
-  if (status<0) {
-    return status;
-  }
-  return RGWGetObj_ObjStore_S3::get_params(y);
-}
-
-int RGWSelectObj_ObjStore_S3::run_s3select_on_csv(const char* query, const char* input, size_t input_length)
+int RGWSelectExecutor::run_s3select_on_csv(const char* query, const char* input, size_t input_length)
 {
   int status = 0;
   uint32_t length_before_processing, length_post_processing;
@@ -469,9 +425,10 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_csv(const char* query, const char*
     m_aws_response_handler.send_progress_response();
   }
   return status;
-}
+} // RGWSelectExecutor::run_s3select_on_csv
 
-int RGWSelectObj_ObjStore_S3::run_s3select_on_parquet(const char* query)
+
+int RGWSelectExecutor::run_s3select_on_parquet(const char* query)
 {
   int status = 0;
 #ifdef _ARROW_EXIST
@@ -514,9 +471,10 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_parquet(const char* query)
   }
 #endif
   return status;
-}
+} // RGWSelectExecutor::run_s3select_on_parquet
 
-int RGWSelectObj_ObjStore_S3::run_s3select_on_json(const char* query, const char* input, size_t input_length)
+
+int RGWSelectExecutor::run_s3select_on_json(const char* query, const char* input, size_t input_length)
 {
   int status = 0;
   
@@ -588,138 +546,10 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_json(const char* query, const char
   }
 
   return status;
-}
+} // RGWSelectExecutor::run_s3select_on_json
 
-int RGWSelectObj_ObjStore_S3::handle_aws_cli_parameters(std::string& sql_query)
-{
-  std::string input_tag{"InputSerialization"};
-  std::string output_tag{"OutputSerialization"};
-  if (chunk_number !=0) {
-    return 0;
-  }
-#define GT "&gt;"
-#define LT "&lt;"
-#define APOS "&apos;"
 
-  if (m_s3select_query.find(GT) != std::string::npos) {
-    boost::replace_all(m_s3select_query, GT, ">");
-  }
-  if (m_s3select_query.find(LT) != std::string::npos) {
-    boost::replace_all(m_s3select_query, LT, "<");
-  }
-  if (m_s3select_query.find(APOS) != std::string::npos) {
-    boost::replace_all(m_s3select_query, APOS, "'");
-  }
-  //AWS cli s3select parameters
-  if (m_s3select_query.find(input_tag+"><CSV") != std::string::npos) {
-    ldpp_dout(this, 10) << "s3select: engine is set to process CSV objects" << dendl;
-  }
-  else if (m_s3select_query.find(input_tag+"><JSON") != std::string::npos) {
-    m_json_type=true;
-    ldpp_dout(this, 10) << "s3select: engine is set to process JSON objects" << dendl;
-  } else if (m_s3select_query.find(input_tag+"><Parquet") != std::string::npos) {
-    m_parquet_type=true;
-    ldpp_dout(this, 10) << "s3select: engine is set to process Parquet objects" << dendl;
-  }
-
-  extract_by_tag(m_s3select_query, "Expression", sql_query);
-  extract_by_tag(m_s3select_query, "Enabled", m_enable_progress);
-  size_t _qi = m_s3select_query.find("<" + input_tag + ">", 0);
-  size_t _qe = m_s3select_query.find("</" + input_tag + ">", _qi);
-  m_s3select_input = m_s3select_query.substr(_qi + input_tag.size() + 2, _qe - (_qi + input_tag.size() + 2));
-  extract_by_tag(m_s3select_input, "FieldDelimiter", m_column_delimiter);
-  extract_by_tag(m_s3select_input, "QuoteCharacter", m_quot);
-  extract_by_tag(m_s3select_input, "RecordDelimiter", m_row_delimiter);
-  extract_by_tag(m_s3select_input, "FileHeaderInfo", m_header_info);
-  extract_by_tag(m_s3select_input, "Type", m_json_datatype);
-  if (m_row_delimiter.size()==0) {
-    m_row_delimiter='\n';
-  } else if (m_row_delimiter.compare("&#10;") == 0) {
-    //presto change
-    m_row_delimiter='\n';
-  }
-  extract_by_tag(m_s3select_input, "QuoteEscapeCharacter", m_escape_char);
-  extract_by_tag(m_s3select_input, "CompressionType", m_compression_type);
-  size_t _qo = m_s3select_query.find("<" + output_tag + ">", 0);
-  size_t _qs = m_s3select_query.find("</" + output_tag + ">", _qi);
-  m_s3select_output = m_s3select_query.substr(_qo + output_tag.size() + 2, _qs - (_qo + output_tag.size() + 2));
-  extract_by_tag(m_s3select_output, "FieldDelimiter", output_column_delimiter);
-  extract_by_tag(m_s3select_output, "QuoteCharacter", output_quot);
-  extract_by_tag(m_s3select_output, "QuoteEscapeCharacter", output_escape_char);
-  extract_by_tag(m_s3select_output, "QuoteFields", output_quote_fields);
-  extract_by_tag(m_s3select_output, "RecordDelimiter", output_row_delimiter);
-  if (output_row_delimiter.size()==0) {
-    output_row_delimiter='\n';
-  } else if (output_row_delimiter.compare("&#10;") == 0) {
-    //presto change
-    output_row_delimiter='\n';
-  }
-  if (m_compression_type.length()>0 && m_compression_type.compare("NONE") != 0) {
-    ldpp_dout(this, 10) << "RGW supports currently only NONE option for compression type" << dendl;
-    return -1;
-  }
-  extract_by_tag(m_s3select_query, "Start", m_start_scan);
-  extract_by_tag(m_s3select_query, "End", m_end_scan);
-  if (m_start_scan.size() || m_end_scan.size()) {
-    m_scan_range_ind = true;
-    if (m_start_scan.size()) {
-      m_start_scan_sz = std::stol(m_start_scan);
-    }
-    if (m_end_scan.size()) {
-      m_end_scan_sz = std::stol(m_end_scan);
-    } else {
-      m_end_scan_sz = std::numeric_limits<std::int64_t>::max();
-    } 
-  }
-  if (m_enable_progress.compare("true")==0) {
-    enable_progress = true;
-  } else {
-    enable_progress = false;
-  }
-  return 0;
-}
-
-int RGWSelectObj_ObjStore_S3::extract_by_tag(std::string input, std::string tag_name, std::string& result)
-{
-  result = "";
-  size_t _qs = input.find("<" + tag_name + ">", 0);
-  size_t qs_input = _qs + tag_name.size() + 2;
-  if (_qs == std::string::npos) {
-    return -1;
-  }
-  size_t _qe = input.find("</" + tag_name + ">", qs_input);
-  if (_qe == std::string::npos) {
-    return -1;
-  }
-  result = input.substr(qs_input, _qe - qs_input);
-  return 0;
-}
-
-size_t RGWSelectObj_ObjStore_S3::get_obj_size()
-{
-  return s->obj_size;
-}
-
-int RGWSelectObj_ObjStore_S3::range_request(int64_t ofs, int64_t len, void* buff, optional_yield y)
-{
-  //purpose: implementation for arrow::ReadAt, this may take several async calls.
-  //send_response_date(call_back) accumulate buffer, upon completion control is back to ReadAt.
-  range_req_str = "bytes=" + std::to_string(ofs) + "-" + std::to_string(ofs+len-1);
-  range_str = range_req_str.c_str();
-  range_parsed = false;
-  RGWGetObj::parse_range();
-  requested_buffer.clear();
-  m_request_range = len;
-  ldout(s->cct, 10) << "S3select: calling execute(async):" << " request-offset :" << ofs << " request-length :" << len << " buffer size : " << requested_buffer.size() << dendl;
-  RGWGetObj::execute(y);
-  if (buff) {
-    memcpy(buff, requested_buffer.data(), len);
-  }
-  ldout(s->cct, 10) << "S3select: done waiting, buffer is complete buffer-size:" << requested_buffer.size() << dendl;
-  return len;
-}
-
-void RGWSelectObj_ObjStore_S3::execute(optional_yield y)
+void RGWSelectExecutor::execute(optional_yield y)
 {
   int status = 0;
   char parquet_magic[4];
@@ -734,14 +564,13 @@ void RGWSelectObj_ObjStore_S3::execute(optional_yield y)
     m_aws_response_handler.set(s, this, fp_chunked_transfer_encoding);
   }
 
-  if(s->cct->_conf->rgw_disable_s3select == true)
-  {
-      std::string error_msg="s3select : is disabled by rgw_disable_s3select configuration parameter";
-      ldpp_dout(this, 10) << error_msg << dendl;
-      m_aws_response_handler.send_error_response_rgw_formatter(error_msg.data());
+  if(s->cct->_conf->rgw_disable_s3select == true) {
+    std::string error_msg="s3select : is disabled by rgw_disable_s3select configuration parameter";
+    ldpp_dout(this, 10) << error_msg << dendl;
+    m_aws_response_handler.send_error_response_rgw_formatter(error_msg.data());
       
-      op_ret = -ERR_INVALID_REQUEST;
-      return;
+    op_ret = -ERR_INVALID_REQUEST;
+    return;
   }
 
   if (m_parquet_type) {
@@ -760,28 +589,28 @@ void RGWSelectObj_ObjStore_S3::execute(optional_yield y)
     } else {
       ldout(s->cct, 10) << "S3select: complete query with success " << dendl;
     }
-    } else { 
-	//CSV or JSON processing
-	if (m_scan_range_ind) {
+  } else { 
+    //CSV or JSON processing
+    if (m_scan_range_ind) {
 
-	  m_requested_range = (m_end_scan_sz - m_start_scan_sz);
+      m_requested_range = (m_end_scan_sz - m_start_scan_sz);
 	    
-	  if(m_is_trino_request){
-	  // fetch more than requested(m_scan_offset), that additional bytes are scanned for end of row, 
-	  // thus the additional length will be processed, and no broken row for Trino.
-	  // assumption: row is smaller than m_scan_offset. (a different approach is to request for additional range)
-	    range_request(m_start_scan_sz, m_requested_range + m_scan_offset, nullptr, y);
-	  } else {
-	    range_request(m_start_scan_sz, m_requested_range, nullptr, y);
-	  }
+      if(params.m_is_trino_request){
+	// fetch more than requested(m_scan_offset), that additional bytes are scanned for end of row, 
+	// thus the additional length will be processed, and no broken row for Trino.
+	// assumption: row is smaller than m_scan_offset. (a different approach is to request for additional range)
+	range_request(m_start_scan_sz, m_requested_range + m_scan_offset, nullptr, y);
+      } else {
+	range_request(m_start_scan_sz, m_requested_range, nullptr, y);
+      }
 
-	} else {
-	  RGWGetObj::execute(y);
-	}
-  }//if (m_parquet_type)
-}
+    } else {
+      RGWGetObj::execute(y);
+    }
+  } //if (m_parquet_type)
+} // RGWSelectExecutor::execute
 
-int RGWSelectObj_ObjStore_S3::parquet_processing(bufferlist& bl, off_t ofs, off_t len)
+int RGWSelectExecutor::parquet_processing(bufferlist& bl, off_t ofs, off_t len)
 {
     fp_chunked_transfer_encoding();
     size_t append_in_callback = 0;
@@ -806,7 +635,7 @@ int RGWSelectObj_ObjStore_S3::parquet_processing(bufferlist& bl, off_t ofs, off_
     return 0;
 }
 
-void RGWSelectObj_ObjStore_S3::shape_chunk_per_trino_requests(const char* it_cp, off_t& ofs, off_t& len)
+void RGWSelectExecutor::shape_chunk_per_trino_requests(const char* it_cp, off_t& ofs, off_t& len)
 {
 //in case it is a scan range request and sent by Trino client.
 //this routine chops the start/end of chunks.
@@ -873,7 +702,7 @@ void RGWSelectObj_ObjStore_S3::shape_chunk_per_trino_requests(const char* it_cp,
   len -= new_offset;
 }
 
-int RGWSelectObj_ObjStore_S3::csv_processing(bufferlist& bl, off_t ofs, off_t len)
+int RGWSelectExecutor::csv_processing(bufferlist& bl, off_t ofs, off_t len)
 {
   int status = 0;
   if(m_skip_next_chunk == true){
@@ -904,7 +733,7 @@ int RGWSelectObj_ObjStore_S3::csv_processing(bufferlist& bl, off_t ofs, off_t le
 	ofs = 0;
       }
 
-    if(m_is_trino_request){
+    if(params.m_is_trino_request){
       //TODO replace len with it.length() ? ; test Trino flow with compressed objects.
       //is it possible to send get-by-ranges? in parallel?
       shape_chunk_per_trino_requests(&(it)[0], ofs, len); 
@@ -945,7 +774,7 @@ int RGWSelectObj_ObjStore_S3::csv_processing(bufferlist& bl, off_t ofs, off_t le
   return status;
 }
 
-int RGWSelectObj_ObjStore_S3::json_processing(bufferlist& bl, off_t ofs, off_t len)
+int RGWSelectExecutor::json_processing(bufferlist& bl, off_t ofs, off_t len)
 {
   int status = 0;
   
@@ -1007,7 +836,7 @@ int RGWSelectObj_ObjStore_S3::json_processing(bufferlist& bl, off_t ofs, off_t l
   return status;
 }
 
-int RGWSelectObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t ofs, off_t len)
+int RGWSelectExecutor::send_response_data(bufferlist& bl, off_t ofs, off_t len)
 {
 
   if (m_scan_range_ind == false){
@@ -1036,5 +865,193 @@ int RGWSelectObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t ofs, off_
     return json_processing(bl,ofs,len);
   }
   return csv_processing(bl,ofs,len);
+} // RGWSelectExecutor::send_response_data
+
+
+RGWSelectObj_ObjStore_S3::~RGWSelectObj_ObjStore_S3() :
+  executor(params)
+{}
+
+int RGWSelectObj_ObjStore_S3::range_request(int64_t ofs, int64_t len, void* buff, optional_yield y)
+{
+  //purpose: implementation for arrow::ReadAt, this may take several async calls.
+  //send_response_date(call_back) accumulate buffer, upon completion control is back to ReadAt.
+  params.range_req_str = "bytes=" + std::to_string(ofs) + "-" + std::to_string(ofs+len-1);
+  params.range_str = params.range_req_str.c_str();
+  params.range_parsed = false;
+  RGWGetObj::parse_range();
+  requested_buffer.clear();
+  params.m_request_range = len;
+  ldout(s->cct, 10) << "S3select: calling execute(async):" << " request-offset :" << ofs << " request-length :" << len << " buffer size : " << requested_buffer.size() << dendl;
+  RGWGetObj::execute(y);
+  if (buff) {
+    memcpy(buff, requested_buffer.data(), len);
+  }
+  ldout(s->cct, 10) << "S3select: done waiting, buffer is complete buffer-size:" << requested_buffer.size() << dendl;
+  return len;
+} // RGWSelectObj_ObjStore_S3::range_request
+
+int RGWSelectObj_ObjStore_S3::get_params(optional_yield y)
+{
+  if(params.m_s3select_query.empty() == false) {
+    return 0;
+  }
+#ifndef _ARROW_EXIST
+  params.m_parquet_type = false;
+  ldpp_dout(this, 10) << "arrow library is not installed" << dendl;
+#endif
+  
+  //retrieve s3-select query from payload
+  bufferlist data;
+  int ret;
+  int max_size = 4096;
+  std::tie(ret, data) = read_all_input(s, max_size, false);
+  if (ret != 0) {
+    ldpp_dout(this, 10) << "s3-select query: failed to retrieve query; ret = " << ret << dendl;
+    return ret;
+  }
+  params.m_s3select_query = data.to_str();
+  if (params.m_s3select_query.length() > 0) {
+    ldpp_dout(this, 10) << "s3-select query: " << m_s3select_query << dendl;
+  } else {
+    ldpp_dout(this, 10) << "s3-select query: failed to retrieve query;" << dendl;
+    return -1;
+  }
+  const auto& m = s->info.env->get_map();
+  auto user_agent = m.find("HTTP_USER_AGENT"); {
+    if (user_agent != m.end()){
+      if (user_agent->second.find("Trino") != std::string::npos){
+	params.m_is_trino_request = true;
+	ldpp_dout(this, 10) << "s3-select query: request sent by Trino." << dendl;
+      }
+    }
+  }
+
+  int status = handle_aws_cli_parameters(params.m_sql_query);
+  if (status<0) {
+    return status;
+  }
+
+  return RGWGetObj_ObjStore_S3::get_params(y);
+} // RGWSelectObj_ObjStore_S3::get_params
+
+
+void RGWSelectObj_ObjStore_S3::execute(optional_yield y) {
+  executor.execute(y);
 }
 
+
+int RGWSelectObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t ofs, off_t len) {
+  return executor.send_response_data(bl, ofs, len);
+}
+
+
+int RGWSelectObj_ObjStore_S3::handle_aws_cli_parameters(std::string& sql_query)
+{
+  std::string input_tag{"InputSerialization"};
+  std::string output_tag{"OutputSerialization"};
+  if (params.chunk_number !=0) {
+    return 0;
+  }
+#define GT "&gt;"
+#define LT "&lt;"
+#define APOS "&apos;"
+
+  if (m_s3select_query.find(GT) != std::string::npos) {
+    boost::replace_all(m_s3select_query, GT, ">");
+  }
+  if (m_s3select_query.find(LT) != std::string::npos) {
+    boost::replace_all(m_s3select_query, LT, "<");
+  }
+  if (m_s3select_query.find(APOS) != std::string::npos) {
+    boost::replace_all(m_s3select_query, APOS, "'");
+  }
+  //AWS cli s3select parameters
+  if (m_s3select_query.find(input_tag+"><CSV") != std::string::npos) {
+    ldpp_dout(this, 10) << "s3select: engine is set to process CSV objects" << dendl;
+  }
+  else if (m_s3select_query.find(input_tag+"><JSON") != std::string::npos) {
+    params.m_json_type=true;
+    ldpp_dout(this, 10) << "s3select: engine is set to process JSON objects" << dendl;
+  } else if (m_s3select_query.find(input_tag+"><Parquet") != std::string::npos) {
+    params.m_parquet_type=true;
+    ldpp_dout(this, 10) << "s3select: engine is set to process Parquet objects" << dendl;
+  }
+
+  extract_by_tag(m_s3select_query, "Expression", sql_query);
+  extract_by_tag(m_s3select_query, "Enabled", params.m_enable_progress);
+  size_t _qi = m_s3select_query.find("<" + input_tag + ">", 0);
+  size_t _qe = m_s3select_query.find("</" + input_tag + ">", _qi);
+  m_s3select_input = m_s3select_query.substr(_qi + input_tag.size() + 2, _qe - (_qi + input_tag.size() + 2));
+  extract_by_tag(m_s3select_input, "FieldDelimiter", params.m_column_delimiter);
+  extract_by_tag(m_s3select_input, "QuoteCharacter", params.m_quot);
+  extract_by_tag(m_s3select_input, "RecordDelimiter", params.m_row_delimiter);
+  extract_by_tag(m_s3select_input, "FileHeaderInfo", params.m_header_info);
+  extract_by_tag(m_s3select_input, "Type", params.m_json_datatype);
+  if (params.m_row_delimiter.size()==0) {
+    params.m_row_delimiter='\n';
+  } else if (params.m_row_delimiter.compare("&#10;") == 0) {
+    //presto change
+    params.m_row_delimiter='\n';
+  }
+  extract_by_tag(m_s3select_input, "QuoteEscapeCharacter", params.m_escape_char);
+  extract_by_tag(m_s3select_input, "CompressionType", params.m_compression_type);
+  size_t _qo = m_s3select_query.find("<" + output_tag + ">", 0);
+  size_t _qs = m_s3select_query.find("</" + output_tag + ">", _qi);
+  m_s3select_output = m_s3select_query.substr(_qo + output_tag.size() + 2, _qs - (_qo + output_tag.size() + 2));
+  extract_by_tag(m_s3select_output, "FieldDelimiter", params.output_column_delimiter);
+  extract_by_tag(m_s3select_output, "QuoteCharacter", params.output_quot);
+  extract_by_tag(m_s3select_output, "QuoteEscapeCharacter", params.output_escape_char);
+  extract_by_tag(m_s3select_output, "QuoteFields", params.output_quote_fields);
+  extract_by_tag(m_s3select_output, "RecordDelimiter", params.output_row_delimiter);
+  if (params.output_row_delimiter.size()==0) {
+    params.output_row_delimiter='\n';
+  } else if (params.output_row_delimiter.compare("&#10;") == 0) {
+    //presto change
+    params.output_row_delimiter='\n';
+  }
+  if (params.m_compression_type.length()>0 && params.m_compression_type.compare("NONE") != 0) {
+    ldpp_dout(this, 10) << "RGW supports currently only NONE option for compression type" << dendl;
+    return -1;
+  }
+  extract_by_tag(m_s3select_query, "Start", params.m_start_scan);
+  extract_by_tag(m_s3select_query, "End", params.m_end_scan);
+  if (params.m_start_scan.size() || params.m_end_scan.size()) {
+    params.m_scan_range_ind = true;
+    if (params.m_start_scan.size()) {
+      params.m_start_scan_sz = std::stol(params.m_start_scan);
+    }
+    if (params.m_end_scan.size()) {
+      params.m_end_scan_sz = std::stol(params.m_end_scan);
+    } else {
+      params.m_end_scan_sz = std::numeric_limits<std::int64_t>::max();
+    } 
+  }
+
+  params.enable_progress = 0 == params.m_enable_progress.compare("true");
+
+  return 0;
+} // RGWSelectObj_ObjStore_S3::handle_aws_cli_parameters
+
+
+int RGWSelectObj_ObjStore_S3::extract_by_tag(std::string input, std::string tag_name, std::string& result)
+{
+  result = "";
+  size_t _qs = input.find("<" + tag_name + ">", 0);
+  size_t qs_input = _qs + tag_name.size() + 2;
+  if (_qs == std::string::npos) {
+    return -1;
+  }
+  size_t _qe = input.find("</" + tag_name + ">", qs_input);
+  if (_qe == std::string::npos) {
+    return -1;
+  }
+  result = input.substr(qs_input, _qe - qs_input);
+  return 0;
+}
+
+
+size_t RGWSelectObj_ObjStore_S3::get_obj_size()
+{
+  return s->obj_size;
+}
