@@ -58,12 +58,12 @@ class RGWSI_BucketIndex_RADOS : public RGWSI_BucketIndex
 
   // return the index oid for the given shard id
   void get_bucket_index_object(const std::string& bucket_oid_base,
-                               const rgw::bucket_index_normal_layout& normal,
+                               const rgw::LayoutVariant& normal,
                                uint64_t gen_id, int shard_id,
                                std::string* bucket_obj);
   // return the index oid and shard id for the given object name
   int get_bucket_index_object(const std::string& bucket_oid_base,
-                              const rgw::bucket_index_normal_layout& normal,
+                              const rgw::LayoutVariant& normal,
                               uint64_t gen_id, const std::string& obj_key,
                               std::string* bucket_obj, int* shard_id);
 

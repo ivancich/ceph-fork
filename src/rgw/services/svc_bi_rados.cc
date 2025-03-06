@@ -213,10 +213,10 @@ int RGWSI_BucketIndex_RADOS::open_bucket_index(const DoutPrefixProvider *dpp,
     return ret;
   }
 
-  get_bucket_index_objects(bucket_oid_base, idx_layout.layout.normal.num_shards,
+  get_bucket_index_objects(bucket_oid_base, num_shards(idx_layout.layout.normal),
                            idx_layout.gen, bucket_objs, shard_id);
   if (bucket_instance_ids) {
-    get_bucket_instance_ids(bucket_info, idx_layout.layout.normal.num_shards,
+    get_bucket_instance_ids(bucket_info, num_shards(idx_layout),
                             shard_id, bucket_instance_ids);
   }
   return 0;
@@ -224,11 +224,15 @@ int RGWSI_BucketIndex_RADOS::open_bucket_index(const DoutPrefixProvider *dpp,
 
 void RGWSI_BucketIndex_RADOS::get_bucket_index_object(
     const std::string& bucket_oid_base,
-    const rgw::bucket_index_normal_layout& normal,
+    const rgw::LayoutVariant& normal,
     uint64_t gen_id, int shard_id,
     std::string* bucket_obj)
 {
-  if (!normal.num_shards) {
+#warning "push this back to callers"
+#if 0
+  auto biso = rgw::BIShardOracle::create_unique(cct, normal);
+  biso->get_bucket_index_object(bucket_oid_base, gen_id, shard_id, bucket_obj);
+  if (!num_shards(normal)) {
     // By default with no sharding, we use the bucket oid as itself
     (*bucket_obj) = bucket_oid_base;
   } else {
@@ -243,15 +247,20 @@ void RGWSI_BucketIndex_RADOS::get_bucket_index_object(
       (*bucket_obj) = buf;
     }
   }
+#endif
 }
 
 int RGWSI_BucketIndex_RADOS::get_bucket_index_object(
     const std::string& bucket_oid_base,
-    const rgw::bucket_index_normal_layout& normal,
+    const rgw::LayoutVariant& normal,
     uint64_t gen_id, const std::string& obj_key,
     std::string* bucket_obj, int* shard_id)
 {
   int r = 0;
+#warning "push this back to callers"
+#if 0
+  auto biso = rgw::BIShardOracle::create_unique(cct, normal);
+  return biso->get_bucket_index_object(bucket_oid_base, gen_id, obj_key, bucket_obj, shard_id);
   switch (normal.hash_type) {
     case rgw::BucketHashType::Mod:
       if (!normal.num_shards) {
@@ -261,7 +270,7 @@ int RGWSI_BucketIndex_RADOS::get_bucket_index_object(
           *shard_id = -1;
         }
       } else {
-        uint32_t sid = bucket_shard_index(obj_key, normal.num_shards);
+        uint32_t sid = bucket_shard_index(obj_key, num_shards(normal));
         char buf[bucket_oid_base.size() + 64];
         if (gen_id) {
           bucket_obj_with_generation(buf, sizeof(buf), bucket_oid_base, gen_id, sid);
@@ -277,6 +286,7 @@ int RGWSI_BucketIndex_RADOS::get_bucket_index_object(
     default:
       r = -ENOTSUP;
   }
+#endif
   return r;
 }
 
@@ -468,7 +478,7 @@ int RGWSI_BucketIndex_RADOS::init_index(const DoutPrefixProvider *dpp,
   dir_oid.append(bucket_info.bucket.bucket_id);
 
   map<int, string> bucket_objs;
-  get_bucket_index_objects(dir_oid, idx_layout.layout.normal.num_shards, idx_layout.gen, &bucket_objs);
+  get_bucket_index_objects(dir_oid, num_shards(idx_layout.layout.normal), idx_layout.gen, &bucket_objs);
 
   const size_t max_aio = cct->_conf->rgw_bucket_index_max_aio;
   boost::system::error_code ec;
@@ -533,7 +543,7 @@ int RGWSI_BucketIndex_RADOS::clean_index(const DoutPrefixProvider *dpp,
   dir_oid.append(bucket_info.bucket.bucket_id);
 
   std::map<int, std::string> bucket_objs;
-  get_bucket_index_objects(dir_oid, idx_layout.layout.normal.num_shards,
+  get_bucket_index_objects(dir_oid, num_shards(idx_layout.layout.normal),
                            idx_layout.gen, &bucket_objs);
 
   const size_t max_aio = cct->_conf->rgw_bucket_index_max_aio;

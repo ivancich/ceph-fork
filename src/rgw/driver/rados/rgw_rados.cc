@@ -9612,7 +9612,9 @@ public:
 int RGWRados::get_bucket_stats_async(const DoutPrefixProvider *dpp, RGWBucketInfo& bucket_info, const rgw::bucket_index_layout_generation& idx_layout, int shard_id, boost::intrusive_ptr<rgw::sal::ReadStatsCB> cb)
 {
   int num_aio = 0;
-  boost::intrusive_ptr headercb = new RGWGetBucketStatsContext(std::move(cb), bucket_info.layout.current_index.layout.normal.num_shards ? : 1);
+  boost::intrusive_ptr headercb =
+    new RGWGetBucketStatsContext(std::move(cb),
+				 rgw::num_shards(bucket_info.layout.current_index.layout.normal) ? : 1);
   int r = cls_bucket_head_async(dpp, bucket_info, idx_layout, shard_id, headercb, &num_aio);
   if (r < 0) {
     if (num_aio) {
@@ -10891,7 +10893,13 @@ int RGWRados::remove_objs_from_index(const DoutPrefixProvider *dpp,
   if (is_layout_indexless(current_index)) {
     return -EINVAL;
   }
-  const uint32_t num_shards = current_index.layout.normal.num_shards;
+
+  auto hash_layout_p = rgw::hashed_layout_ptr(current_index.layout);
+  if (!hash_layout_p) {
+    return -EINVAL;
+  }
+
+  const uint32_t num_shards = hash_layout_p->num_shards;
 
   librados::IoCtx index_pool;
   std::map<int, std::string> index_oids;
@@ -11184,13 +11192,18 @@ int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
   bool need_resharding = false;
   uint32_t suggested_num_shards = 0;
   const bool is_versioned = bucket_info.versioned();
-  const uint32_t num_source_shards =
-    rgw::current_num_shards(bucket_info.layout);
-  const uint32_t min_layout_shards =
-    rgw::current_min_layout_shards(bucket_info.layout);
+
+  auto hash_layout_p = bucket_info.hashed_layout_ptr();
+  if (!hash_layout_p) {
+    ldpp_dout(dpp, 0) <<
+      "ERROR: tried to perform a hashed layout reshard on a "
+      "bucket with non-hashed layout: " << bucket_info.bucket << dendl;
+    return -EINVAL;
+  }
+  const uint32_t num_source_shards = hash_layout_p->num_shards;
 
   calculate_preferred_shards(dpp, is_versioned, num_objs,
-			     num_source_shards, min_layout_shards,
+			     num_source_shards, hash_layout_p->min_num_shards,
 			     need_resharding, &suggested_num_shards);
   if (! need_resharding) {
     return 0;
@@ -11205,7 +11218,7 @@ int RGWRados::check_bucket_shards(const RGWBucketInfo& bucket_info,
 
   ldpp_dout(dpp, 1) << "RGWRados::" << __func__ <<
     " bucket " << bucket_info.bucket.name <<
-    " needs resharding; current num shards " << num_source_shards <<
+    " needs resharding; current num shards " << hash_layout_p->num_shards <<
     "; new num shards " << suggested_num_shards << dendl;
 
   return add_bucket_to_reshard(dpp, bucket_info, suggested_num_shards, y);

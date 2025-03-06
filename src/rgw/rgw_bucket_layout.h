@@ -20,16 +20,22 @@
 
 #pragma once
 
-#include <optional>
 #include <string>
+#include <sstream>
+#include <optional>
+
 #include "include/encoding.h"
 #include "common/ceph_json.h"
+
+
+class RGWBucketInfo;
 
 namespace rgw {
 
 enum class BucketIndexType : uint8_t {
-  Normal, // normal hash-based sharded index layout
-  Indexless, // no bucket index, so listing is unsupported
+  Normal = 0,    // normal hash-based sharded index layout
+  Indexless = 1, // no bucket index, so listing is unsupported
+  Ordered = 2,   // shards maintain lexical order
 };
 
 std::string_view to_string(const BucketIndexType& t);
@@ -51,6 +57,8 @@ bool parse(std::string_view str, BucketHashType& t);
 void encode_json_impl(const char *name, const BucketHashType& t, ceph::Formatter *f);
 void decode_json_obj(BucketHashType& t, JSONObj *obj);
 
+
+
 struct bucket_index_normal_layout {
   uint32_t num_shards = 1;
 
@@ -59,13 +67,19 @@ struct bucket_index_normal_layout {
 
   BucketHashType hash_type = BucketHashType::Mod;
 
-  friend std::ostream& operator<<(std::ostream& out,
-				  const bucket_index_normal_layout& l) {
-    out << "num_shards=" << l.num_shards << ", min_num_shards=" <<
-      l.min_num_shards << ", hash_type=" << to_string(l.hash_type);
+  std::string to_string() const {
+    std::stringstream ss;
+    ss << "bucket_index_hashed_layout{ num_shards=" << num_shards <<
+      ", min_num_shards=" << min_num_shards <<
+      ", hash_type=" << rgw::to_string(hash_type) << " }";
+    return ss.str();
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, const bucket_index_normal_layout& l) {
+    out << l.to_string();
     return out;
   }
-};
+}; // struct bucket_index_normal_layout
 
 inline bool operator==(const bucket_index_normal_layout& l,
                        const bucket_index_normal_layout& r) {
@@ -82,17 +96,49 @@ void decode(bucket_index_normal_layout& l, bufferlist::const_iterator& bl);
 void encode_json_impl(const char *name, const bucket_index_normal_layout& l, ceph::Formatter *f);
 void decode_json_obj(bucket_index_normal_layout& l, JSONObj *obj);
 
-struct bucket_index_layout {
-  BucketIndexType type = BucketIndexType::Normal;
+struct bucket_index_ordered_layout {
+  uint32_t num_shards = 1;
 
-  // TODO: variant of layout types?
-  bucket_index_normal_layout normal;
+  std::string to_string() const {
+    std::stringstream ss;
+    ss << "bucket_index_ordered_layout:{ num_shards=" << num_shards << " }";
+    return ss.str();
+  }
 
-  friend std::ostream& operator<<(std::ostream& out, const bucket_index_layout& l) {
-    out << "type=" << to_string(l.type) << ", normal=" << l.normal;
+  friend std::ostream& operator<<(std::ostream& out, const bucket_index_ordered_layout& l) {
+    out << l.to_string();
     return out;
   }
-};
+}; // struct bucket_index_ordered_layout
+
+inline bool operator==(const bucket_index_ordered_layout& l,
+                       const bucket_index_ordered_layout& r) {
+  return l.num_shards == r.num_shards;
+}
+
+inline bool operator!=(const bucket_index_ordered_layout& l,
+                       const bucket_index_ordered_layout& r) {
+  return !(l == r);
+}
+
+void encode(const bucket_index_ordered_layout& l, bufferlist& bl, uint64_t f=0);
+void decode(bucket_index_ordered_layout& l, bufferlist::const_iterator& bl);
+void encode_json_impl(const char *name, const bucket_index_ordered_layout& l, ceph::Formatter *f);
+void decode_json_obj(bucket_index_ordered_layout& l, JSONObj *obj);
+
+
+using LayoutVariant = std::variant<bucket_index_normal_layout,bucket_index_ordered_layout>;
+
+BucketIndexType bucket_index_type(const LayoutVariant& l);
+
+
+struct bucket_index_layout {
+  BucketIndexType type;
+
+  LayoutVariant normal;
+
+  friend std::ostream& operator<<(std::ostream& out, const bucket_index_layout& l);
+}; // struct bucket_index_layout
 
 inline bool operator==(const bucket_index_layout& l,
                        const bucket_index_layout& r) {
@@ -113,7 +159,7 @@ struct bucket_index_layout_generation {
   bucket_index_layout layout;
 
   friend std::ostream& operator<<(std::ostream& out, const bucket_index_layout_generation& g) {
-    out << "gen=" << g.gen;
+    out << "bucket_index_layout_generation{ gen=" << g.gen << ", layout=" << g.layout << " }";
     return out;
   }
 };
@@ -158,11 +204,13 @@ inline std::ostream& operator<<(std::ostream& out, const BucketLogType &log_type
 
 struct bucket_index_log_layout {
   uint64_t gen = 0;
-  bucket_index_normal_layout layout;
+
+  LayoutVariant layout;
+
   operator bucket_index_layout_generation() const {
     bucket_index_layout_generation bilg;
     bilg.gen = gen;
-    bilg.layout.type = BucketIndexType::Normal;
+    bilg.layout.type = bucket_index_type(bilg.layout.normal);
     bilg.layout.normal = layout;
     return bilg;
   }
@@ -208,7 +256,7 @@ void decode_json_obj(bucket_log_layout_generation& l, JSONObj *obj);
 inline bucket_log_layout_generation log_layout_from_index(
     uint64_t gen, const bucket_index_layout_generation& index)
 {
-  return {gen, {BucketLogType::InIndex, {index.gen, index.layout.normal}}};
+  return { gen, { BucketLogType::InIndex, { index.gen, index.layout.normal }}};
 }
 
 inline auto matches_gen(uint64_t gen)
@@ -278,6 +326,12 @@ inline uint32_t num_shards(const bucket_index_normal_layout& index) {
   // old buckets used num_shards=0 to mean 1
   return index.num_shards > 0 ? index.num_shards : 1;
 }
+inline uint32_t num_shards(const bucket_index_ordered_layout& index) {
+  return index.num_shards;
+}
+inline uint32_t num_shards(const LayoutVariant& index) {
+  return std::visit([](const auto& arg) -> uint32_t { return num_shards(arg); }, index);
+}
 inline uint32_t num_shards(const bucket_index_layout& index) {
   ceph_assert(index.type == BucketIndexType::Normal);
   return num_shards(index.normal);
@@ -289,20 +343,30 @@ inline uint32_t num_shards(const bucket_index_layout_generation& index) {
 inline uint32_t current_num_shards(const BucketLayout& layout) {
   return num_shards(layout.current_index);
 }
-inline uint32_t current_min_layout_shards(const BucketLayout& layout) {
-  return layout.current_index.layout.normal.min_num_shards;
-}
 inline bool is_layout_indexless(const bucket_index_layout_generation& layout) {
   return layout.layout.type == BucketIndexType::Indexless;
 }
 inline bool is_layout_reshardable(const bucket_index_layout_generation& layout) {
-  return layout.layout.type == BucketIndexType::Normal;
+  return layout.layout.type == BucketIndexType::Normal ||
+    layout.layout.type == BucketIndexType::Ordered;
 }
 inline bool is_layout_reshardable(const BucketLayout& layout) {
   return is_layout_reshardable(layout.current_index);
 }
 inline std::string_view current_layout_desc(const BucketLayout& layout) {
   return rgw::to_string(layout.current_index.layout.type);
+}
+inline bucket_index_normal_layout* hashed_layout_ptr(bucket_index_layout& layout) {
+  return std::get_if<rgw::bucket_index_normal_layout>(&layout.normal);
+}
+inline const bucket_index_normal_layout* hashed_layout_ptr(const bucket_index_layout& layout) {
+  return std::get_if<rgw::bucket_index_normal_layout>(&layout.normal);
+}
+inline bucket_index_ordered_layout* ordered_layout_ptr(bucket_index_layout& layout) {
+  return std::get_if<rgw::bucket_index_ordered_layout>(&layout.normal);
+}
+inline const bucket_index_ordered_layout* ordered_layout_ptr(const bucket_index_layout& layout) {
+  return std::get_if<rgw::bucket_index_ordered_layout>(&layout.normal);
 }
 
 } // namespace rgw

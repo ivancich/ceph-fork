@@ -8899,6 +8899,8 @@ next:
     }
     auto& bucket_info = bucket->get_info();
 
+    auto hash_layout_p = bucket_info.hashed_layout_ptr();
+
     const rgw::BucketIndexType type =
       bucket_info.layout.current_index.layout.type;
     if (type != rgw::BucketIndexType::Normal) {
@@ -8909,9 +8911,14 @@ next:
       return EINVAL;
     }
 
-    uint32_t& min_num_shards =
-      bucket_info.layout.current_index.layout.normal.min_num_shards;
-    min_num_shards = num_shards;
+    if (!hash_layout_p) {
+      cerr << "INTERNAL ERROR: the bucket's layout is type " << type <<
+	" but the data is of a different layout type" << std::endl;
+      return EIO;
+    }
+
+    // copy command-line argument into data structure
+    hash_layout_p->min_num_shards = num_shards;
 
     ret = bucket->put_info(dpp(), false, real_time(), null_yield);
     if (ret < 0) {

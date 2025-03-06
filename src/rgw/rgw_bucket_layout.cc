@@ -16,6 +16,7 @@
 #include <boost/algorithm/string.hpp>
 #include "rgw_bucket_layout.h"
 #include "include/utime.h"
+#include "common/versioned_variant.h"
 
 namespace rgw {
 
@@ -25,6 +26,7 @@ std::string_view to_string(const BucketIndexType& t)
   switch (t) {
   case BucketIndexType::Normal: return "Normal";
   case BucketIndexType::Indexless: return "Indexless";
+  case BucketIndexType::Ordered: return "Ordered";
   default: return "Unknown";
   }
 }
@@ -36,6 +38,10 @@ bool parse(std::string_view str, BucketIndexType& t)
   }
   if (boost::iequals(str, "Indexless")) {
     t = BucketIndexType::Indexless;
+    return true;
+  }
+  if (boost::iequals(str, "Ordered")) {
+    t = BucketIndexType::Ordered;
     return true;
   }
   return false;
@@ -114,44 +120,85 @@ void decode_json_obj(bucket_index_normal_layout& l, JSONObj *obj)
   JSONDecoder::decode_json("min_num_shards", l.min_num_shards, obj, 1);
 }
 
+// bucket_index_normal_layout
+void encode(const bucket_index_ordered_layout& l, bufferlist& bl, uint64_t f)
+{
+  ENCODE_START(1, 1, bl);
+  encode(l.num_shards, bl);
+  ENCODE_FINISH(bl);
+}
+void decode(bucket_index_ordered_layout& l, bufferlist::const_iterator& bl)
+{
+  DECODE_START(1, bl);
+  decode(l.num_shards, bl);
+  DECODE_FINISH(bl);
+}
+void encode_json_impl(const char *name, const bucket_index_ordered_layout& l, ceph::Formatter *f)
+{
+  f->open_object_section(name);
+  encode_json("num_shards", l.num_shards, f);
+  f->close_section();
+}
+void decode_json_obj(bucket_index_ordered_layout& l, JSONObj *obj)
+{
+  JSONDecoder::decode_json("num_shards", l.num_shards, obj);
+}
+
+
 // bucket_index_layout
 void encode(const bucket_index_layout& l, bufferlist& bl, uint64_t f)
 {
-  ENCODE_START(1, 1, bl);
+  ENCODE_START(2, 1, bl);
   encode(l.type, bl);
-  switch (l.type) {
-  case BucketIndexType::Normal:
-    encode(l.normal, bl);
-    break;
-  case BucketIndexType::Indexless:
-    break;
-  }
+  ceph::converted_variant::encode(l.normal, bl);
   ENCODE_FINISH(bl);
 }
 void decode(bucket_index_layout& l, bufferlist::const_iterator& bl)
 {
-  DECODE_START(1, bl);
+  DECODE_START(2, bl);
   decode(l.type, bl);
-  switch (l.type) {
-  case BucketIndexType::Normal:
-    decode(l.normal, bl);
-    break;
-  case BucketIndexType::Indexless:
-    break;
-  }
+  ceph::converted_variant::decode(l.normal, bl);
   DECODE_FINISH(bl);
 }
 void encode_json_impl(const char *name, const bucket_index_layout& l, ceph::Formatter *f)
 {
   f->open_object_section(name);
   encode_json("type", l.type, f);
-  encode_json("normal", l.normal, f);
+  switch(l.type) {
+  case BucketIndexType::Normal:
+    encode_json("normal", std::get<bucket_index_normal_layout>(l.normal), f);
+    break;
+  case BucketIndexType::Ordered:
+    encode_json("normal", std::get<bucket_index_ordered_layout>(l.normal), f);
+    break;
+  case BucketIndexType::Indexless:
+    // empty
+    break;
+  } // switch
   f->close_section();
 }
 void decode_json_obj(bucket_index_layout& l, JSONObj *obj)
 {
   JSONDecoder::decode_json("type", l.type, obj);
-  JSONDecoder::decode_json("normal", l.normal, obj);
+  switch(l.type) {
+  case BucketIndexType::Normal:
+  {
+    bucket_index_normal_layout temp;
+    JSONDecoder::decode_json("normal", temp, obj);
+    l.normal = temp;
+  }
+    break;
+  case BucketIndexType::Ordered:
+  {
+    bucket_index_ordered_layout temp;
+    JSONDecoder::decode_json("normal", temp, obj);
+    l.normal = temp;
+  }
+  break;
+  case BucketIndexType::Indexless:
+    // empty
+    break;
+  } // switch
 }
 
 // bucket_index_layout_generation
@@ -219,27 +266,53 @@ void encode(const bucket_index_log_layout& l, bufferlist& bl, uint64_t f)
 {
   ENCODE_START(1, 1, bl);
   encode(l.gen, bl);
-  encode(l.layout, bl);
+  ceph::converted_variant::encode(l.layout, bl);
   ENCODE_FINISH(bl);
 }
 void decode(bucket_index_log_layout& l, bufferlist::const_iterator& bl)
 {
   DECODE_START(1, bl);
   decode(l.gen, bl);
-  decode(l.layout, bl);
+  ceph::converted_variant::decode(l.layout, bl);
   DECODE_FINISH(bl);
 }
 void encode_json_impl(const char *name, const bucket_index_log_layout& l, ceph::Formatter *f)
 {
   f->open_object_section(name);
   encode_json("gen", l.gen, f);
-  encode_json("layout", l.layout, f);
+  if (const bucket_index_normal_layout* pval = std::get_if<bucket_index_normal_layout>(&l.layout)) {
+    encode_json("layout_type", BucketIndexType::Normal, f);
+    encode_json("layout", *pval, f);
+  } else if (const bucket_index_ordered_layout* pval = std::get_if<bucket_index_ordered_layout>(&l.layout)) {
+    encode_json("layout_type", BucketIndexType::Ordered, f);
+    encode_json("layout", *pval, f);
+  } else {
+#warning "best way to handle?"
+    encode_json("layout_type", "unknown", f);
+  }
   f->close_section();
 }
 void decode_json_obj(bucket_index_log_layout& l, JSONObj *obj)
 {
   JSONDecoder::decode_json("gen", l.gen, obj);
-  JSONDecoder::decode_json("layout", l.layout, obj);
+  BucketIndexType index_type;
+  JSONDecoder::decode_json("layout_type", index_type, obj);
+
+  bucket_index_normal_layout normal_layout;
+  bucket_index_ordered_layout ordered_layout;
+
+  switch (index_type) {
+  case BucketIndexType::Normal:
+    JSONDecoder::decode_json("layout", normal_layout, obj);
+    l.layout = normal_layout;
+    break;
+  case BucketIndexType::Ordered:
+    JSONDecoder::decode_json("layout", ordered_layout, obj);
+    l.layout = ordered_layout;
+    break;
+  default:
+    throw JSONDecoder::err("unable to decode BucketIndexType");
+  }
 }
 
 // bucket_log_layout
@@ -409,6 +482,49 @@ void decode_json_obj(BucketLayout& l, JSONObj *obj)
   utime_t ut;
   JSONDecoder::decode_json("judge_reshard_lock_time", ut, obj);
   l.judge_reshard_lock_time = ut.to_real_time();
+}
+
+
+std::ostream& operator<<(std::ostream& out, const bucket_index_layout& l) {
+  out << "type=" << to_string(l.type) << ", typed_layout={ ";
+
+  switch (l.type) {
+  case BucketIndexType::Normal:
+  {
+    const auto* p1 = std::get_if<bucket_index_normal_layout>(&l.normal);
+    if (p1) {
+      out << *p1;
+    } else {
+      out << "ERROR: MISMATCHED VARIANT";
+    }
+  }
+  break;
+  case BucketIndexType::Ordered:
+  {
+    const auto* p2 = std::get_if<bucket_index_ordered_layout>(&l.normal);
+    if (p2) {
+      out << *p2;
+    } else {
+      out << "ERROR: MISMATCHED VARIANT";
+    }
+  }
+  break;
+  default:
+    out << "ERROR: UNKNOWN VARIANT";
+  }
+  out << " }";
+  return out;
+}
+
+
+BucketIndexType bucket_index_type(const LayoutVariant& l) {
+  if (std::holds_alternative<bucket_index_normal_layout>(l)) {
+    return BucketIndexType::Normal;
+  } else if (std::holds_alternative<bucket_index_ordered_layout>(l)) {
+    return BucketIndexType::Ordered;
+  } else {
+    throw std::invalid_argument("unknown layout variant");
+  }
 }
 
 } // namespace rgw

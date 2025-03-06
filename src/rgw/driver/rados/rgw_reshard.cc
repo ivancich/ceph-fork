@@ -433,12 +433,20 @@ static int init_target_layout(rgw::sal::RadosStore* store,
   auto prev = bucket_info.layout; // make a copy for cleanup
   const auto current = prev.current_index;
 
+  auto current_hash_layout_p = rgw::hashed_layout_ptr(current.layout);
+  if (!current_hash_layout_p) {
+    return -EINVAL;
+  }
+
   // initialize a new normal target index layout generation
   rgw::bucket_index_layout_generation target;
-  target.layout.type = rgw::BucketIndexType::Normal;
-  target.layout.normal.num_shards = new_num_shards;
-  target.layout.normal.min_num_shards = current.layout.normal.min_num_shards;
   target.gen = current.gen + 1;
+  target.layout.type = rgw::BucketIndexType::Normal;
+
+  rgw::bucket_index_normal_layout new_hash_layout;
+  new_hash_layout.num_shards = new_num_shards;
+  new_hash_layout.min_num_shards = current_hash_layout_p->min_num_shards;
+  target.layout.normal = new_hash_layout;
 
   if (bucket_info.reshard_status == cls_rgw_reshard_status::IN_PROGRESS) {
     // backward-compatible cleanup of old reshards, where the target was in a
@@ -1042,6 +1050,14 @@ int RGWBucketReshard::renew_lock_if_needed(const DoutPrefixProvider *dpp) {
 
 int RGWBucketReshard::calc_target_shard(const RGWBucketInfo& bucket_info, const rgw_obj_key& key,
                                         int& shard, const DoutPrefixProvider *dpp) {
+  auto hash_layout_p = bucket_info.hashed_layout_ptr();
+  if (! hash_layout_p) {
+    ldpp_dout(dpp, 0) <<
+      "ERROR: tried to calculate the target shard on a bucket with a "
+      "non-hashed layout: " << bucket_info.bucket << dendl;
+    return -EINVAL;
+  }
+
   int target_shard_id, ret;
 
   rgw_obj obj(bucket_info.bucket, key);
@@ -1050,8 +1066,9 @@ int RGWBucketReshard::calc_target_shard(const RGWBucketInfo& bucket_info, const 
     // place the multipart .meta object on the same shard as its head object
     obj.index_hash_source = mp.get_key();
   }
-  ret = store->getRados()->get_target_shard_id(bucket_info.layout.target_index->layout.normal,
-                obj.get_hash_object(), &target_shard_id);
+  ret = store->getRados()->get_target_shard_id(*hash_layout_p,
+					       obj.get_hash_object(),
+					       &target_shard_id);
   if (ret < 0) {
     ldpp_dout(dpp, -1) << "ERROR: get_target_shard_id() returned ret=" << ret << dendl;
     return ret;
@@ -1587,6 +1604,14 @@ int RGWReshard::process_entry(const cls_rgw_reshard_entry& entry,
     }
   }
 
+  auto hash_layout_p = bucket_info.hashed_layout_ptr();
+  if (!hash_layout_p) {
+    ldpp_dout(dpp, 0) <<
+      "ERROR: tried to process a reshard entry for a bucket without a "
+      "hashed bucket index: " << bucket_info.bucket << dendl;
+    return -EINVAL;
+  }
+
   // if *dynamic* reshard reduction, perform extra sanity checks in
   // part to prevent chasing constantly changing entry count. If
   // *admin*-initiated (or unknown-initiated) reshard reduction, skip
@@ -1615,10 +1640,8 @@ int RGWReshard::process_entry(const cls_rgw_reshard_entry& entry,
     }
 
     const bool is_versioned = bucket_info.versioned();
-    const uint32_t current_shard_count =
-      rgw::current_num_shards(bucket_info.layout);
-    const uint32_t min_layout_shards =
-      rgw::current_min_layout_shards(bucket_info.layout);
+    const uint32_t current_shard_count = hash_layout_p->num_shards;
+    const uint32_t min_layout_shards = hash_layout_p->min_num_shards;
 
     bool needs_resharding { false };
     uint32_t suggested_shard_count { 0 };

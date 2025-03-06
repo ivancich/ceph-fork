@@ -1556,10 +1556,11 @@ static int bucket_stats(rgw::sal::Driver* driver,
   ::encode_json("explicit_placement", bucket->get_key().explicit_placement, formatter);
   formatter->dump_string("id", bucket->get_bucket_id());
   formatter->dump_string("marker", bucket->get_marker());
+
   formatter->dump_stream("index_type") << bucket_info.layout.current_index.layout.type;
   formatter->dump_int("index_generation", bucket_info.layout.current_index.gen);
   formatter->dump_int("num_shards",
-		      bucket_info.layout.current_index.layout.normal.num_shards);
+		      rgw::num_shards(bucket_info.layout.current_index.layout.normal));
   formatter->dump_string("reshard_status", to_string(bucket_info.layout.resharding));
   logrecord_ut.gmtime(formatter->dump_stream("judge_reshard_lock_time"));
   formatter->dump_bool("object_lock_enabled", bucket_info.obj_lock_enabled());
@@ -2845,25 +2846,28 @@ void init_default_bucket_layout(CephContext *cct, rgw::BucketLayout& layout,
 				std::optional<rgw::BucketIndexType> type,
 				std::optional<uint32_t> shards) {
   layout.current_index.gen = 0;
-  layout.current_index.layout.normal.hash_type = rgw::BucketHashType::Mod;
-
   layout.current_index.layout.type =
     type.value_or(rgw::BucketIndexType::Normal);
 
+  rgw::bucket_index_normal_layout hash_layout;
+
+  hash_layout.hash_type = rgw::BucketHashType::Mod;
+
   if (shards) {
-    layout.current_index.layout.normal.num_shards = *shards;
-    layout.current_index.layout.normal.min_num_shards = *shards;
+    hash_layout.num_shards = *shards;
+    hash_layout.min_num_shards = *shards;
   } else if (cct->_conf->rgw_override_bucket_index_max_shards > 0) {
-    layout.current_index.layout.normal.num_shards =
-      cct->_conf->rgw_override_bucket_index_max_shards;
+    hash_layout.num_shards = cct->_conf->rgw_override_bucket_index_max_shards;
+    hash_layout.min_num_shards = cct->_conf->rgw_override_bucket_index_max_shards;
   } else {
-    layout.current_index.layout.normal.num_shards =
-      zone.bucket_index_max_shards;
+    hash_layout.num_shards = zone.bucket_index_max_shards;
+    hash_layout.min_num_shards = zone.bucket_index_max_shards;
   }
 
   if (layout.current_index.layout.type == rgw::BucketIndexType::Normal) {
     layout.logs.push_back(log_layout_from_index(0, layout.current_index));
   }
+  layout.current_index.layout.normal = hash_layout;
 }
 
 int RGWBucketInstanceMetadataHandler::put_prepare(

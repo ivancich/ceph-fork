@@ -1137,6 +1137,20 @@ struct RGWBucketInfo {
     return layout.current_index;
   }
 
+  const rgw::bucket_index_normal_layout* hashed_layout_ptr() const {
+    return rgw::hashed_layout_ptr(layout.current_index.layout);
+  }
+  rgw::bucket_index_normal_layout* hashed_layout_ptr() {
+    return rgw::hashed_layout_ptr(layout.current_index.layout);
+  }
+  const rgw::bucket_index_ordered_layout* ordered_layout_ptr() const {
+    return rgw::ordered_layout_ptr(layout.current_index.layout);
+    // return std::get_if<rgw::bucket_index_normal_layout>(&layout.current_index.layout.normal);
+  }
+  rgw::bucket_index_ordered_layout* ordered_layout_ptr() {
+    return rgw::ordered_layout_ptr(layout.current_index.layout);
+  }
+
   RGWBucketInfo();
   ~RGWBucketInfo();
 };

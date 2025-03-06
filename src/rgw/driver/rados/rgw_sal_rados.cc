@@ -191,7 +191,7 @@ int RadosBucket::create(const DoutPrefixProvider* dpp,
     if ((params.index_type && *params.index_type !=
          info.layout.current_index.layout.type) ||
         (params.index_shards && *params.index_shards !=
-         info.layout.current_index.layout.normal.num_shards)) {
+         rgw::num_shards(info.layout.current_index.layout))) {
       return -ERR_BUCKET_EXISTS;
     }
     ret = 0;
@@ -823,10 +823,11 @@ int RadosBucket::set_tag_timeout(const DoutPrefixProvider *dpp, optional_yield y
 
 int RadosBucket::purge_instance(const DoutPrefixProvider* dpp, optional_yield y)
 {
-  int max_shards = (info.layout.current_index.layout.normal.num_shards > 0 ? info.layout.current_index.layout.normal.num_shards : 1);
+  int max_shards = (rgw::num_shards(info.layout.current_index.layout.normal) > 0 ?
+		    rgw::num_shards(info.layout.current_index.layout.normal) : 1);
   for (int i = 0; i < max_shards; i++) {
     RGWRados::BucketShard bs(store->getRados());
-    int shard_id = (info.layout.current_index.layout.normal.num_shards > 0  ? i : -1);
+    int shard_id = (rgw::num_shards(info.layout.current_index.layout.normal) > 0 ? i : -1);
     int ret = bs.init(dpp, info, info.layout.current_index, shard_id, y);
     if (ret < 0) {
       cerr << "ERROR: bs.init(bucket=" << info.bucket << ", shard=" << shard_id
