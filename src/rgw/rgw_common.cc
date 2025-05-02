@@ -2402,7 +2402,7 @@ void RGWBucketInfo::decode(bufferlist::const_iterator& bl) {
 
   // read in the layout for older versions
   if (struct_v >= 10 && struct_v < new_layout_v) {
-    rgw::bucket_index_normal_layout new_layout;
+    rgw::bucket_index_hashed_layout new_layout;
 
     decode(new_layout.num_shards, bl); // if struct_v >= 10 && struct_v < new_layout_v
 
@@ -2410,7 +2410,7 @@ void RGWBucketInfo::decode(bufferlist::const_iterator& bl) {
       decode(new_layout.hash_type, bl);
     }
 
-    layout.current_index.layout.normal = new_layout;
+    layout.current_index.layout.specs = new_layout;
   }
 
   if (struct_v >= 12) {
@@ -2432,7 +2432,7 @@ void RGWBucketInfo::decode(bufferlist::const_iterator& bl) {
     decode(it, bl);
     layout.current_index.layout.type = (rgw::BucketIndexType)it;
   } else {
-    layout.current_index.layout.type = rgw::BucketIndexType::Normal;
+    layout.current_index.layout.type = rgw::BucketIndexType::Hashed;
   }
   swift_versioning = false;
   swift_ver_location.clear();
@@ -2471,7 +2471,7 @@ void RGWBucketInfo::decode(bufferlist::const_iterator& bl) {
   }
 
   if (layout.logs.empty() &&
-      layout.current_index.layout.type == rgw::BucketIndexType::Normal) {
+      layout.current_index.layout.type == rgw::BucketIndexType::Hashed) {
     layout.logs.push_back(rgw::log_layout_from_index(0, layout.current_index));
   }
   DECODE_FINISH(bl);
@@ -2561,11 +2561,11 @@ void RGWBucketInfo::generate_test_instances(list<RGWBucketInfo*>& o)
   // round-trip properly.
   auto gen_layout = [](rgw::BucketLayout& l) {
     l.current_index.gen = 0;
-    rgw::bucket_index_normal_layout prep_layout;
+    rgw::bucket_index_hashed_layout prep_layout;
     prep_layout.num_shards = 11;
     prep_layout.hash_type = rgw::BucketHashType::Mod;
-    l.current_index.layout.type = rgw::BucketIndexType::Normal;
-    l.current_index.layout.normal = prep_layout;
+    l.current_index.layout.type = rgw::BucketIndexType::Hashed;
+    l.current_index.layout.specs = prep_layout;
     l.logs.push_back(log_layout_from_index(
                        l.current_index.gen,
                        l.current_index));
@@ -2597,7 +2597,7 @@ void RGWBucketInfo::dump(Formatter *f) const
   encode_json("index_type", (uint32_t)layout.current_index.layout.type, f);
 
   std::visit(overloaded {
-      [f](rgw::bucket_index_normal_layout arg) {
+      [f](rgw::bucket_index_hashed_layout arg) {
 	encode_json("num_shards", arg.num_shards, f);
 	encode_json("bi_shard_hash_type", (uint32_t) arg.hash_type, f);
 	encode_json("min_num_shards", arg.min_num_shards, f);
@@ -2605,15 +2605,15 @@ void RGWBucketInfo::dump(Formatter *f) const
 	[f](rgw::bucket_index_ordered_layout arg) {
 	encode_json("num_shards", arg.num_shards, f);
 	}
-        }, layout.current_index.layout.normal);
+        }, layout.current_index.layout.specs);
 #if 0
 #warning "fix this"
-  rgw::bucket_index_normal_layout* normal_layout =
-    std::get_if<rgw::bucket_index_normal_layout>(&layout.current_index.layout.normal);
+  rgw::bucket_index_hashed_layout* normal_layout =
+    std::get_if<rgw::bucket_index_hashed_layout>(&layout.current_index.layout.specs);
   rgw::bucket_ordered_normal_layout* ordered_layout =
-    std::get_if<rgw::bucket_index_ordered_layout>(&layout.current_index.layout.normal);
-  encode_json("num_shards", rgw::num_shards(layout.current_index.layout.normal.num_shards), f);
-  encode_json("bi_shard_hash_type", (uint32_t)layout.current_index.layout.normal.hash_type, f);
+    std::get_if<rgw::bucket_index_ordered_layout>(&layout.current_index.layout.specs);
+  encode_json("num_shards", rgw::num_shards(layout.current_index.layout.specs.num_shards), f);
+  encode_json("bi_shard_hash_type", (uint32_t)layout.current_index.layout.specs.hash_type, f);
 #endif
 
   encode_json("requester_pays", requester_pays, f);
@@ -2696,19 +2696,19 @@ void RGWBucketInfo::decode_json(JSONObj *obj) {
     if (JSONDecoder::decode_json("bi_type", index_type_val, obj)) {
       index_type = static_cast<rgw::BucketIndexType>(index_type_val);
     } else {
-      index_type = rgw::BucketIndexType::Normal;
+      index_type = rgw::BucketIndexType::Hashed;
     }
 
-    rgw::bucket_index_normal_layout normal;
+    rgw::bucket_index_hashed_layout normal;
     rgw::bucket_index_ordered_layout ordered;
     switch (index_type) {
-    case rgw::BucketIndexType::Normal:
-      normal = rgw::bucket_index_normal_layout { num_shards, min_num_shards, hash_type };
-      layout.current_index.layout.normal = normal;
+    case rgw::BucketIndexType::Hashed:
+      normal = rgw::bucket_index_hashed_layout { num_shards, min_num_shards, hash_type };
+      layout.current_index.layout.specs = normal;
       break;
     case rgw::BucketIndexType::Ordered:
       ordered = rgw::bucket_index_ordered_layout { num_shards };
-      layout.current_index.layout.normal = ordered;
+      layout.current_index.layout.specs = ordered;
       break;
     default:
       throw JSONDecoder::err("failed to parse RGWBucketInfo; bi_type unknown");

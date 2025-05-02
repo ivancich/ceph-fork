@@ -33,7 +33,7 @@ class RGWBucketInfo;
 namespace rgw {
 
 enum class BucketIndexType : uint8_t {
-  Normal = 0,    // normal hash-based sharded index layout
+  Hashed = 0,    // normal hash-based sharded index layout
   Indexless = 1, // no bucket index, so listing is unsupported
   Ordered = 2,   // shards maintain lexical order
 };
@@ -59,7 +59,7 @@ void decode_json_obj(BucketHashType& t, JSONObj *obj);
 
 
 
-struct bucket_index_normal_layout {
+struct bucket_index_hashed_layout {
   uint32_t num_shards = 1;
 
   // the fewest number of shards this bucket layout allows
@@ -75,26 +75,26 @@ struct bucket_index_normal_layout {
     return ss.str();
   }
 
-  friend std::ostream& operator<<(std::ostream& out, const bucket_index_normal_layout& l) {
+  friend std::ostream& operator<<(std::ostream& out, const bucket_index_hashed_layout& l) {
     out << l.to_string();
     return out;
   }
-}; // struct bucket_index_normal_layout
+}; // struct bucket_index_hashed_layout
 
-inline bool operator==(const bucket_index_normal_layout& l,
-                       const bucket_index_normal_layout& r) {
+inline bool operator==(const bucket_index_hashed_layout& l,
+                       const bucket_index_hashed_layout& r) {
   return l.num_shards == r.num_shards
       && l.hash_type == r.hash_type;
 }
-inline bool operator!=(const bucket_index_normal_layout& l,
-                       const bucket_index_normal_layout& r) {
+inline bool operator!=(const bucket_index_hashed_layout& l,
+                       const bucket_index_hashed_layout& r) {
   return !(l == r);
 }
 
-void encode(const bucket_index_normal_layout& l, bufferlist& bl, uint64_t f=0);
-void decode(bucket_index_normal_layout& l, bufferlist::const_iterator& bl);
-void encode_json_impl(const char *name, const bucket_index_normal_layout& l, ceph::Formatter *f);
-void decode_json_obj(bucket_index_normal_layout& l, JSONObj *obj);
+void encode(const bucket_index_hashed_layout& l, bufferlist& bl, uint64_t f=0);
+void decode(bucket_index_hashed_layout& l, bufferlist::const_iterator& bl);
+void encode_json_impl(const char *name, const bucket_index_hashed_layout& l, ceph::Formatter *f);
+void decode_json_obj(bucket_index_hashed_layout& l, JSONObj *obj);
 
 struct bucket_index_ordered_layout {
   uint32_t num_shards = 1;
@@ -127,7 +127,7 @@ void encode_json_impl(const char *name, const bucket_index_ordered_layout& l, ce
 void decode_json_obj(bucket_index_ordered_layout& l, JSONObj *obj);
 
 
-using LayoutVariant = std::variant<bucket_index_normal_layout,bucket_index_ordered_layout>;
+using LayoutVariant = std::variant<bucket_index_hashed_layout,bucket_index_ordered_layout>;
 
 BucketIndexType bucket_index_type(const LayoutVariant& l);
 
@@ -135,14 +135,14 @@ BucketIndexType bucket_index_type(const LayoutVariant& l);
 struct bucket_index_layout {
   BucketIndexType type;
 
-  LayoutVariant normal;
+  LayoutVariant specs;;
 
   friend std::ostream& operator<<(std::ostream& out, const bucket_index_layout& l);
 }; // struct bucket_index_layout
 
 inline bool operator==(const bucket_index_layout& l,
                        const bucket_index_layout& r) {
-  return l.type == r.type && l.normal == r.normal;
+  return l.type == r.type && l.specs == r.specs;
 }
 inline bool operator!=(const bucket_index_layout& l,
                        const bucket_index_layout& r) {
@@ -210,8 +210,8 @@ struct bucket_index_log_layout {
   operator bucket_index_layout_generation() const {
     bucket_index_layout_generation bilg;
     bilg.gen = gen;
-    bilg.layout.type = bucket_index_type(bilg.layout.normal);
-    bilg.layout.normal = layout;
+    bilg.layout.type = bucket_index_type(bilg.layout.specs);
+    bilg.layout.specs = layout;
     return bilg;
   }
 };
@@ -256,7 +256,7 @@ void decode_json_obj(bucket_log_layout_generation& l, JSONObj *obj);
 inline bucket_log_layout_generation log_layout_from_index(
     uint64_t gen, const bucket_index_layout_generation& index)
 {
-  return { gen, { BucketLogType::InIndex, { index.gen, index.layout.normal }}};
+  return { gen, { BucketLogType::InIndex, { index.gen, index.layout.specs }}};
 }
 
 inline auto matches_gen(uint64_t gen)
@@ -268,7 +268,7 @@ inline bucket_index_layout_generation log_to_index_layout(const bucket_log_layou
 {
   bucket_index_layout_generation index;
   index.gen = log_layout.layout.in_index.gen;
-  index.layout.normal = log_layout.layout.in_index.layout;
+  index.layout.specs = log_layout.layout.in_index.layout;
   return index;
 }
 
@@ -322,7 +322,7 @@ void encode_json_impl(const char *name, const BucketLayout& l, ceph::Formatter *
 void decode_json_obj(BucketLayout& l, JSONObj *obj);
 
 
-inline uint32_t num_shards(const bucket_index_normal_layout& index) {
+inline uint32_t num_shards(const bucket_index_hashed_layout& index) {
   // old buckets used num_shards=0 to mean 1
   return index.num_shards > 0 ? index.num_shards : 1;
 }
@@ -333,8 +333,8 @@ inline uint32_t num_shards(const LayoutVariant& index) {
   return std::visit([](const auto& arg) -> uint32_t { return num_shards(arg); }, index);
 }
 inline uint32_t num_shards(const bucket_index_layout& index) {
-  ceph_assert(index.type == BucketIndexType::Normal);
-  return num_shards(index.normal);
+  ceph_assert(index.type == BucketIndexType::Hashed);
+  return num_shards(index.specs);
 }
 inline uint32_t num_shards(const bucket_index_layout_generation& index) {
   return num_shards(index.layout);
@@ -347,7 +347,7 @@ inline bool is_layout_indexless(const bucket_index_layout_generation& layout) {
   return layout.layout.type == BucketIndexType::Indexless;
 }
 inline bool is_layout_reshardable(const bucket_index_layout_generation& layout) {
-  return layout.layout.type == BucketIndexType::Normal ||
+  return layout.layout.type == BucketIndexType::Hashed ||
     layout.layout.type == BucketIndexType::Ordered;
 }
 inline bool is_layout_reshardable(const BucketLayout& layout) {
@@ -356,17 +356,17 @@ inline bool is_layout_reshardable(const BucketLayout& layout) {
 inline std::string_view current_layout_desc(const BucketLayout& layout) {
   return rgw::to_string(layout.current_index.layout.type);
 }
-inline bucket_index_normal_layout* hashed_layout_ptr(bucket_index_layout& layout) {
-  return std::get_if<rgw::bucket_index_normal_layout>(&layout.normal);
+inline bucket_index_hashed_layout* hashed_layout_ptr(bucket_index_layout& layout) {
+  return std::get_if<rgw::bucket_index_hashed_layout>(&layout.specs);
 }
-inline const bucket_index_normal_layout* hashed_layout_ptr(const bucket_index_layout& layout) {
-  return std::get_if<rgw::bucket_index_normal_layout>(&layout.normal);
+inline const bucket_index_hashed_layout* hashed_layout_ptr(const bucket_index_layout& layout) {
+  return std::get_if<rgw::bucket_index_hashed_layout>(&layout.specs);
 }
 inline bucket_index_ordered_layout* ordered_layout_ptr(bucket_index_layout& layout) {
-  return std::get_if<rgw::bucket_index_ordered_layout>(&layout.normal);
+  return std::get_if<rgw::bucket_index_ordered_layout>(&layout.specs);
 }
 inline const bucket_index_ordered_layout* ordered_layout_ptr(const bucket_index_layout& layout) {
-  return std::get_if<rgw::bucket_index_ordered_layout>(&layout.normal);
+  return std::get_if<rgw::bucket_index_ordered_layout>(&layout.specs);
 }
 
 } // namespace rgw

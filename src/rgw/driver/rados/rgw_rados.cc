@@ -9614,7 +9614,7 @@ int RGWRados::get_bucket_stats_async(const DoutPrefixProvider *dpp, RGWBucketInf
   int num_aio = 0;
   boost::intrusive_ptr headercb =
     new RGWGetBucketStatsContext(std::move(cb),
-				 rgw::num_shards(bucket_info.layout.current_index.layout.normal) ? : 1);
+				 rgw::num_shards(bucket_info.layout.current_index.layout.specs) ? : 1);
   int r = cls_bucket_head_async(dpp, bucket_info, idx_layout, shard_id, headercb, &num_aio);
   if (r < 0) {
     if (num_aio) {
@@ -11270,7 +11270,7 @@ int RGWRados::check_quota(const DoutPrefixProvider *dpp, const rgw_owner& bucket
   return quota_handler->check_quota(dpp, bucket_owner, bucket, quota, 1, obj_size, y);
 }
 
-int RGWRados::get_target_shard_id(const rgw::bucket_index_normal_layout& layout, const string& obj_key,
+int RGWRados::get_target_shard_id(const rgw::bucket_index_hashed_layout& layout, const string& obj_key,
                                   int *shard_id)
 {
   int r = 0;

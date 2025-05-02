@@ -24,7 +24,7 @@ namespace rgw {
 std::string_view to_string(const BucketIndexType& t)
 {
   switch (t) {
-  case BucketIndexType::Normal: return "Normal";
+  case BucketIndexType::Hashed: return "Hashed";
   case BucketIndexType::Indexless: return "Indexless";
   case BucketIndexType::Ordered: return "Ordered";
   default: return "Unknown";
@@ -32,8 +32,11 @@ std::string_view to_string(const BucketIndexType& t)
 }
 bool parse(std::string_view str, BucketIndexType& t)
 {
-  if (boost::iequals(str, "Normal")) {
-    t = BucketIndexType::Normal;
+  if (boost::iequals(str, "Hashed") ||
+      boost::iequals(str, "Normal"))
+  {
+    // Normal was used historically up to tentacle
+    t = BucketIndexType::Hashed;
     return true;
   }
   if (boost::iequals(str, "Indexless")) {
@@ -84,8 +87,8 @@ void decode_json_obj(BucketHashType& t, JSONObj *obj)
   parse(str, t);
 }
 
-// bucket_index_normal_layout
-void encode(const bucket_index_normal_layout& l, bufferlist& bl, uint64_t f)
+// bucket_index_hashed_layout
+void encode(const bucket_index_hashed_layout& l, bufferlist& bl, uint64_t f)
 {
   ENCODE_START(2, 1, bl);
   encode(l.num_shards, bl);
@@ -93,7 +96,7 @@ void encode(const bucket_index_normal_layout& l, bufferlist& bl, uint64_t f)
   encode(l.min_num_shards, bl);
   ENCODE_FINISH(bl);
 }
-void decode(bucket_index_normal_layout& l, bufferlist::const_iterator& bl)
+void decode(bucket_index_hashed_layout& l, bufferlist::const_iterator& bl)
 {
   DECODE_START(2, bl);
   decode(l.num_shards, bl);
@@ -103,7 +106,7 @@ void decode(bucket_index_normal_layout& l, bufferlist::const_iterator& bl)
   }
   DECODE_FINISH(bl);
 }
-void encode_json_impl(const char *name, const bucket_index_normal_layout& l, ceph::Formatter *f)
+void encode_json_impl(const char *name, const bucket_index_hashed_layout& l, ceph::Formatter *f)
 {
   f->open_object_section(name);
   encode_json("num_shards", l.num_shards, f);
@@ -111,7 +114,7 @@ void encode_json_impl(const char *name, const bucket_index_normal_layout& l, cep
   encode_json("min_num_shards", l.min_num_shards, f);
   f->close_section();
 }
-void decode_json_obj(bucket_index_normal_layout& l, JSONObj *obj)
+void decode_json_obj(bucket_index_hashed_layout& l, JSONObj *obj)
 {
   JSONDecoder::decode_json("num_shards", l.num_shards, obj);
   JSONDecoder::decode_json("hash_type", l.hash_type, obj);
@@ -120,7 +123,7 @@ void decode_json_obj(bucket_index_normal_layout& l, JSONObj *obj)
   JSONDecoder::decode_json("min_num_shards", l.min_num_shards, obj, 1);
 }
 
-// bucket_index_normal_layout
+// bucket_index_hashed_layout
 void encode(const bucket_index_ordered_layout& l, bufferlist& bl, uint64_t f)
 {
   ENCODE_START(1, 1, bl);
@@ -150,14 +153,14 @@ void encode(const bucket_index_layout& l, bufferlist& bl, uint64_t f)
 {
   ENCODE_START(2, 1, bl);
   encode(l.type, bl);
-  ceph::converted_variant::encode(l.normal, bl);
+  ceph::converted_variant::encode(l.specs, bl);
   ENCODE_FINISH(bl);
 }
 void decode(bucket_index_layout& l, bufferlist::const_iterator& bl)
 {
   DECODE_START(2, bl);
   decode(l.type, bl);
-  ceph::converted_variant::decode(l.normal, bl);
+  ceph::converted_variant::decode(l.specs, bl);
   DECODE_FINISH(bl);
 }
 void encode_json_impl(const char *name, const bucket_index_layout& l, ceph::Formatter *f)
@@ -165,11 +168,11 @@ void encode_json_impl(const char *name, const bucket_index_layout& l, ceph::Form
   f->open_object_section(name);
   encode_json("type", l.type, f);
   switch(l.type) {
-  case BucketIndexType::Normal:
-    encode_json("normal", std::get<bucket_index_normal_layout>(l.normal), f);
+  case BucketIndexType::Hashed:
+    encode_json("normal", std::get<bucket_index_hashed_layout>(l.specs), f);
     break;
   case BucketIndexType::Ordered:
-    encode_json("normal", std::get<bucket_index_ordered_layout>(l.normal), f);
+    encode_json("normal", std::get<bucket_index_ordered_layout>(l.specs), f);
     break;
   case BucketIndexType::Indexless:
     // empty
@@ -181,18 +184,18 @@ void decode_json_obj(bucket_index_layout& l, JSONObj *obj)
 {
   JSONDecoder::decode_json("type", l.type, obj);
   switch(l.type) {
-  case BucketIndexType::Normal:
+  case BucketIndexType::Hashed:
   {
-    bucket_index_normal_layout temp;
+    bucket_index_hashed_layout temp;
     JSONDecoder::decode_json("normal", temp, obj);
-    l.normal = temp;
+    l.specs = temp;
   }
     break;
   case BucketIndexType::Ordered:
   {
     bucket_index_ordered_layout temp;
     JSONDecoder::decode_json("normal", temp, obj);
-    l.normal = temp;
+    l.specs = temp;
   }
   break;
   case BucketIndexType::Indexless:
@@ -280,8 +283,8 @@ void encode_json_impl(const char *name, const bucket_index_log_layout& l, ceph::
 {
   f->open_object_section(name);
   encode_json("gen", l.gen, f);
-  if (const bucket_index_normal_layout* pval = std::get_if<bucket_index_normal_layout>(&l.layout)) {
-    encode_json("layout_type", BucketIndexType::Normal, f);
+  if (const bucket_index_hashed_layout* pval = std::get_if<bucket_index_hashed_layout>(&l.layout)) {
+    encode_json("layout_type", BucketIndexType::Hashed, f);
     encode_json("layout", *pval, f);
   } else if (const bucket_index_ordered_layout* pval = std::get_if<bucket_index_ordered_layout>(&l.layout)) {
     encode_json("layout_type", BucketIndexType::Ordered, f);
@@ -298,13 +301,13 @@ void decode_json_obj(bucket_index_log_layout& l, JSONObj *obj)
   BucketIndexType index_type;
   JSONDecoder::decode_json("layout_type", index_type, obj);
 
-  bucket_index_normal_layout normal_layout;
+  bucket_index_hashed_layout hashed_layout;
   bucket_index_ordered_layout ordered_layout;
 
   switch (index_type) {
-  case BucketIndexType::Normal:
-    JSONDecoder::decode_json("layout", normal_layout, obj);
-    l.layout = normal_layout;
+  case BucketIndexType::Hashed:
+    JSONDecoder::decode_json("layout", hashed_layout, obj);
+    l.layout = hashed_layout;
     break;
   case BucketIndexType::Ordered:
     JSONDecoder::decode_json("layout", ordered_layout, obj);
@@ -445,7 +448,7 @@ void decode(BucketLayout& l, bufferlist::const_iterator& bl)
   if (struct_v < 2) {
     l.logs.clear();
     // initialize the log layout to match the current index layout
-    if (l.current_index.layout.type == BucketIndexType::Normal) {
+    if (l.current_index.layout.type == BucketIndexType::Hashed) {
       l.logs.push_back(log_layout_from_index(0, l.current_index));
     }
   } else {
@@ -489,9 +492,9 @@ std::ostream& operator<<(std::ostream& out, const bucket_index_layout& l) {
   out << "type=" << to_string(l.type) << ", typed_layout={ ";
 
   switch (l.type) {
-  case BucketIndexType::Normal:
+  case BucketIndexType::Hashed:
   {
-    const auto* p1 = std::get_if<bucket_index_normal_layout>(&l.normal);
+    const auto* p1 = std::get_if<bucket_index_hashed_layout>(&l.specs);
     if (p1) {
       out << *p1;
     } else {
@@ -501,7 +504,7 @@ std::ostream& operator<<(std::ostream& out, const bucket_index_layout& l) {
   break;
   case BucketIndexType::Ordered:
   {
-    const auto* p2 = std::get_if<bucket_index_ordered_layout>(&l.normal);
+    const auto* p2 = std::get_if<bucket_index_ordered_layout>(&l.specs);
     if (p2) {
       out << *p2;
     } else {
@@ -518,8 +521,8 @@ std::ostream& operator<<(std::ostream& out, const bucket_index_layout& l) {
 
 
 BucketIndexType bucket_index_type(const LayoutVariant& l) {
-  if (std::holds_alternative<bucket_index_normal_layout>(l)) {
-    return BucketIndexType::Normal;
+  if (std::holds_alternative<bucket_index_hashed_layout>(l)) {
+    return BucketIndexType::Hashed;
   } else if (std::holds_alternative<bucket_index_ordered_layout>(l)) {
     return BucketIndexType::Ordered;
   } else {

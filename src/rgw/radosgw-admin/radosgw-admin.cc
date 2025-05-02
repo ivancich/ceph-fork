@@ -3741,7 +3741,7 @@ int main(int argc, const char **argv)
   boost::optional<string> index_pool;
   boost::optional<string> data_pool;
   boost::optional<string> data_extra_pool;
-  rgw::BucketIndexType placement_index_type = rgw::BucketIndexType::Normal;
+  rgw::BucketIndexType placement_index_type = rgw::BucketIndexType::Hashed;
   bool index_type_specified = false;
 
   boost::optional<std::string> compression_type;
@@ -4243,7 +4243,7 @@ int main(int argc, const char **argv)
       data_extra_pool = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--placement-index-type", (char*)NULL)) {
       if (val == "normal") {
-        placement_index_type = rgw::BucketIndexType::Normal;
+        placement_index_type = rgw::BucketIndexType::Hashed;
       } else if (val == "indexless") {
         placement_index_type = rgw::BucketIndexType::Indexless;
       } else {
@@ -8903,9 +8903,9 @@ next:
 
     const rgw::BucketIndexType type =
       bucket_info.layout.current_index.layout.type;
-    if (type != rgw::BucketIndexType::Normal) {
+    if (type != rgw::BucketIndexType::Hashed) {
       cerr << "ERROR: the bucket's layout is type " << type <<
-	" instead of type " << rgw::BucketIndexType::Normal <<
+	" instead of type " << rgw::BucketIndexType::Hashed <<
 	" and therefore does not have a "
 	"minimum number of shards that can be altered" << std::endl;
       return EINVAL;

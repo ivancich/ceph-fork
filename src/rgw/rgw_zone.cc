@@ -779,7 +779,7 @@ void RGWZonePlacementInfo::generate_test_instances(list<RGWZonePlacementInfo*>& 
   o.back()->index_pool = rgw_pool("rgw.buckets.index");
   
   o.back()->data_extra_pool = rgw_pool("rgw.buckets.non-ec");
-  o.back()->index_type = rgw::BucketIndexType::Normal;
+  o.back()->index_type = rgw::BucketIndexType::Hashed;
   o.back()->inline_data = false;
 }
 

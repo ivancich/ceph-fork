@@ -506,13 +506,13 @@ int RGWBucket::check_bad_index_multipart(rgw::sal::RadosStore* const rados_store
   formatter->open_array_section("invalid_multipart_entries");
 
   const auto& index_layout = bucket_info.layout.current_index.layout;
-  if (index_layout.type != rgw::BucketIndexType::Normal) {
+  if (index_layout.type != rgw::BucketIndexType::Hashed) {
     ldpp_dout(dpp, 0) << "ERROR: cannot check bucket indices with layouts of type " <<
       current_layout_desc(bucket_info.layout) <<
       " for bad multipart entries" << dendl;
     return -EINVAL;
   }
-  const int num_shards = rgw::num_shards(index_layout.normal);
+  const int num_shards = rgw::num_shards(index_layout.specs);
   int next_shard = 0;
 
   boost::asio::io_context context;
@@ -728,13 +728,13 @@ int RGWBucket::check_index_olh(rgw::sal::RadosStore* const rados_store,
   }
 
   const auto& index_layout = bucket_info.layout.current_index.layout;
-  if (index_layout.type != rgw::BucketIndexType::Normal) {
+  if (index_layout.type != rgw::BucketIndexType::Hashed) {
     ldpp_dout(dpp, 0) << "ERROR: cannot check bucket indices with layouts of type " <<
       current_layout_desc(bucket_info.layout) <<
       " for bad OLH entries" << dendl;
     return -EINVAL;
   }
-  const int max_shards = rgw::num_shards(index_layout.normal);
+  const int max_shards = rgw::num_shards(index_layout.specs);
   std::string verb = op_state.will_fix_index() ? "removed" : "found";
   uint64_t count_out = 0;
   
@@ -1560,7 +1560,7 @@ static int bucket_stats(rgw::sal::Driver* driver,
   formatter->dump_stream("index_type") << bucket_info.layout.current_index.layout.type;
   formatter->dump_int("index_generation", bucket_info.layout.current_index.gen);
   formatter->dump_int("num_shards",
-		      rgw::num_shards(bucket_info.layout.current_index.layout.normal));
+		      rgw::num_shards(bucket_info.layout.current_index.layout.specs));
   formatter->dump_string("reshard_status", to_string(bucket_info.layout.resharding));
   logrecord_ut.gmtime(formatter->dump_stream("judge_reshard_lock_time"));
   formatter->dump_bool("object_lock_enabled", bucket_info.obj_lock_enabled());
@@ -1658,7 +1658,7 @@ int RGWBucketAdminOp::limit_check(rgw::sal::Driver* driver,
 	  num_objects += s.second.num_objects;
 	}
 
-	const uint32_t num_shards = rgw::num_shards(index.layout.normal);
+	const uint32_t num_shards = rgw::num_shards(index.layout.specs);
 	uint64_t objs_per_shard =
 	  (num_shards) ? num_objects/num_shards : num_objects;
 	{
@@ -2847,9 +2847,9 @@ void init_default_bucket_layout(CephContext *cct, rgw::BucketLayout& layout,
 				std::optional<uint32_t> shards) {
   layout.current_index.gen = 0;
   layout.current_index.layout.type =
-    type.value_or(rgw::BucketIndexType::Normal);
+    type.value_or(rgw::BucketIndexType::Hashed);
 
-  rgw::bucket_index_normal_layout hash_layout;
+  rgw::bucket_index_hashed_layout hash_layout;
 
   hash_layout.hash_type = rgw::BucketHashType::Mod;
 
@@ -2864,10 +2864,10 @@ void init_default_bucket_layout(CephContext *cct, rgw::BucketLayout& layout,
     hash_layout.min_num_shards = zone.bucket_index_max_shards;
   }
 
-  if (layout.current_index.layout.type == rgw::BucketIndexType::Normal) {
+  if (layout.current_index.layout.type == rgw::BucketIndexType::Hashed) {
     layout.logs.push_back(log_layout_from_index(0, layout.current_index));
   }
-  layout.current_index.layout.normal = hash_layout;
+  layout.current_index.layout.specs = hash_layout;
 }
 
 int RGWBucketInstanceMetadataHandler::put_prepare(
