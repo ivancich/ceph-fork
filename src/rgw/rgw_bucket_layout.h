@@ -356,11 +356,18 @@ inline bool is_layout_reshardable(const BucketLayout& layout) {
 inline std::string_view current_layout_desc(const BucketLayout& layout) {
   return rgw::to_string(layout.current_index.layout.type);
 }
+
+inline bucket_index_hashed_layout* hashed_layout_ptr(LayoutVariant& specs) {
+  return std::get_if<rgw::bucket_index_hashed_layout>(&specs);
+}
+inline const bucket_index_hashed_layout* hashed_layout_ptr(const LayoutVariant& specs) {
+  return std::get_if<rgw::bucket_index_hashed_layout>(&specs);
+}
 inline bucket_index_hashed_layout* hashed_layout_ptr(bucket_index_layout& layout) {
-  return std::get_if<rgw::bucket_index_hashed_layout>(&layout.specs);
+  return hashed_layout_ptr(layout.specs);
 }
 inline const bucket_index_hashed_layout* hashed_layout_ptr(const bucket_index_layout& layout) {
-  return std::get_if<rgw::bucket_index_hashed_layout>(&layout.specs);
+  return hashed_layout_ptr(layout.specs);
 }
 inline bucket_index_ordered_layout* ordered_layout_ptr(bucket_index_layout& layout) {
   return std::get_if<rgw::bucket_index_ordered_layout>(&layout.specs);

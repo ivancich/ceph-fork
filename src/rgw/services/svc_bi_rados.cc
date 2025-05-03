@@ -228,11 +228,13 @@ void RGWSI_BucketIndex_RADOS::get_bucket_index_object(
     uint64_t gen_id, int shard_id,
     std::string* bucket_obj)
 {
-#warning "push this back to callers"
-#if 0
-  auto biso = rgw::BIShardOracle::create_unique(cct, specs);
-  biso->get_bucket_index_object(bucket_oid_base, gen_id, shard_id, bucket_obj);
-  if (!num_shards(specs)) {
+  auto hashed_layout_p = rgw::hashed_layout_ptr(specs);
+  if (!hashed_layout_p) {
+    throw std::invalid_argument("get_bucket_index_object was not provited with a hashed layout");
+  }
+  const uint32_t num_shards = hashed_layout_p->num_shards;
+
+  if (!num_shards) {
     // By default with no sharding, we use the bucket oid as itself
     (*bucket_obj) = bucket_oid_base;
   } else {
@@ -247,7 +249,6 @@ void RGWSI_BucketIndex_RADOS::get_bucket_index_object(
       (*bucket_obj) = buf;
     }
   }
-#endif
 }
 
 int RGWSI_BucketIndex_RADOS::get_bucket_index_object(
@@ -256,21 +257,23 @@ int RGWSI_BucketIndex_RADOS::get_bucket_index_object(
     uint64_t gen_id, const std::string& obj_key,
     std::string* bucket_obj, int* shard_id)
 {
+  auto hashed_layout_p = rgw::hashed_layout_ptr(specs);
+  if (!hashed_layout_p) {
+    return -EINVAL;
+  }
+  const uint32_t num_shards = hashed_layout_p->num_shards;
+
   int r = 0;
-#warning "push this back to callers"
-#if 0
-  auto biso = rgw::BIShardOracle::create_unique(cct, specs);
-  return biso->get_bucket_index_object(bucket_oid_base, gen_id, obj_key, bucket_obj, shard_id);
-  switch (specs.hash_type) {
-    case rgw::BucketHashType::Mod:
-      if (!specs.num_shards) {
+  switch (hashed_layout_p->hash_type) {
+  case rgw::BucketHashType::Mod:
+      if (!num_shards) {
         // By default with no sharding, we use the bucket oid as itself
         (*bucket_obj) = bucket_oid_base;
         if (shard_id) {
           *shard_id = -1;
         }
       } else {
-        uint32_t sid = bucket_shard_index(obj_key, num_shards(specs));
+        uint32_t sid = bucket_shard_index(obj_key, num_shards);
         char buf[bucket_oid_base.size() + 64];
         if (gen_id) {
           bucket_obj_with_generation(buf, sizeof(buf), bucket_oid_base, gen_id, sid);
@@ -286,7 +289,6 @@ int RGWSI_BucketIndex_RADOS::get_bucket_index_object(
     default:
       r = -ENOTSUP;
   }
-#endif
   return r;
 }
 

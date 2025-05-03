@@ -2602,19 +2602,10 @@ void RGWBucketInfo::dump(Formatter *f) const
 	encode_json("bi_shard_hash_type", (uint32_t) arg.hash_type, f);
 	encode_json("min_num_shards", arg.min_num_shards, f);
       },
-	[f](rgw::bucket_index_ordered_layout arg) {
+      [f](rgw::bucket_index_ordered_layout arg) {
 	encode_json("num_shards", arg.num_shards, f);
-	}
-        }, layout.current_index.layout.specs);
-#if 0
-#warning "fix this"
-  rgw::bucket_index_hashed_layout* normal_layout =
-    std::get_if<rgw::bucket_index_hashed_layout>(&layout.current_index.layout.specs);
-  rgw::bucket_ordered_normal_layout* ordered_layout =
-    std::get_if<rgw::bucket_index_ordered_layout>(&layout.current_index.layout.specs);
-  encode_json("num_shards", rgw::num_shards(layout.current_index.layout.specs.num_shards), f);
-  encode_json("bi_shard_hash_type", (uint32_t)layout.current_index.layout.specs.hash_type, f);
-#endif
+      }
+  }, layout.current_index.layout.specs);
 
   encode_json("requester_pays", requester_pays, f);
   encode_json("has_website", has_website, f);
