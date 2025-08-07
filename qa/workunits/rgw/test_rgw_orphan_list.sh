@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # set -x
-set -e
+# set -e
 
 # if defined, debug messages will be displayed and prepended with the string
 # debug="DEBUG"
@@ -13,20 +13,52 @@ big_size=7 # in megabytes
 huge_obj=/tmp/huge_obj.temp.$$
 big_obj=/tmp/big_obj.temp.$$
 empty_obj=/tmp/empty_obj.temp.$$
+bucket_mapping=/tmp/bucket_mapping.$$
 
 fifo=/tmp/orphan-fifo.$$
 awscli_dir=${HOME}/awscli_temp
 export PATH=${PATH}:${awscli_dir}
 
-rgw_host=$(hostname --fqdn)
-if echo "$rgw_host" | grep -q '\.' ; then
-    :
-else
-    host_domain=".front.sepia.ceph.com"
-    echo "WARNING: rgw hostname -- $rgw_host -- does not appear to be fully qualified; PUNTING and appending $host_domain"
-    rgw_host="${rgw_host}${host_domain}"
+if echo "$*" | grep -s "local" ;then
+   local=true
+
+   if which radosgw-admin ceph-diff-sorted >/dev/null ;then
+      :
+   else
+      echo Error: radosgw-admin and ceph-diff-sorted both need to be on PATH.
+      which radosgw-admin ceph-diff-sorted
+      exit 1
+   fi
 fi
-rgw_port=80
+
+if echo "$*" | grep -s "s3" ;then
+   s3=true
+fi
+
+if echo "$*" | grep -s "swift" ;then
+   swift=true
+fi
+
+# if neither specified, include both
+if [ -z "$s3" -a -z "$swift" ] ;then
+   s3=true
+   swift=true
+fi
+
+if [ -z "$local" ] ;then
+   rgw_host=$(hostname --fqdn)
+   if echo "$rgw_host" | grep -q '\.' ; then
+       :
+   else
+       host_domain=".front.sepia.ceph.com"
+       echo "WARNING: rgw hostname -- $rgw_host -- does not appear to be fully qualified; PUNTING and appending $host_domain"
+       rgw_host="${rgw_host}${host_domain}"
+   fi
+   rgw_port=80
+else
+    rgw_host=localhost
+    rgw_port=80
+fi
 
 echo "Fully Qualified Domain Name: $rgw_host"
 
@@ -58,31 +90,35 @@ uninstall_awscli() {
     cd "$here"
 }
 
-sudo yum -y install s3cmd
-sudo yum -y install python3-setuptools
-sudo yum -y install python3-pip
-sudo pip3 install --upgrade setuptools
-sudo pip3 install python-swiftclient
+if [ -z "$local" ] ;then
+   sudo yum -y install s3cmd
+   sudo yum -y install python3-setuptools
+   sudo yum -y install python3-pip
+   sudo pip3 install --upgrade setuptools
+   sudo pip3 install python-swiftclient
 
-# get ready for transition from s3cmd to awscli
-if false ;then
-    install_awscli
-    aws --version
-    uninstall_awscli
+   # get ready for transition from s3cmd to awscli
+   if false ;then
+      install_awscli
+      aws --version
+      uninstall_awscli
+   fi
 fi
 
-s3config=/tmp/s3config.$$
+if [ -z "$local" ] ;then
+   s3config="/tmp/s3config.$$"
+   s3config_option="--config $s3config"
 
-# do not include the port when it is 80; the host base is used in the
-# v4 signature and it needs to follow this convention for signatures
-# to match
-if [ "$rgw_port" -ne 80 ] ;then
-    s3_host_base="${rgw_host}:${rgw_port}"
-else
-    s3_host_base="$rgw_host"
-fi
+   # do not include the port when it is 80; the host base is used in the
+   # v4 signature and it needs to follow this convention for signatures
+   # to match
+   if [ "$rgw_port" -ne 80 ] ;then
+      s3_host_base="${rgw_host}:${rgw_port}"
+      else
+	  s3_host_base="$rgw_host"
+   fi
 
-cat >${s3config} <<EOF
+   cat >${s3config} <<EOF
 [default]
 host_base = $s3_host_base
 access_key = 0555b35654ad1656d804
@@ -112,11 +148,14 @@ use_mime_magic = True
 verbosity = WARNING
 EOF
 
+fi
+
 
 # set up swift authentication
 export ST_AUTH=http://${rgw_host}:${rgw_port}/auth/v1.0
 export ST_USER=test:tester
 export ST_KEY=testing
+
 
 create_users() {
     # Create S3 user
@@ -136,23 +175,31 @@ myswift() {
     if [ -n "$debug" ] ;then
 	echo "${debug}: swift --verbose --debug $@"
     fi
-    swift --verbose --debug "$@"
+    swift --verbose "$@"
     local code=$?
     if [ $code -ne 0 ] ;then
-	echo "ERROR: code = $code ; command = s3cmd --config=${s3config} --verbose --debug "$@""
+	echo "ERROR: code = $code ; command = swift --verbose --debug "$@""
 	exit $code
     fi
 }
 
 mys3cmd() {
     if [ -n "$debug" ] ;then
-	echo "${debug}: s3cmd --config=${s3config} --verbose --debug $@"
+	echo "${debug}: s3cmd ${s3config_option} --verbose $@"
     fi
-    s3cmd --config=${s3config} --verbose --debug "$@"
+    s3cmd ${s3config_option} --verbose "$@"
     local code=$?
     if [ $code -ne 0 ] ;then
-	echo "ERROR: code = $code ; command = s3cmd --config=${s3config} --verbose --debug "$@""
+	echo "ERROR: code = $code ; command = s3cmd --config=${s3config} --verbose "$@""
 	exit $code
+    fi
+
+    if [ "$1" == "mb" ] ;then
+       shift
+       for u in $* ;do
+	  b=$(echo "$u" | sed 's|s3://||')
+	  radosgw-admin bucket stats --bucket="$b" | grep -E "\"bucket\"|\"marker\"" >> $bucket_mapping
+       done	   
     fi
 }
 
@@ -170,7 +217,7 @@ mys3uploadkill() {
     
     mkfifo $fifo
 
-    s3cmd --config=${s3config} put $local_file \
+    s3cmd ${s3config_option} put $local_file \
 	  s3://${remote_bkt}/${remote_obj} \
 	  --progress \
 	  --multipart-chunk-size-mb=5 >$fifo &
@@ -198,7 +245,10 @@ mys3upload() {
 ########################################################################
 # PREP
 
-create_users
+if [ -z "$local" ] ;then
+   create_users
+fi
+
 dd if=/dev/urandom of=$big_obj bs=1M count=${big_size}
 dd if=/dev/urandom of=$huge_obj bs=1M count=${huge_size}
 touch $empty_obj
@@ -213,8 +263,11 @@ quick_tests() {
     radosgw-admin bucket list # make sure rgw is up and running
 }
 
+
 ########################################################################
 # S3 TESTS
+
+if [ -n "$s3" ] ;then
 
 ####################################
 # regular multipart test
@@ -497,6 +550,10 @@ sleep 6 # since for testing age at which gc can happen is 5 secs
 radosgw-admin gc process --include-all
 #####################################################################
 
+fi # if s3
+
+if [ -n "$swift" ] ;then
+
 ########################################################################
 # SWIFT TESTS
 
@@ -609,6 +666,8 @@ myswift delete $o_ctr $o_obj
 sleep 6 # since for testing age at which gc can happen is 5 secs
 radosgw-admin gc process --include-all
 
+fi # if swift
+
 
 ########################################
 # DO ORPHAN LIST
@@ -622,13 +681,14 @@ ol_error=""
 for f in orphan-list-*.out ; do
     if [ -s "$f"  ] ;then # if file non-empty
 	ol_error="${ol_error}:$f"
-	echo "One ore more orphans found in $f:"
+	echo "One or more orphans found in $f:"
 	cat "$f"
     fi
 done
 
 if [ -n "$ol_error" ] ;then
     echo "ERROR: orphans found when none expected"
+    echo "Mapping of buckets to markers can be found in file \"${bucket_mapping}\"."
     exit 1
 fi
 
