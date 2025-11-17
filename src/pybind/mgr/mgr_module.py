@@ -408,8 +408,6 @@ def _extract_target_func(
 
 
 class CLICommand(object):
-    COMMANDS = {}  # type: Dict[str, CLICommand]
-
     def __init__(self,
                  prefix: str,
                  perm: str = 'rw',
@@ -476,7 +474,6 @@ class CLICommand(object):
     def _register_handler(self, func: HandlerFuncType) -> HandlerFuncType:
         self.store_func_metadata(func)
         self.func = func
-        self.COMMANDS[self.prefix] = self
         return self.func
 
     def __call__(self, func: HandlerFuncType) -> HandlerFuncType:
@@ -888,8 +885,30 @@ class MgrStandbyModule(ceph_module.BaseMgrStandbyModule, MgrModuleLoggingMixin):
     from their active peer), and to configuration settings (read only).
     """
 
-    MODULE_OPTIONS: List[Option] = []
-    MODULE_OPTION_DEFAULTS = {}  # type: Dict[str, Any]
+    def __init_subclass__(cls):
+        super().__init_subclass__()
+        if not hasattr(cls, "MODULE_OPTIONS"):
+            cls.MODULE_OPTIONS: List[Option] = []
+        if not hasattr(cls, "MODULE_OPTION_DEFAULTS"):
+            cls.MODULE_OPTION_DEFAULTS = {}  # type: Dict[str, Any]
+
+        cls.MODULE_OPTIONS.append(
+            Option(name='log_level', type='str', default="", runtime=True,
+                   enum_allowed=['info', 'debug', 'critical', 'error',
+                                 'warning', '']))
+        cls.MODULE_OPTIONS.append(
+            Option(name='log_to_file', type='bool', default=False, runtime=True))
+        cls.MODULE_OPTIONS.append(
+            Option(name='sqlite3_killpoint', level=OptionLevel.DEV, type='int', default=0, runtime=True))
+        if not [x for x in cls.MODULE_OPTIONS if x['name'] == 'log_to_cluster']:
+            cls.MODULE_OPTIONS.append(
+                Option(name='log_to_cluster', type='bool', default=False,
+                       runtime=True))
+        cls.MODULE_OPTIONS.append(
+            Option(name='log_to_cluster_level', type='str', default='info',
+                   runtime=True,
+                   enum_allowed=['info', 'debug', 'critical', 'error',
+                                 'warning', '']))
 
     def __init__(self, module_name: str, capsule: Any):
         super(MgrStandbyModule, self).__init__(capsule)
@@ -1037,14 +1056,6 @@ class API:
 class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
     MGR_POOL_NAME = ".mgr"
 
-    COMMANDS = []  # type: List[Any]
-    MODULE_OPTIONS: List[Option] = []
-    MODULE_OPTION_DEFAULTS = {}  # type: Dict[str, Any]
-
-    # Database Schema
-    SCHEMA = None  # type: Optional[List[str]]
-    SCHEMA_VERSIONED = None  # type: Optional[List[List[str]]]
-
     # Priority definitions for perf counters
     PRIO_CRITICAL = 10
     PRIO_INTERESTING = 8
@@ -1119,8 +1130,32 @@ class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
 
         self._db_lock = threading.Lock()
 
-    @classmethod
-    def _register_options(cls, module_name: str) -> None:
+    def __init_subclass__(cls):
+        super().__init_subclass__()
+        if not hasattr(cls, "COMMAND_DICT"):
+            cls.COMMAND_DICT = {} # type: Dict[str, CLICommand]
+        if not hasattr(cls, "COMMANDS"):
+            cls.COMMANDS = []  # type: List[Any]
+        if not hasattr(cls, "MODULE_OPTIONS"):
+            cls.MODULE_OPTIONS: List[Option] = []
+        if not hasattr(cls, "MODULE_OPTIOND_DEFAULTS"):
+            cls.MODULE_OPTION_DEFAULTS = {}  # type: Dict[str, Any]
+
+        # Database Schema
+        if not hasattr(cls, "SCHEMA"):
+            cls.SCHEMA = None  # type: Optional[List[str]]
+        if not hasattr(cls, "SCHEMA_VERSIONED"):
+            cls.SCHEMA_VERSIONED = None  # type: Optional[List[List[str]]]
+
+        for _, obj in inspect.getmembers(cls):
+            if not isinstance(obj, CLICommand):
+                continue
+            cls.COMMAND_DICT[obj.prefix] = obj
+
+        cls.COMMANDS.extend(
+            [cmd.dump_cmd() for cmd in cls.COMMAND_DICT.values()]
+        )
+
         cls.MODULE_OPTIONS.append(
             Option(name='log_level', type='str', default="", runtime=True,
                    enum_allowed=['info', 'debug', 'critical', 'error',
@@ -2005,12 +2040,12 @@ class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
                         cmd: Dict[str, Any]) -> Union[HandleCommandResult,
                                                       Tuple[int, str, str]]:
         self.log.debug(f"_handle_command len(inbuf) {len(inbuf)} cmd {cmd}")
-        if cmd['prefix'] not in CLICommand.COMMANDS:
+        if cmd['prefix'] not in self.COMMAND_DICT:
             ret = self.handle_command(inbuf, cmd)
             self.log.debug(f"_handle_command len(inbuf) {len(inbuf)} cmd {cmd} ret {ret}")
             return ret
 
-        ret = CLICommand.COMMANDS[cmd['prefix']].call(self, cmd, inbuf)
+        ret = self.COMMAND_DICT[cmd['prefix']].call(self, cmd, inbuf)
         self.log.debug(f"_handle_command len(inbuf) {len(inbuf)} cmd {cmd} ret {ret}")
         return ret
 
@@ -2080,8 +2115,9 @@ class MgrModule(ceph_module.BaseMgrModule, MgrModuleLoggingMixin):
         in their schema.
         """
         if key not in [o['name'] for o in self.MODULE_OPTIONS]:
-            raise RuntimeError("Config option '{0}' is not in {1}.MODULE_OPTIONS".
-                               format(key, self.__class__.__name__))
+            raise RuntimeError(
+                f"Config option '{key}' is not in {self.__class__.__name__}.MODULE_OPTIONS"
+            )
 
     def _get_module_option(self,
                            key: str,
