@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
             client.0:
 
     Extra arguments can be passed by adding options to the corresponding client
-    section under the s3tests-java task (e.g. to run a certain test, 
+    section under the s3tests-java task (e.g., to run a certain test, 
     specify a different repository and branch for the test suite, 
     run in info/debug mode (for the java suite) or forward the gradle output to a log file):
 
@@ -40,8 +40,8 @@ log = logging.getLogger(__name__)
         - rgw: [client.0]
         - s3tests-java:
             client.0:
-                force-branch: wip
-                force-repo: 'https://github.com/adamyanova/java_s3tests.git'
+                force-branch: wip-fix-rhel-java
+                force-repo: 'https://github.com/ivancich/java_s3tests.git'
                 log-fwd: '../s3tests-java.log'
                 log-level: info
                 extra-args: ['--tests', 'ObjectTest.testEncryptionKeySSECInvalidMd5']
@@ -103,8 +103,8 @@ class S3tests_java(Task):
     def download_test_suite(self, client):
         log.info("S3 Tests Java: Downloading test suite...")
         testdir = teuthology.get_testdir(self.ctx)
-        branch = 'master'
-        repo = 'https://github.com/ceph/java_s3tests.git'
+        branch = 'wip-fix-rhel-java'
+        repo = 'https://github.com/ivancich/java_s3tests.git'
         if client in self.config and self.config[client] is not None:
             if 'force-branch' in self.config[client] and self.config[client]['force-branch'] is not None:
                 branch = self.config[client]['force-branch']
