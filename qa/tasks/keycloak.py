@@ -39,6 +39,7 @@ def toxvenv_sh(ctx, remote, args, **kwargs):
 @contextlib.contextmanager
 def install_packages(ctx, config):
     """
+    Install 
     Downloading the two required tar files
     1. Keycloak
     2. Wildfly (Application Server)
@@ -46,8 +47,31 @@ def install_packages(ctx, config):
     assert isinstance(config, dict)
     log.info('Installing packages for Keycloak...')
 
+    os_type = teuthology.get_distro(ctx)
+    os_version = teuthology.get_distro_version(ctx)
+
     for (client, _) in config.items():
         (remote,) = ctx.cluster.only(client).remotes.keys()
+
+        if os_type in ['rocky']:
+            toxvenv_sh(ctx, remote, ['sudo', 'dnf', 'install', '-y', 'adoptium-temurin-java-repository'])
+            toxvenv_sh(ctx, remote, ['sudo', 'dnf', 'config-manager', '--set-enabled', 'adoptium-temurin-java-repository'])
+            toxvenv_sh(ctx, remote, ['sudo', 'dnf', 'install', '-y', 'temurin-17-jdk'])
+        elif os_type in ['centos', 'rhel']:
+            toxvenv_sh(ctx, remote, ['sudo', 'dnf', 'install', '-y', 'openjdk-17-jdk-headless'])
+        elif os_type in ['ubuntu']:
+            toxvenv_sh(ctx, remote, ['sudo', 'apt', 'install', '-y', 'openjdk-17-jdk-headless'])
+        else:
+            raise RuntimeError(f'unsupported distro {os_type} for keycloak')
+
+        """
+        for client in config:
+            current_version = get_keycloak_version(config)
+            ctx.cluster.only(client).run(
+                args=['cd', '{tdir}'.format(tdir=get_keycloak_dir(ctx,config)), run.Raw('&&'), 'rm', '-rf', 'keycloak-wildfly-adapter-dist-' + current_version + '.tar.gz'],
+            )
+        """
+
         test_dir=teuthology.get_testdir(ctx)
         current_version = get_keycloak_version(config)
         link1 = 'https://downloads.jboss.org/keycloak/'+current_version+'/keycloak-'+current_version+'.tar.gz'
