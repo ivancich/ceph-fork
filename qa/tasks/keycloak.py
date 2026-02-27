@@ -39,13 +39,13 @@ def toxvenv_sh(ctx, remote, args, **kwargs):
 @contextlib.contextmanager
 def install_packages(ctx, config):
     """
-    Install 
+    Install a version of Java 1.7 appropriate to the os_type
     Downloading the two required tar files
     1. Keycloak
     2. Wildfly (Application Server)
     """
     assert isinstance(config, dict)
-    log.info('Installing packages for Keycloak...')
+    log.info('Installing packages for Keycloak and Java 1.7...')
 
     os_type = teuthology.get_distro(ctx)
     os_version = teuthology.get_distro_version(ctx)
@@ -64,14 +64,6 @@ def install_packages(ctx, config):
         else:
             raise RuntimeError(f'unsupported distro {os_type} for keycloak')
 
-        """
-        for client in config:
-            current_version = get_keycloak_version(config)
-            ctx.cluster.only(client).run(
-                args=['cd', '{tdir}'.format(tdir=get_keycloak_dir(ctx,config)), run.Raw('&&'), 'rm', '-rf', 'keycloak-wildfly-adapter-dist-' + current_version + '.tar.gz'],
-            )
-        """
-
         test_dir=teuthology.get_testdir(ctx)
         current_version = get_keycloak_version(config)
         link1 = 'https://downloads.jboss.org/keycloak/'+current_version+'/keycloak-'+current_version+'.tar.gz'
@@ -89,7 +81,7 @@ def install_packages(ctx, config):
     try:
         yield
     finally:
-        log.info('Removing packaged dependencies of Keycloak...')
+        log.info('Removing packaged dependencies of Keycloak and Java 1.7...')
         for client in config:
             current_version = get_keycloak_version(config)
             ctx.cluster.only(client).run(
@@ -99,6 +91,16 @@ def install_packages(ctx, config):
             ctx.cluster.only(client).run(
                 args=['rm', '-rf', '{tdir}'.format(tdir=get_keycloak_dir(ctx,config))],
             )
+
+            if os_type in ['rocky']:
+                toxvenv_sh(ctx, remote, ['sudo', 'dnf', 'remove', '-y', 'temurin-17-jdk'])
+                toxvenv_sh(ctx, remote, ['sudo', 'dnf', 'remove', '-y', 'adoptium-temurin-java-repository'])
+            elif os_type in ['centos', 'rhel']:
+                toxvenv_sh(ctx, remote, ['sudo', 'dnf', 'remove', '-y', 'openjdk-17-jdk-headless'])
+            elif os_type in ['ubuntu']:
+                toxvenv_sh(ctx, remote, ['sudo', 'apt', 'remove', '-y', 'openjdk-17-jdk-headless'])
+            else:
+                raise RuntimeError(f'unsupported distro {os_type} for keycloak')
 
 @contextlib.contextmanager
 def download_conf(ctx, config):
