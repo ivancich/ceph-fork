@@ -58,30 +58,6 @@ insure_subdir() {
 
 insure_subdir $gradle_settings
 cat >${gradle_settings} <<EOF
-allprojects {
-    buildscript {
-        repositories {
-            // Remove or override standard repositories
-            all { ArtifactRepository repo ->
-                if (repo instanceof MavenArtifactRepository && repo.url.toString().contains("repo.maven.apache.org")) {
-                    project.logger.lifecycle("Repository URL \${repo.url} mirrored to your alternative repository.")
-                    repo.url = URI.create("$alt_maven_repo")
-                }
-            }
-            // Explicitly add your alternative repo as a fallback for buildscripts
-            maven { url "$alt_maven_repo" }
-        }
-    }
-    repositories {
-        all { ArtifactRepository repo ->
-            if (repo instanceof MavenArtifactRepository && repo.url.toString().contains("repo.maven.apache.org")) {
-                repo.url = URI.create("$alt_maven_repo")
-            }
-        }
-        maven { url "$alt_maven_repo" }
-    }
-}
-
 pluginManagement {
     repositories {
         maven {
