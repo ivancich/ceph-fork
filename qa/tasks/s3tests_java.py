@@ -281,6 +281,16 @@ class S3tests_java(Task):
                       ],
                 stdout=BytesIO()
             )
+            self.ctx.cluster.only(client).run(
+                args=[run.Raw('mkdir -p ~/.gradle'),
+                      run.Raw('&&'),
+                      'cp',
+                      '{tdir}/s3-tests-java/init.gradle'.format(
+                          tdir=testdir),
+                      '~/.gradle/init.gradle'
+                      ],
+                stdout=BytesIO()
+            )
             args = ['cd',
                     '{tdir}/s3-tests-java'.format(tdir=testdir),
                     run.Raw('&&'),
